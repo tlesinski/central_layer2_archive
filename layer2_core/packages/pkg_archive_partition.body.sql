@@ -1,0 +1,320 @@
+CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_PARTITION
+AS
+  FUNCTION normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
+  BEGIN
+    RETURN CASE WHEN UPPER(NVL(TRIM(p_execute), 'N')) = 'Y' THEN 'Y' ELSE 'N' END;
+  END;
+
+  FUNCTION qualified_table
+  (
+    p_owner          IN VARCHAR2,
+    p_table          IN VARCHAR2,
+    p_source_db_link IN VARCHAR2 DEFAULT NULL
+  )
+  RETURN VARCHAR2
+  IS
+    l_name VARCHAR2(400);
+  BEGIN
+    l_name := PKG_SQL.fn_assert_simple_name(p_owner) || '.' || PKG_SQL.fn_assert_simple_name(p_table);
+
+    IF p_source_db_link IS NOT NULL AND UPPER(TRIM(p_source_db_link)) NOT IN ('LOCAL', 'NONE') THEN
+      l_name := l_name || '@' || PKG_SQL.fn_assert_simple_name(p_source_db_link);
+    END IF;
+
+    RETURN l_name;
+  END qualified_table;
+
+  FUNCTION high_value_to_date(p_high_value IN VARCHAR2) RETURN DATE IS
+    l_date DATE;
+  BEGIN
+    IF p_high_value IS NULL OR UPPER(TRIM(p_high_value)) = 'MAXVALUE' THEN
+      RETURN NULL;
+    END IF;
+
+    EXECUTE IMMEDIATE 'SELECT ' || p_high_value || ' FROM dual' INTO l_date;
+    RETURN l_date;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN NULL;
+  END high_value_to_date;
+
+  FUNCTION first_partition_key_column
+  (
+    p_owner IN VARCHAR2,
+    p_table IN VARCHAR2
+  )
+  RETURN VARCHAR2
+  IS
+    l_column_name VARCHAR2(128);
+  BEGIN
+    SELECT column_name
+      INTO l_column_name
+      FROM all_part_key_columns
+     WHERE owner = UPPER(p_owner)
+       AND name = UPPER(p_table)
+       AND object_type = 'TABLE'
+       AND column_position = 1;
+
+    RETURN PKG_SQL.fn_assert_simple_name(l_column_name);
+  END first_partition_key_column;
+
+  FUNCTION first_subpartition_key_column
+  (
+    p_owner IN VARCHAR2,
+    p_table IN VARCHAR2
+  )
+  RETURN VARCHAR2
+  IS
+    l_column_name VARCHAR2(128);
+  BEGIN
+    SELECT column_name
+      INTO l_column_name
+      FROM all_subpart_key_columns
+     WHERE owner = UPPER(p_owner)
+       AND name = UPPER(p_table)
+       AND object_type = 'TABLE'
+       AND column_position = 1;
+
+    RETURN PKG_SQL.fn_assert_simple_name(l_column_name);
+  END first_subpartition_key_column;
+
+  PROCEDURE build_staging_indexes
+  (
+    p_target_owner       IN VARCHAR2,
+    p_target_table       IN VARCHAR2,
+    p_staging_table_name IN VARCHAR2,
+    p_execute            IN VARCHAR2 DEFAULT 'Y',
+    p_log_id             IN NUMBER DEFAULT NULL
+  )
+  IS
+    l_sql          CLOB;
+    l_column_list  VARCHAR2(4000);
+    l_sql_rowcount NUMBER;
+    l_index_name   VARCHAR2(128);
+  BEGIN
+    FOR r IN (
+      SELECT i.index_name, i.uniqueness
+        FROM all_indexes i
+        JOIN all_part_indexes p
+          ON p.owner = i.owner
+         AND p.index_name = i.index_name
+       WHERE i.owner = UPPER(p_target_owner)
+         AND i.table_owner = UPPER(p_target_owner)
+         AND i.table_name = UPPER(p_target_table)
+         AND i.index_type = 'NORMAL'
+         AND p.locality = 'LOCAL'
+       ORDER BY i.index_name
+    ) LOOP
+      SELECT LISTAGG(
+               PKG_SQL.fn_assert_simple_name(column_name) ||
+               CASE WHEN descend = 'DESC' THEN ' DESC' END,
+               ', '
+             ) WITHIN GROUP (ORDER BY column_position)
+        INTO l_column_list
+        FROM all_ind_columns
+       WHERE index_owner = UPPER(p_target_owner)
+         AND table_owner = UPPER(p_target_owner)
+         AND table_name = UPPER(p_target_table)
+         AND index_name = r.index_name;
+
+      l_index_name := SUBSTR('STG_' || r.index_name || '_' || TO_CHAR(SYSTIMESTAMP, 'HH24MISSFF3'), 1, 128);
+
+      l_sql := 'CREATE ' ||
+               CASE WHEN r.uniqueness = 'UNIQUE' THEN 'UNIQUE ' END ||
+               'INDEX ' ||
+               PKG_SQL.fn_assert_simple_name(p_target_owner) || '.' ||
+               PKG_SQL.fn_assert_simple_name(l_index_name) ||
+               ' ON ' ||
+               qualified_table(p_target_owner, p_staging_table_name) ||
+               '(' || l_column_list || ')';
+
+      l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+    END LOOP;
+  END build_staging_indexes;
+
+  PROCEDURE create_exchange_staging
+  (
+    p_target_owner       IN VARCHAR2,
+    p_target_table       IN VARCHAR2,
+    p_partition_name     IN VARCHAR2,
+    p_staging_table_name OUT VARCHAR2,
+    p_execute            IN VARCHAR2 DEFAULT 'Y',
+    p_log_id             IN NUMBER DEFAULT NULL
+  )
+  IS
+    l_sql          CLOB;
+    l_sql_rowcount NUMBER;
+  BEGIN
+    p_staging_table_name := SUBSTR(
+      'STG_' || TO_CHAR(SYSTIMESTAMP, 'DDHH24MISSFF3') || '_' ||
+      UPPER(p_target_table) || '_' || UPPER(p_partition_name),
+      1,
+      128
+    );
+
+    l_sql := 'CREATE TABLE ' ||
+             qualified_table(p_target_owner, p_staging_table_name) ||
+             ' FOR EXCHANGE WITH TABLE ' ||
+             qualified_table(p_target_owner, p_target_table);
+
+    l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+
+  END create_exchange_staging;
+
+  PROCEDURE load_exchange_staging
+  (
+    p_source_db_link     IN VARCHAR2,
+    p_source_owner       IN VARCHAR2,
+    p_source_table       IN VARCHAR2,
+    p_target_owner       IN VARCHAR2,
+    p_target_table       IN VARCHAR2,
+    p_staging_table_name IN VARCHAR2,
+    p_high_value         IN VARCHAR2,
+    p_prev_high_value    IN VARCHAR2 DEFAULT NULL,
+    p_execute            IN VARCHAR2 DEFAULT 'Y',
+    p_log_id             IN NUMBER DEFAULT NULL,
+    p_rows_loaded        OUT NUMBER
+  )
+  IS
+    l_sql          CLOB;
+    l_key_column   VARCHAR2(128);
+    l_high_date    DATE;
+    l_low_date     DATE;
+  BEGIN
+    l_key_column := first_partition_key_column(p_target_owner, p_target_table);
+    l_high_date := high_value_to_date(p_high_value);
+    l_low_date := high_value_to_date(p_prev_high_value);
+
+    IF l_high_date IS NULL THEN
+      raise_application_error(-20041, 'EXCHANGE requires a DATE high value for target partition');
+    END IF;
+
+    l_sql := 'INSERT /*+ APPEND */ INTO ' ||
+             qualified_table(p_target_owner, p_staging_table_name) ||
+             ' SELECT * FROM ' ||
+             qualified_table(p_source_owner, p_source_table, p_source_db_link) ||
+             ' WHERE ' || l_key_column || ' < DATE ''' || TO_CHAR(l_high_date, 'YYYY-MM-DD') || '''';
+
+    IF l_low_date IS NOT NULL THEN
+      l_sql := l_sql || ' AND ' || l_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
+    END IF;
+
+    p_rows_loaded := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+  END load_exchange_staging;
+
+  PROCEDURE load_exchange_staging_subpartition
+  (
+    p_source_db_link            IN VARCHAR2,
+    p_source_owner              IN VARCHAR2,
+    p_source_table              IN VARCHAR2,
+    p_target_owner              IN VARCHAR2,
+    p_target_table              IN VARCHAR2,
+    p_staging_table_name        IN VARCHAR2,
+    p_partition_high_value      IN VARCHAR2,
+    p_prev_partition_high_value IN VARCHAR2 DEFAULT NULL,
+    p_subpartition_high_value   IN VARCHAR2,
+    p_execute                   IN VARCHAR2 DEFAULT 'Y',
+    p_log_id                    IN NUMBER DEFAULT NULL,
+    p_rows_loaded               OUT NUMBER
+  )
+  IS
+    l_sql             CLOB;
+    l_part_key_column VARCHAR2(128);
+    l_sub_key_column  VARCHAR2(128);
+    l_high_date       DATE;
+    l_low_date        DATE;
+  BEGIN
+    l_part_key_column := first_partition_key_column(p_target_owner, p_target_table);
+    l_sub_key_column := first_subpartition_key_column(p_target_owner, p_target_table);
+    l_high_date := high_value_to_date(p_partition_high_value);
+    l_low_date := high_value_to_date(p_prev_partition_high_value);
+
+    IF l_high_date IS NULL THEN
+      raise_application_error(-20043, 'EXCHANGE SUBPARTITION requires a DATE partition high value');
+    END IF;
+
+    IF p_subpartition_high_value IS NULL OR TRIM(p_subpartition_high_value) = '#' THEN
+      raise_application_error(-20044, 'EXCHANGE SUBPARTITION requires a list subpartition high value');
+    END IF;
+
+    l_sql := 'INSERT /*+ APPEND */ INTO ' ||
+             qualified_table(p_target_owner, p_staging_table_name) ||
+             ' SELECT * FROM ' ||
+             qualified_table(p_source_owner, p_source_table, p_source_db_link) ||
+             ' WHERE ' || l_part_key_column || ' < DATE ''' || TO_CHAR(l_high_date, 'YYYY-MM-DD') || '''' ||
+             ' AND ' || l_sub_key_column || ' IN (' || p_subpartition_high_value || ')';
+
+    IF l_low_date IS NOT NULL THEN
+      l_sql := l_sql || ' AND ' || l_part_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
+    END IF;
+
+    p_rows_loaded := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+  END load_exchange_staging_subpartition;
+
+  PROCEDURE exchange_partition
+  (
+    p_target_owner       IN VARCHAR2,
+    p_target_table       IN VARCHAR2,
+    p_partition_name     IN VARCHAR2,
+    p_staging_table_name IN VARCHAR2,
+    p_execute            IN VARCHAR2 DEFAULT 'Y',
+    p_log_id             IN NUMBER DEFAULT NULL
+  )
+  IS
+    l_sql          CLOB;
+    l_sql_rowcount NUMBER;
+  BEGIN
+    l_sql := 'ALTER TABLE ' ||
+             qualified_table(p_target_owner, p_target_table) ||
+             ' EXCHANGE PARTITION ' ||
+             PKG_SQL.fn_assert_simple_name(p_partition_name) ||
+             ' WITH TABLE ' ||
+             qualified_table(p_target_owner, p_staging_table_name) ||
+             ' INCLUDING INDEXES WITHOUT VALIDATION';
+
+    l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+  END exchange_partition;
+
+  PROCEDURE exchange_subpartition
+  (
+    p_target_owner       IN VARCHAR2,
+    p_target_table       IN VARCHAR2,
+    p_subpartition_name  IN VARCHAR2,
+    p_staging_table_name IN VARCHAR2,
+    p_execute            IN VARCHAR2 DEFAULT 'Y',
+    p_log_id             IN NUMBER DEFAULT NULL
+  )
+  IS
+    l_sql          CLOB;
+    l_sql_rowcount NUMBER;
+  BEGIN
+    l_sql := 'ALTER TABLE ' ||
+             qualified_table(p_target_owner, p_target_table) ||
+             ' EXCHANGE SUBPARTITION ' ||
+             PKG_SQL.fn_assert_simple_name(p_subpartition_name) ||
+             ' WITH TABLE ' ||
+             qualified_table(p_target_owner, p_staging_table_name) ||
+             ' INCLUDING INDEXES WITHOUT VALIDATION';
+
+    l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+  END exchange_subpartition;
+
+  PROCEDURE drop_staging
+  (
+    p_staging_owner      IN VARCHAR2,
+    p_staging_table_name IN VARCHAR2,
+    p_execute            IN VARCHAR2 DEFAULT 'Y',
+    p_log_id             IN NUMBER DEFAULT NULL
+  )
+  IS
+    l_sql          CLOB;
+    l_sql_rowcount NUMBER;
+  BEGIN
+    l_sql := 'DROP TABLE ' ||
+             qualified_table(p_staging_owner, p_staging_table_name) ||
+             ' PURGE';
+
+    l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+  END drop_staging;
+END PKG_ARCHIVE_PARTITION;
+/
