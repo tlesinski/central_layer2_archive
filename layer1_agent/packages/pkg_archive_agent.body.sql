@@ -1,6 +1,6 @@
 CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_AGENT
 AS
-  FUNCTION normalize_execute
+  FUNCTION fn_normalize_execute
   (
     p_execute IN VARCHAR2
   )
@@ -12,9 +12,9 @@ AS
     END IF;
 
     RETURN 'N';
-  END normalize_execute;
+  END fn_normalize_execute;
 
-  FUNCTION assert_simple_name
+  FUNCTION fn_assert_simple_name
   (
     p_name IN VARCHAR2
   )
@@ -22,9 +22,9 @@ AS
   IS
   BEGIN
     RETURN DBMS_ASSERT.SIMPLE_SQL_NAME(UPPER(TRIM(p_name)));
-  END assert_simple_name;
+  END fn_assert_simple_name;
 
-  FUNCTION assert_qualified_table
+  FUNCTION fn_assert_qualified_table
   (
     p_owner      IN VARCHAR2,
     p_table_name IN VARCHAR2
@@ -32,10 +32,10 @@ AS
   RETURN VARCHAR2
   IS
   BEGIN
-    RETURN assert_simple_name(p_owner) || '.' || assert_simple_name(p_table_name);
-  END assert_qualified_table;
+    RETURN fn_assert_simple_name(p_owner) || '.' || fn_assert_simple_name(p_table_name);
+  END fn_assert_qualified_table;
 
-  FUNCTION get_partition_info
+  FUNCTION fn_get_partition_info
   (
     p_owner      IN VARCHAR2,
     p_table_name IN VARCHAR2
@@ -55,8 +55,8 @@ AS
       raise_application_error(-20001, 'Owner and table name are required');
     END IF;
 
-    l_owner := assert_simple_name(p_owner);
-    l_table_name := assert_simple_name(p_table_name);
+    l_owner := fn_assert_simple_name(p_owner);
+    l_table_name := fn_assert_simple_name(p_table_name);
 
     l_sql := q'[
       SELECT p.table_owner,
@@ -105,9 +105,9 @@ AS
       END IF;
 
       RAISE;
-  END get_partition_info;
+  END fn_get_partition_info;
 
-  FUNCTION get_row_count
+  FUNCTION fn_get_row_count
   (
     p_owner             IN VARCHAR2,
     p_table_name        IN VARCHAR2,
@@ -124,22 +124,22 @@ AS
       raise_application_error(-20002, 'Owner, table name, and partition name are required');
     END IF;
 
-    l_table_name := assert_qualified_table(p_owner, p_table_name);
+    l_table_name := fn_assert_qualified_table(p_owner, p_table_name);
 
     IF p_subpartition_name IS NOT NULL THEN
       l_sql := 'SELECT COUNT(*) FROM ' || l_table_name ||
-               ' SUBPARTITION (' || assert_simple_name(p_subpartition_name) || ')';
+               ' SUBPARTITION (' || fn_assert_simple_name(p_subpartition_name) || ')';
     ELSE
       l_sql := 'SELECT COUNT(*) FROM ' || l_table_name ||
-               ' PARTITION (' || assert_simple_name(p_partition_name) || ')';
+               ' PARTITION (' || fn_assert_simple_name(p_partition_name) || ')';
     END IF;
 
     EXECUTE IMMEDIATE l_sql INTO l_row_count;
 
     RETURN l_row_count;
-  END get_row_count;
+  END fn_get_row_count;
 
-  PROCEDURE cleanup_unit
+  PROCEDURE prc_cleanup_unit
   (
     p_owner             IN VARCHAR2,
     p_table_name        IN VARCHAR2,
@@ -163,48 +163,48 @@ AS
       raise_application_error(-20004, 'Unsupported cleanup mode: ' || p_mode);
     END IF;
 
-    l_table_name := assert_qualified_table(p_owner, p_table_name);
+    l_table_name := fn_assert_qualified_table(p_owner, p_table_name);
 
     IF l_mode = 'DELETE' THEN
       IF p_subpartition_name IS NOT NULL THEN
         l_sql := 'DELETE FROM ' || l_table_name ||
-                 ' SUBPARTITION (' || assert_simple_name(p_subpartition_name) || ')';
+                 ' SUBPARTITION (' || fn_assert_simple_name(p_subpartition_name) || ')';
       ELSE
         l_sql := 'DELETE FROM ' || l_table_name ||
-                 ' PARTITION (' || assert_simple_name(p_partition_name) || ')';
+                 ' PARTITION (' || fn_assert_simple_name(p_partition_name) || ')';
       END IF;
     ELSIF l_mode = 'TRUNCATE' THEN
       IF p_subpartition_name IS NOT NULL THEN
         l_sql := 'ALTER TABLE ' || l_table_name ||
-                 ' TRUNCATE SUBPARTITION ' || assert_simple_name(p_subpartition_name) ||
+                 ' TRUNCATE SUBPARTITION ' || fn_assert_simple_name(p_subpartition_name) ||
                  ' UPDATE GLOBAL INDEXES';
       ELSE
         l_sql := 'ALTER TABLE ' || l_table_name ||
-                 ' TRUNCATE PARTITION ' || assert_simple_name(p_partition_name) ||
+                 ' TRUNCATE PARTITION ' || fn_assert_simple_name(p_partition_name) ||
                  ' UPDATE GLOBAL INDEXES';
       END IF;
     ELSIF p_subpartition_name IS NOT NULL THEN
       l_sql := 'ALTER TABLE ' || l_table_name || ' ' || l_mode ||
-               ' SUBPARTITION ' || assert_simple_name(p_subpartition_name) ||
+               ' SUBPARTITION ' || fn_assert_simple_name(p_subpartition_name) ||
                ' UPDATE GLOBAL INDEXES';
     ELSE
       l_sql := 'ALTER TABLE ' || l_table_name || ' ' || l_mode ||
-               ' PARTITION ' || assert_simple_name(p_partition_name) ||
+               ' PARTITION ' || fn_assert_simple_name(p_partition_name) ||
                ' UPDATE GLOBAL INDEXES';
     END IF;
 
     DBMS_OUTPUT.PUT_LINE(l_sql);
 
-    IF normalize_execute(p_execute) = 'Y' THEN
+    IF fn_normalize_execute(p_execute) = 'Y' THEN
       EXECUTE IMMEDIATE l_sql;
     END IF;
-  END cleanup_unit;
+  END prc_cleanup_unit;
 
-  FUNCTION health_check
+  FUNCTION fn_health_check
   RETURN VARCHAR2
   IS
   BEGIN
     RETURN 'OK:' || SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA');
-  END health_check;
+  END fn_health_check;
 END PKG_ARCHIVE_AGENT;
 /

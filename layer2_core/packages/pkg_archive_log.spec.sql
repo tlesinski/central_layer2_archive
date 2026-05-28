@@ -1,6 +1,6 @@
 CREATE OR REPLACE PACKAGE PKG_ARCHIVE_LOG
 AS
-  FUNCTION create_run
+  FUNCTION fn_create_run
   (
     p_run_type       IN VARCHAR2,
     p_source_db_link IN VARCHAR2,
@@ -10,13 +10,13 @@ AS
   )
   RETURN NUMBER;
 
-  FUNCTION get_log_id
+  FUNCTION fn_get_log_id
   (
     p_run_id IN NUMBER
   )
   RETURN NUMBER;
 
-  PROCEDURE log_message
+  PROCEDURE prc_log_message
   (
     p_run_id    IN NUMBER,
     p_log_msg   IN CLOB,
@@ -24,7 +24,12 @@ AS
     p_log_sttus IN VARCHAR2 DEFAULT PKG_TL_LOGGING.g_sttus_running_const
   );
 
-  PROCEDURE finish_run
+  PROCEDURE prc_log_error_stack
+  (
+    p_run_id IN NUMBER
+  );
+
+  PROCEDURE prc_finish_run
   (
     p_run_id        IN NUMBER,
     p_status        IN VARCHAR2,

@@ -14,9 +14,9 @@ CREATE OR REPLACE EDITIONABLE PACKAGE BODY PKG_TL_LOGGING AS
 -- 2.0 2021-12-01 Tomasz, Lesinski Simplification --
 -- 2.1 2022-11-04 Tomasz, Lesinski Json column	   --
 
---Procedure pro_init_log just pre declaration
+--Procedure prc_init_log just pre declaration
 
-PROCEDURE pro_init_log
+PROCEDURE prc_init_log
 (
 p_force IN VARCHAR2 DEFAULT 'N'
 );
@@ -195,7 +195,7 @@ BEGIN
 	COMMIT;
       EXCEPTION
 	WHEN OTHERS THEN
-	  pro_init_log( p_force => 'Y' );
+	  prc_init_log( p_force => 'Y' );
 
 	  EXECUTE IMMEDIATE l_sql
 	  USING
@@ -367,17 +367,17 @@ prc_error_stack(p_log_id=>null);
 
 END prc_log_create_table;
 
---Procedure pro_init_log
+--Procedure prc_init_log
 -- initializes log in physical file and in md_process_log table
 
-PROCEDURE pro_init_log
+PROCEDURE prc_init_log
 (
 p_force IN VARCHAR2 DEFAULT 'N'
 )
 IS
 l_check NUMBER;
 BEGIN
-dbms_output.put_line('pro_init_log');
+dbms_output.put_line('prc_init_log');
 
 IF g_curr_schema_name IS NULL OR p_force = 'Y' THEN
   g_curr_schema_name := sys_context('USERENV', 'CURRENT_SCHEMA');
@@ -385,7 +385,7 @@ IF g_curr_schema_name IS NULL OR p_force = 'Y' THEN
   prc_log_create_table;
 END IF;
 
-END pro_init_log;
+END prc_init_log;
 
 -- cleanup old partitions in table md_process_log
 
@@ -449,6 +449,6 @@ BEGIN
 
 --calling base procedure to intialize entries in md_process_log table and file with directories
 
-pro_init_log;
+prc_init_log;
 END PKG_TL_LOGGING;
 /

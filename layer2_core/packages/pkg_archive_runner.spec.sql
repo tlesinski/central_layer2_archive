@@ -1,6 +1,6 @@
 CREATE OR REPLACE PACKAGE PKG_ARCHIVE_RUNNER
 AS
-  PROCEDURE run_table
+  PROCEDURE prc_run_table
   (
     p_source_db_link  IN VARCHAR2,
     p_owner           IN VARCHAR2,
@@ -10,7 +10,7 @@ AS
     p_truncate_execute IN VARCHAR2 DEFAULT 'N'
   );
 
-  PROCEDURE run_all
+  PROCEDURE prc_run_all
   (
     p_execute         IN VARCHAR2 DEFAULT 'N',
     p_stop_after_step IN VARCHAR2 DEFAULT 'QUALITY',

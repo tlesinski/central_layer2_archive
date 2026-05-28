@@ -135,19 +135,19 @@ Zakres:
 Przykladowy kontrakt:
 
 ```sql
-PKG_ARCHIVE_AGENT.get_partition_info(
+PKG_ARCHIVE_AGENT.fn_get_partition_info(
   p_owner      IN VARCHAR2,
   p_table_name IN VARCHAR2
 ) RETURN archive_partition_tab PIPELINED;
 
-PKG_ARCHIVE_AGENT.get_row_count(
+PKG_ARCHIVE_AGENT.fn_get_row_count(
   p_owner             IN VARCHAR2,
   p_table_name        IN VARCHAR2,
   p_partition_name    IN VARCHAR2,
   p_subpartition_name IN VARCHAR2 DEFAULT NULL
 ) RETURN NUMBER;
 
-PKG_ARCHIVE_AGENT.cleanup_unit(
+PKG_ARCHIVE_AGENT.prc_cleanup_unit(
   p_owner             IN VARCHAR2,
   p_table_name        IN VARCHAR2,
   p_partition_name    IN VARCHAR2,
@@ -155,7 +155,7 @@ PKG_ARCHIVE_AGENT.cleanup_unit(
   p_mode              IN VARCHAR2 DEFAULT 'TRUNCATE'
 );
 
-PKG_ARCHIVE_AGENT.health_check RETURN VARCHAR2;
+PKG_ARCHIVE_AGENT.fn_health_check RETURN VARCHAR2;
 ```
 
 Layer 1 nie powinien decydowac:
@@ -177,24 +177,45 @@ Minimalny flow:
 ```text
 1. DISCOVER
    Layer 2 iteruje po TW_ARCHIVE_TABLES.
-   Czyta ARCHIVE_PARTITION_INFO_VW z layer 1 przez SOURCE_DB_LINK.
+   Jeden run DISCOVER obejmuje wszystkie skonfigurowane tabele.
+   Opcjonalne parametry TARGET_OWNER/TARGET_TABLE_NAME moga zawezic run
+   do jednej target tabeli.
+   Czyta TW_ARCHIVE_SOURCE_PARTITIONS_VW, ktory pod spodem odpytuje
+   ARCHIVE_PARTITION_INFO_VW z layer 1 przez SOURCE_DB_LINK.
+   TW_ARCHIVE_DISCOVERY_PARTITIONS_VW pokazuje tylko jednostki, ktorych jeszcze nie
+   ma w TW_ARCHIVE_PARTITIONS.
    Fizycznie dodaje brakujace target partycje przez ALTER TABLE ADD PARTITION.
    Ignoruje source MAXVALUE.
-   Upsertuje rekordy do TW_ARCHIVE_PARTITIONS po high-value.
+   Po kazdym ALTER TABLE ADD PARTITION wstawia rekordy do TW_ARCHIVE_PARTITIONS.
+   Nie robi MERGE, zeby anomalie metadanych konczyly sie bledem PK/UK.
 
 2. ARCHIVE
+   Czyta TW_ARCHIVE_IMPORT_PARTITIONS_VW.
+   Jeden run ARCHIVE obejmuje wszystkie kandydaty z widoku.
+   Opcjonalne parametry TARGET_OWNER/TARGET_TABLE_NAME moga zawezic run
+   do jednej target tabeli.
    Layer 2 laduje dane do staging i wykonuje EXCHANGE PARTITION albo
    EXCHANGE SUBPARTITION.
    INSERT jako metoda archiwizacji nie jest wspierany.
 
 3. QUALITY
+   Czyta TW_ARCHIVE_QUALITY_PARTITIONS_VW.
+   Jeden run QUALITY obejmuje wszystkie kandydaty z widoku.
+   Opcjonalne parametry TARGET_OWNER/TARGET_TABLE_NAME moga zawezic run
+   do jednej target tabeli.
    Layer 2 liczy source rows przez agenta.
    Layer 2 liczy source i target rows.
    Ustawia QUALITY_STATUS = Y albo N.
 
 4. TRUNCATE
+   Czyta TW_ARCHIVE_TRUNCATE_PARTITIONS_VW.
+   Jeden run TRUNCATE obejmuje wszystkie kandydaty z widoku.
+   Opcjonalne parametry TARGET_OWNER/TARGET_TABLE_NAME moga zawezic run
+   do jednej target tabeli.
    Layer 2 zleca layer 1 agentowi truncate tylko dla QUALITY_STATUS = Y.
    Retencja jest sprawdzana tutaj przez RETENTION_DAYS.
+   Data high-value jest liczona przez FN_ARCHIVE_HIGH_VALUE_DATE na podstawie
+   tekstowego HIGH_VALUE z dictionary.
    Ustawia TRUNCATE_STATUS = Y.
 ```
 
@@ -443,15 +464,15 @@ Kolejnosc prac dla nowego projektu:
    TW_ARCHIVE_RUNS / MD_PROCESS_LOG
 
 2. Utworzyc minimalny layer 1 agent:
-   PKG_ARCHIVE_AGENT.get_partition_info
-   PKG_ARCHIVE_AGENT.get_row_count
-   PKG_ARCHIVE_AGENT.cleanup_unit
-   PKG_ARCHIVE_AGENT.health_check
+   PKG_ARCHIVE_AGENT.fn_get_partition_info
+   PKG_ARCHIVE_AGENT.fn_get_row_count
+   PKG_ARCHIVE_AGENT.prc_cleanup_unit
+   PKG_ARCHIVE_AGENT.fn_health_check
 
 3. Zrobic discovery na layer 2:
    czyta zrodla
    pobiera partition info przez DB link
-   robi merge do TW_ARCHIVE_PARTITIONS
+   dodaje target partycje i robi INSERT do TW_ARCHIVE_PARTITIONS
 
 4. Zrobic import dla jednego przypadku:
    range partition, bez subpartycji

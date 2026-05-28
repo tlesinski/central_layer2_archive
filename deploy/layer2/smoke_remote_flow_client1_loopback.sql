@@ -6,34 +6,26 @@ SET ECHO ON
 PROMPT Running CLIENT1_LOOPBACK_LINK full remote-path smoke flow
 
 BEGIN
-  PKG_ARCHIVE_DISCOVERY.discover_table
+  PKG_ARCHIVE_DISCOVERY.prc_discover(p_execute => 'Y');
+END;
+/
+
+BEGIN
+  PKG_ARCHIVE_IMPORT.prc_import
   (
-    p_source_db_link => 'CLIENT1_LOOPBACK_LINK',
-    p_owner          => 'CLIENT1',
-    p_table_name     => 'ORDERS_ARCH_SRC',
-    p_execute        => 'Y'
+    p_execute           => 'Y',
+    p_target_owner      => 'CARCH',
+    p_target_table_name => 'ORDERS_ARCH_SRC'
   );
 END;
 /
 
 BEGIN
-  PKG_ARCHIVE_IMPORT.import_table
+  PKG_ARCHIVE_QUALITY.prc_quality
   (
-    p_source_db_link => 'CLIENT1_LOOPBACK_LINK',
-    p_owner          => 'CLIENT1',
-    p_table_name     => 'ORDERS_ARCH_SRC',
-    p_execute        => 'Y'
-  );
-END;
-/
-
-BEGIN
-  PKG_ARCHIVE_QUALITY.check_table
-  (
-    p_source_db_link => 'CLIENT1_LOOPBACK_LINK',
-    p_owner          => 'CLIENT1',
-    p_table_name     => 'ORDERS_ARCH_SRC',
-    p_execute        => 'Y'
+    p_execute           => 'Y',
+    p_target_owner      => 'CARCH',
+    p_target_table_name => 'ORDERS_ARCH_SRC'
   );
 END;
 /

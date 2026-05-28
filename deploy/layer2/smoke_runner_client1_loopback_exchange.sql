@@ -19,7 +19,7 @@ DELETE FROM TW_ARCHIVE_PARTITIONS
 COMMIT;
 
 BEGIN
-  PKG_ARCHIVE_RUNNER.run_table
+  PKG_ARCHIVE_RUNNER.prc_run_table
   (
     p_source_db_link     => 'CLIENT1_LOOPBACK_LINK',
     p_owner              => 'CLIENT1',

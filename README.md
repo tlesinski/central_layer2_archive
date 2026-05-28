@@ -56,6 +56,14 @@ layer2_core/
     tw_archive_tables.sql
     tw_archive_runs.sql
     tw_archive_partitions.sql
+  functions/
+    fn_archive_high_value_date.sql
+  views/
+    tw_archive_source_partitions_vw.sql
+    tw_archive_discovery_partitions_vw.sql
+    tw_archive_import_partitions_vw.sql
+    tw_archive_quality_partitions_vw.sql
+    tw_archive_truncate_partitions_vw.sql
   packages/
     pkg_sql.spec.sql
     pkg_sql.body.sql
@@ -170,10 +178,10 @@ Layer 1 should expose a small package, for example `PKG_ARCHIVE_AGENT`, with a
 contract like:
 
 ```sql
-get_partition_info(owner, table_name)
-get_row_count(owner, table_name, partition_name, subpartition_name)
-cleanup_unit(owner, table_name, partition_name, subpartition_name, mode)
-health_check
+fn_get_partition_info(owner, table_name)
+fn_get_row_count(owner, table_name, partition_name, subpartition_name)
+prc_cleanup_unit(owner, table_name, partition_name, subpartition_name, mode)
+fn_health_check
 ```
 
 The agent should not contain archive policy.
@@ -250,21 +258,33 @@ CAGENT1.PKG_ARCHIVE_AGENT
   reads partition metadata and row counts from CLIENT1
 
 CARCH.PKG_ARCHIVE_DISCOVERY
-  discovers CLIENT1_LOOPBACK_LINK metadata and merges rows into TW_ARCHIVE_PARTITIONS
-  uses CAGENT1.ARCHIVE_PARTITION_INFO_VW so discovery works through DB links
+  opens one DISCOVER run and processes all configured source tables in that run
+  can be narrowed to one target table with optional target owner/table parameters
+  inserts rows into TW_ARCHIVE_PARTITIONS after each ALTER TABLE ADD PARTITION
+  uses TW_ARCHIVE_SOURCE_PARTITIONS_VW and TW_ARCHIVE_DISCOVERY_PARTITIONS_VW over
+  CAGENT1.ARCHIVE_PARTITION_INFO_VW so discovery works through DB links
   physically adds missing target partitions with ALTER TABLE ADD PARTITION
   ignores source MAXVALUE partitions
 
 CARCH.PKG_ARCHIVE_IMPORT
-  imports not-yet-archived source partitions and subpartitions into the target archive table with EXCHANGE
+  reads TW_ARCHIVE_IMPORT_PARTITIONS_VW and imports not-yet-archived source
+  partitions and subpartitions into the target archive table with EXCHANGE
+  opens one ARCHIVE run and can be narrowed to one target table with optional
+  target owner/table parameters
   builds staging tables and staging indexes from the target local indexes
   uses date range predicates for remote DB links
 
 CARCH.PKG_ARCHIVE_QUALITY
+  reads TW_ARCHIVE_QUALITY_PARTITIONS_VW
+  opens one QUALITY run and can be narrowed to one target table with optional
+  target owner/table parameters
   reads source row counts through the layer 1 agent
   compares source and target row counts and sets QUALITY_STATUS
 
 CARCH.PKG_ARCHIVE_TRUNCATE
+  reads TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
+  opens one TRUNCATE run and can be narrowed to one target table with optional
+  target owner/table parameters
   requests source truncate through the layer 1 agent only after quality success
   applies RETENTION_DAYS before truncating source partitions/subpartitions
 

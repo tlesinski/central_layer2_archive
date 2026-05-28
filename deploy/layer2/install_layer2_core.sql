@@ -10,6 +10,13 @@ PROMPT Installing Central Layer 2 Archive core objects
 @@../../layer2_core/tables/tw_archive_tables.sql
 @@../../layer2_core/tables/tw_archive_runs.sql
 @@../../layer2_core/tables/tw_archive_partitions.sql
+@@migrate_tw_archive_partitions_source_names.sql
+@@../../layer2_core/functions/fn_archive_high_value_date.sql
+@@../../layer2_core/views/tw_archive_source_partitions_vw.sql
+@@../../layer2_core/views/tw_archive_discovery_partitions_vw.sql
+@@../../layer2_core/views/tw_archive_import_partitions_vw.sql
+@@../../layer2_core/views/tw_archive_quality_partitions_vw.sql
+@@../../layer2_core/views/tw_archive_truncate_partitions_vw.sql
 @@../../layer2_core/packages/pkg_tl_logging.spec.sql
 @@../../layer2_core/packages/pkg_tl_logging.body.sql
 @@../../layer2_core/packages/pkg_sql.spec.sql
@@ -31,6 +38,12 @@ PROMPT Installing Central Layer 2 Archive core objects
 
 SHOW ERRORS PACKAGE PKG_TL_LOGGING
 SHOW ERRORS PACKAGE BODY PKG_TL_LOGGING
+SHOW ERRORS FUNCTION FN_ARCHIVE_HIGH_VALUE_DATE
+SHOW ERRORS VIEW TW_ARCHIVE_SOURCE_PARTITIONS_VW
+SHOW ERRORS VIEW TW_ARCHIVE_DISCOVERY_PARTITIONS_VW
+SHOW ERRORS VIEW TW_ARCHIVE_IMPORT_PARTITIONS_VW
+SHOW ERRORS VIEW TW_ARCHIVE_QUALITY_PARTITIONS_VW
+SHOW ERRORS VIEW TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
 SHOW ERRORS PACKAGE PKG_SQL
 SHOW ERRORS PACKAGE BODY PKG_SQL
 SHOW ERRORS PACKAGE PKG_ARCHIVE_LOG

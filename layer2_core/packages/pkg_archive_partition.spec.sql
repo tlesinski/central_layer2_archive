@@ -1,6 +1,6 @@
 CREATE OR REPLACE PACKAGE PKG_ARCHIVE_PARTITION
 AS
-  PROCEDURE create_exchange_staging
+  PROCEDURE prc_create_exchange_staging
   (
     p_target_owner       IN VARCHAR2,
     p_target_table       IN VARCHAR2,
@@ -10,7 +10,7 @@ AS
     p_log_id             IN NUMBER DEFAULT NULL
   );
 
-  PROCEDURE load_exchange_staging
+  PROCEDURE prc_load_exchange_staging
   (
     p_source_db_link     IN VARCHAR2,
     p_source_owner       IN VARCHAR2,
@@ -25,7 +25,7 @@ AS
     p_rows_loaded        OUT NUMBER
   );
 
-  PROCEDURE load_exchange_staging_subpartition
+  PROCEDURE prc_load_exchange_staging_subpartition
   (
     p_source_db_link         IN VARCHAR2,
     p_source_owner           IN VARCHAR2,
@@ -41,7 +41,7 @@ AS
     p_rows_loaded            OUT NUMBER
   );
 
-  PROCEDURE build_staging_indexes
+  PROCEDURE prc_build_staging_indexes
   (
     p_target_owner       IN VARCHAR2,
     p_target_table       IN VARCHAR2,
@@ -50,7 +50,7 @@ AS
     p_log_id             IN NUMBER DEFAULT NULL
   );
 
-  PROCEDURE exchange_partition
+  PROCEDURE prc_exchange_partition
   (
     p_target_owner       IN VARCHAR2,
     p_target_table       IN VARCHAR2,
@@ -60,7 +60,7 @@ AS
     p_log_id             IN NUMBER DEFAULT NULL
   );
 
-  PROCEDURE exchange_subpartition
+  PROCEDURE prc_exchange_subpartition
   (
     p_target_owner       IN VARCHAR2,
     p_target_table       IN VARCHAR2,
@@ -70,7 +70,7 @@ AS
     p_log_id             IN NUMBER DEFAULT NULL
   );
 
-  PROCEDURE drop_staging
+  PROCEDURE prc_drop_staging
   (
     p_staging_owner      IN VARCHAR2,
     p_staging_table_name IN VARCHAR2,

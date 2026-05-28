@@ -1,13 +1,13 @@
 CREATE OR REPLACE PACKAGE PKG_ARCHIVE_AGENT
 AS
-  FUNCTION get_partition_info
+  FUNCTION fn_get_partition_info
   (
     p_owner      IN VARCHAR2,
     p_table_name IN VARCHAR2
   )
   RETURN ARCHIVE_PARTITION_INFO_TAB PIPELINED;
 
-  FUNCTION get_row_count
+  FUNCTION fn_get_row_count
   (
     p_owner             IN VARCHAR2,
     p_table_name        IN VARCHAR2,
@@ -16,7 +16,7 @@ AS
   )
   RETURN NUMBER;
 
-  PROCEDURE cleanup_unit
+  PROCEDURE prc_cleanup_unit
   (
     p_owner             IN VARCHAR2,
     p_table_name        IN VARCHAR2,
@@ -26,7 +26,7 @@ AS
     p_execute           IN VARCHAR2 DEFAULT 'N'
   );
 
-  FUNCTION health_check
+  FUNCTION fn_health_check
   RETURN VARCHAR2;
 END PKG_ARCHIVE_AGENT;
 /

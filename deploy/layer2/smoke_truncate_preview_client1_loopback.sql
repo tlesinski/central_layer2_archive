@@ -6,17 +6,16 @@ SET ECHO ON
 PROMPT Running CLIENT1_LOOPBACK_LINK truncate preview smoke test
 
 BEGIN
-  PKG_ARCHIVE_TRUNCATE.truncate_table
+  PKG_ARCHIVE_TRUNCATE.prc_truncate
   (
-    p_source_db_link => 'CLIENT1_LOOPBACK_LINK',
-    p_owner          => 'CLIENT1',
-    p_table_name     => 'ORDERS_ARCH_SRC',
-    p_execute        => 'N'
+    p_execute           => 'N',
+    p_target_owner      => 'CARCH',
+    p_target_table_name => 'ORDERS_ARCH_SRC'
   );
 END;
 /
 
-SELECT CAGENT1.PKG_ARCHIVE_AGENT.get_row_count@CLIENT1_LOOPBACK_LINK
+SELECT CAGENT1.PKG_ARCHIVE_AGENT.fn_get_row_count@CLIENT1_LOOPBACK_LINK
        ('CLIENT1', 'ORDERS_ARCH_SRC', 'P202401', NULL) AS P202401_ROWS_AFTER_PREVIEW
   FROM dual;
 

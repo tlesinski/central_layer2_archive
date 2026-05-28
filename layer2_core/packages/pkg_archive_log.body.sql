@@ -1,11 +1,11 @@
 CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_LOG
 AS
-  FUNCTION normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
+  FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
     RETURN CASE WHEN UPPER(NVL(TRIM(p_execute), 'N')) = 'Y' THEN 'Y' ELSE 'N' END;
   END;
 
-  FUNCTION create_run
+  FUNCTION fn_create_run
   (
     p_run_type       IN VARCHAR2,
     p_source_db_link IN VARCHAR2,
@@ -21,7 +21,7 @@ AS
     l_execute_flag VARCHAR2(1);
   BEGIN
     l_run_type := UPPER(TRIM(p_run_type));
-    l_execute_flag := normalize_execute(p_execute);
+    l_execute_flag := fn_normalize_execute(p_execute);
     l_log_id := MD_PROCESS_LOG_SEQ.NEXTVAL;
 
     INSERT INTO TW_ARCHIVE_RUNS
@@ -46,9 +46,9 @@ AS
     );
 
     RETURN l_run_id;
-  END create_run;
+  END fn_create_run;
 
-  FUNCTION get_log_id
+  FUNCTION fn_get_log_id
   (
     p_run_id IN NUMBER
   )
@@ -62,9 +62,9 @@ AS
      WHERE RUN_ID = p_run_id;
 
     RETURN l_log_id;
-  END get_log_id;
+  END fn_get_log_id;
 
-  PROCEDURE log_message
+  PROCEDURE prc_log_message
   (
     p_run_id    IN NUMBER,
     p_log_msg   IN CLOB,
@@ -78,7 +78,7 @@ AS
       RETURN;
     END IF;
 
-    l_log_id := get_log_id(p_run_id);
+    l_log_id := fn_get_log_id(p_run_id);
 
     PKG_TL_LOGGING.prc_log
     (
@@ -88,9 +88,28 @@ AS
       p_log_sttus   => p_log_sttus,
       p_log_type    => p_log_type
     );
-  END log_message;
+  END prc_log_message;
 
-  PROCEDURE finish_run
+  PROCEDURE prc_log_error_stack
+  (
+    p_run_id IN NUMBER
+  )
+  IS
+    l_log_id NUMBER;
+  BEGIN
+    IF p_run_id IS NULL THEN
+      RETURN;
+    END IF;
+
+    l_log_id := fn_get_log_id(p_run_id);
+    PKG_TL_LOGGING.prc_error_stack
+    (
+      p_log_id      => l_log_id,
+      p_mstr_log_id => l_log_id
+    );
+  END prc_log_error_stack;
+
+  PROCEDURE prc_finish_run
   (
     p_run_id        IN NUMBER,
     p_status        IN VARCHAR2,
@@ -126,6 +145,6 @@ AS
       p_log_msg         => 'Finished ' || l_run_type || ' with status ' || p_status ||
                            CASE WHEN p_error_message IS NOT NULL THEN ': ' || SUBSTR(p_error_message, 1, 3000) END
     );
-  END finish_run;
+  END prc_finish_run;
 END PKG_ARCHIVE_LOG;
 /
