@@ -73,6 +73,7 @@ BEGIN
        'MD_PROCESS_LOG',
        'ORDERS_ARCH_SRC',
        'ORDERS_SUBPART_SRC',
+       'ORDERS_DAILY_INT_SRC',
        'ORDERS_ARCHIVE',
        'ORDERS_SUBPART_ARCHIVE'
      )
@@ -83,8 +84,9 @@ BEGIN
                 WHEN 'TW_ARCHIVE_SOURCES' THEN 4
                 WHEN 'ORDERS_ARCH_SRC' THEN 5
                 WHEN 'ORDERS_SUBPART_SRC' THEN 6
-                WHEN 'ORDERS_ARCHIVE' THEN 7
-                WHEN 'ORDERS_SUBPART_ARCHIVE' THEN 8
+                WHEN 'ORDERS_DAILY_INT_SRC' THEN 7
+                WHEN 'ORDERS_ARCHIVE' THEN 8
+                WHEN 'ORDERS_SUBPART_ARCHIVE' THEN 9
                 ELSE 6
               END
   ) LOOP

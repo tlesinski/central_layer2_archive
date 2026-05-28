@@ -1,5 +1,22 @@
 CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_TRUNCATE
 AS
+  /*
+    Package      : PKG_ARCHIVE_TRUNCATE
+    Developer    : Tomasz Lesinski
+    Date         : 2026-05-28
+    Purpose      : Source truncate - request source truncate through layer 1 agent
+                   after quality success, respecting RETENTION_DAYS
+
+    Prerequisite : PKG_SQL, PKG_ARCHIVE_LOG, PKG_ARCHIVE_AGENT,
+                   TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-05-28   Tomasz Lesinski    Initial version
+    1.1        2026-05-28   Tomasz Lesinski    Add process summary logging
+  */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
     RETURN CASE WHEN UPPER(NVL(TRIM(p_execute), 'N')) = 'Y' THEN 'Y' ELSE 'N' END;
@@ -43,6 +60,9 @@ AS
     l_truncated       NUMBER := 0;
     l_tables          NUMBER := 0;
     l_sql_rows        NUMBER;
+    l_summary         CLOB := NULL;
+    l_summary_columns VARCHAR2(1000) :=
+      'TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
   BEGIN
     l_execute_flag := fn_normalize_execute(p_execute);
     l_target_owner := fn_normalize_name(p_target_owner);
@@ -137,6 +157,27 @@ AS
           l_truncated := l_truncated + SQL%ROWCOUNT;
           COMMIT;
         END IF;
+
+        l_summary := l_summary ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.source_owner) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.source_table_name) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_name) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_name) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_high_value) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_high_value) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.archive_status) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.quality_status) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(CASE WHEN l_execute_flag = 'Y' THEN 'Y' ELSE 'N' END) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.source_row_count)) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.target_row_count)) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell('source=' || r.source_owner || '.' || r.source_table_name ||
+                                          ' ' || r.source_partition_name ||
+                                          CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.source_subpartition_name END ||
+                                          ', mode=TRUNCATE, execute=' || l_execute_flag ||
+                                          ', cutoff=' || TO_CHAR(r.cutoff_date, 'YYYY-MM-DD')) ||
+          CHR(10);
       END LOOP;
     END LOOP;
 
@@ -149,6 +190,16 @@ AS
       ' target_table=' || NVL(l_target_table, '<ALL>') ||
       ' execute=' || l_execute_flag
     );
+
+    IF l_summary IS NOT NULL THEN
+      PKG_ARCHIVE_LOG.prc_log_summary
+      (
+        p_run_id       => l_run_id,
+        p_process_name => 'TRUNCATE',
+        p_columns      => l_summary_columns,
+        p_rows         => l_summary
+      );
+    END IF;
 
     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
   EXCEPTION

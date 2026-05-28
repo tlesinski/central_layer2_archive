@@ -14,6 +14,8 @@ USING (
          'CARCH' AS target_owner,
          'ORDERS_ARCH_SRC' AS target_table_name,
          'TRUNCATE' AS truncate_mode,
+         4 AS parallel_degree,
+         'USERS' AS tablespace_name,
          90 AS retention_days,
          'Y' AS enabled_flag
     FROM dual
@@ -28,15 +30,19 @@ WHEN MATCHED THEN UPDATE SET
   dst.target_owner = src.target_owner,
   dst.target_table_name = src.target_table_name,
   dst.truncate_mode = src.truncate_mode,
+  dst.parallel_degree = src.parallel_degree,
+  dst.tablespace_name = src.tablespace_name,
   dst.retention_days = src.retention_days,
   dst.enabled_flag = src.enabled_flag,
   dst.updated_at = SYSTIMESTAMP
 WHEN NOT MATCHED THEN INSERT
   (source_db_link, source_owner, source_table_name, source_agent_schema,
-   target_owner, target_table_name, truncate_mode, retention_days, enabled_flag)
+   target_owner, target_table_name, truncate_mode, parallel_degree, tablespace_name,
+   retention_days, enabled_flag)
 VALUES
   (src.source_db_link, src.source_owner, src.source_table_name, src.source_agent_schema,
-   src.target_owner, src.target_table_name, src.truncate_mode, src.retention_days, src.enabled_flag);
+   src.target_owner, src.target_table_name, src.truncate_mode, src.parallel_degree, src.tablespace_name,
+   src.retention_days, src.enabled_flag);
 
 MERGE INTO TW_ARCHIVE_PARTITIONS dst
 USING (

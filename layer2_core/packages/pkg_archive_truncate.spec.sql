@@ -1,5 +1,21 @@
 CREATE OR REPLACE PACKAGE PKG_ARCHIVE_TRUNCATE
 AS
+  /*
+    Package      : PKG_ARCHIVE_TRUNCATE
+    Developer    : Tomasz Lesinski
+    Date         : 2026-05-28
+    Purpose      : Source truncate - request source truncate through layer 1 agent
+                   after quality success, respecting RETENTION_DAYS
+
+    Prerequisite : PKG_SQL, PKG_ARCHIVE_LOG, PKG_ARCHIVE_AGENT,
+                   TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-05-28   Tomasz Lesinski    Initial version
+  */
   PROCEDURE prc_truncate
   (
     p_execute           IN VARCHAR2 DEFAULT 'N',

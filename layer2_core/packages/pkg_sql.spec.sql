@@ -1,5 +1,20 @@
 CREATE OR REPLACE PACKAGE PKG_SQL
 AS
+  /*
+    Package      : PKG_SQL
+    Developer    : Tomasz Lesinski
+    Date         : 2026-05-28
+    Purpose      : SQL helper package - name validation, dynamic SQL execution,
+                   bind variable handling, SQL logging
+
+    Prerequisite : PKG_TL_LOGGING, MD_PROCESS_LOG
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-05-28   Tomasz Lesinski    Initial version
+  */
   FUNCTION fn_assert_simple_name
   (
     p_name IN VARCHAR2

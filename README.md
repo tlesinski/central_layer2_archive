@@ -35,6 +35,8 @@ layer 2.
 ## Repository Layout
 
 ```text
+full_reinstall.sql                          root-level full reinstall script
+
 docs/
   central_layer2_archive_architecture.md
 
@@ -65,15 +67,24 @@ layer2_core/
     tw_archive_quality_partitions_vw.sql
     tw_archive_truncate_partitions_vw.sql
   packages/
-    pkg_sql.spec.sql
-    pkg_sql.body.sql
-    pkg_tl_logging.spec.sql
-    pkg_tl_logging.body.sql
+    pkg_sql.spec.sql / body.sql
+    pkg_tl_logging.spec.sql / body.sql
+    pkg_archive_log.spec.sql / body.sql
+    pkg_archive_partition.spec.sql / body.sql
+    pkg_archive_discovery.spec.sql / body.sql
+    pkg_archive_import.spec.sql / body.sql
+    pkg_archive_quality.spec.sql / body.sql
+    pkg_archive_truncate.spec.sql / body.sql
+    pkg_archive_runner.spec.sql / body.sql
 
 deploy/
+  drop_all_schemas.sql                     schema-level drop script
   client1/
     install_client1_test_source.sql
+    install_client1_subpart_test_source.sql
     grant_client1_to_cagent1.sql
+    grant_client1_subpart_to_cagent1.sql
+    grant_cleanup_admin_to_cagent1.sql
   layer1/
     install_layer1_agent.sql
     grant_layer1_agent_to_carch.sql
@@ -81,27 +92,36 @@ deploy/
     create_client1_loopback_link.sql
     install_layer2_core.sql
     install_orders_archive_target.sql
-    seed_client1_loopback.sql
+    install_orders_subpart_archive_target.sql
+    recreate_layer2_core.sql
     reset_client1_loopback_metadata.sql
+    seed_client1_loopback.sql
+    seed_client1_loopback_subpart.sql
     smoke_remote_client1_loopback.sql
     smoke_remote_flow_client1_loopback.sql
     smoke_truncate_preview_client1_loopback.sql
     smoke_runner_client1_loopback.sql
     smoke_runner_client1_loopback_subpart.sql
+    smoke_runner_client1_loopback_exchange.sql
 ```
 
 Current state:
 
 ```text
 - architecture documented
-- central layer 2 metadata tables present
-- layer 2 logging and SQL helper packages present
-- layer 1 archive agent package present
+- central layer 2 metadata tables present (TW_ARCHIVE_TABLES, TW_ARCHIVE_PARTITIONS, TW_ARCHIVE_RUNS)
+- process logging (MD_PROCESS_LOG, PKG_TL_LOGGING)
+- SQL helper package (PKG_SQL)
+- layer 1 archive agent package (PKG_ARCHIVE_AGENT)
+- layer 2 core packages: PKG_ARCHIVE_LOG, PKG_ARCHIVE_PARTITION,
+  PKG_ARCHIVE_DISCOVERY, PKG_ARCHIVE_IMPORT, PKG_ARCHIVE_QUALITY,
+  PKG_ARCHIVE_TRUNCATE, PKG_ARCHIVE_RUNNER
 - layer 1 and layer 2 install scripts present
-- remote-path loopback smoke test present
+- remote-path loopback smoke tests present
 - remote-path truncate preview smoke test present
-- remote-path runner smoke test present
+- remote-path runner smoke test present (range and subpartition)
 - active target uniqueness safeguards present
+- full reinstall script (clean drop + full install)
 ```
 
 ## Relationship To old_archiver
@@ -148,6 +168,10 @@ Current minimal model removes `TW_ARCHIVE_SOURCES`. `SOURCE_DB_LINK` lives
 directly in `TW_ARCHIVE_TABLES` and is part of the natural primary key for a
 source table setup.
 
+`TW_ARCHIVE_TABLES` includes `PARALLEL_DEGREE` (default 4) for controlling
+parallelism during staging inserts and staging index builds. `TABLESPACE_NAME`
+controls the tablespace used by exchange staging tables and staging indexes.
+
 `TW_ARCHIVE_PARTITIONS` should represent both partitions and subpartitions using
 an explicit `ARCHIVE_UNIT_TYPE` column. Parent partition status for
 subpartitioned tables should be derived from child rows instead of stored as a
@@ -171,6 +195,10 @@ TW_ARCHIVE_PARTITIONS_PK
 TW_ARCHIVE_PARTITIONS_UK1
   blocks duplicate target high-value metadata rows
 ```
+
+Each process logs a per-unit summary in `MD_PROCESS_LOG` via
+`PKG_ARCHIVE_LOG.prc_log_message` with the format
+`table_owner|table_name|partition_name|subpartition_name|status`.
 
 ## Planned Layer 1 Agent
 
@@ -346,4 +374,22 @@ Remote compatibility notes:
   stronger source-side privilege model; the local smoke setup grants
   `DROP ANY TABLE` to CAGENT1 so truncate can execute through the DB link.
 - DELETE cleanup is intentionally not part of the current layer 2 archive path.
+```
+
+## Quick Reinstall
+
+Connect as SYS and run in sequence:
+
+```text
+1. @deploy/drop_all_schemas.sql
+2. @full_reinstall.sql
+```
+
+Verify success:
+
+```text
+- all SHOW ERRORS = "No errors"
+- seed TW_ARCHIVE_TABLES = 1 row merged per table
+- seed TW_ARCHIVE_PARTITIONS = N rows merged per table
+- DB link test: SELECT * FROM dual@CLIENT1_LOOPBACK_LINK → returns X
 ```

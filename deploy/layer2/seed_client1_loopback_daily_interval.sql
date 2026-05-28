@@ -3,16 +3,16 @@ SET SERVEROUTPUT ON
 SET FEEDBACK ON
 SET ECHO ON
 
-PROMPT Seeding CLIENT1_LOOPBACK_LINK subpartitioned archive table configuration
+PROMPT Seeding CLIENT1_LOOPBACK_LINK daily interval-list archive table configuration
 
 MERGE INTO TW_ARCHIVE_TABLES dst
 USING (
   SELECT 'CLIENT1_LOOPBACK_LINK' AS source_db_link,
          'CLIENT1' AS source_owner,
-         'ORDERS_SUBPART_SRC' AS source_table_name,
+         'ORDERS_DAILY_INT_SRC' AS source_table_name,
          'CAGENT1' AS source_agent_schema,
          'CARCH' AS target_owner,
-         'ORDERS_SUBPART_SRC' AS target_table_name,
+         'ORDERS_DAILY_INT_SRC' AS target_table_name,
          'TRUNCATE' AS truncate_mode,
          4 AS parallel_degree,
          'USERS' AS tablespace_name,
@@ -48,9 +48,9 @@ MERGE INTO TW_ARCHIVE_PARTITIONS dst
 USING (
   SELECT 'CLIENT1_LOOPBACK_LINK' AS source_db_link,
          'CLIENT1' AS source_owner,
-         'ORDERS_SUBPART_SRC' AS source_table_name,
+         'ORDERS_DAILY_INT_SRC' AS source_table_name,
          'CARCH' AS target_owner,
-         'ORDERS_SUBPART_SRC' AS target_table_name,
+         'ORDERS_DAILY_INT_SRC' AS target_table_name,
          'SUBPARTITION' AS archive_unit_type,
          p.partition_name AS source_partition_name,
          s.subpartition_name AS source_subpartition_name,
@@ -66,7 +66,7 @@ USING (
               'SELECT table_name, partition_name, high_value, partition_position ' ||
               'FROM all_tab_partitions ' ||
               'WHERE table_owner = ''CARCH'' ' ||
-              'AND table_name = ''ORDERS_SUBPART_SRC'' ' ||
+              'AND table_name = ''ORDERS_DAILY_INT_SRC'' ' ||
               'AND partition_name = ''P_ERROR'''
            )
            COLUMNS
@@ -80,7 +80,7 @@ USING (
               'SELECT table_name, partition_name, subpartition_name, high_value, subpartition_position ' ||
               'FROM all_tab_subpartitions ' ||
               'WHERE table_owner = ''CARCH'' ' ||
-              'AND table_name = ''ORDERS_SUBPART_SRC'' ' ||
+              'AND table_name = ''ORDERS_DAILY_INT_SRC'' ' ||
               'AND partition_name = ''P_ERROR'''
            )
            COLUMNS
@@ -128,4 +128,4 @@ VALUES
 
 COMMIT;
 
-PROMPT CLIENT1_LOOPBACK_LINK subpartitioned archive table configuration seeded
+PROMPT CLIENT1_LOOPBACK_LINK daily interval-list archive table configuration seeded

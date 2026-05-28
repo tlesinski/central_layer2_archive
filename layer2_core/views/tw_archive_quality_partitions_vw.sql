@@ -15,6 +15,10 @@ SELECT p.source_db_link,
        p.subpartition_high_value,
        p.partition_position,
        p.subpartition_position,
+       p.archive_status,
+       p.quality_status,
+       p.truncate_status,
+       p.source_row_count,
        p.target_row_count
   FROM tw_archive_partitions p
   JOIN tw_archive_tables t

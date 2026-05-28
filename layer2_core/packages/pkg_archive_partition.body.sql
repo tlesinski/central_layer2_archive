@@ -1,5 +1,21 @@
 CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_PARTITION
 AS
+  /*
+    Package      : PKG_ARCHIVE_PARTITION
+    Developer    : Tomasz Lesinski
+    Date         : 2026-05-28
+    Purpose      : Partition operations - exchange staging, load staging data,
+                   build staging indexes, exchange, drop staging
+
+    Prerequisite : PKG_SQL, PKG_TL_LOGGING
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-05-28   Tomasz Lesinski    Initial version
+    1.1        2026-05-28   Tomasz Lesinski    Add PARALLEL_DEGREE support
+  */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
     RETURN CASE WHEN UPPER(NVL(TRIM(p_execute), 'N')) = 'Y' THEN 'Y' ELSE 'N' END;
@@ -23,6 +39,15 @@ AS
 
     RETURN l_name;
   END fn_qualified_table;
+
+  FUNCTION fn_normalize_tablespace_name(p_tablespace_name IN VARCHAR2) RETURN VARCHAR2 IS
+  BEGIN
+    IF p_tablespace_name IS NULL OR TRIM(p_tablespace_name) IS NULL THEN
+      raise_application_error(-20045, 'TABLESPACE_NAME is required for exchange staging objects');
+    END IF;
+
+    RETURN PKG_SQL.fn_assert_simple_name(p_tablespace_name);
+  END fn_normalize_tablespace_name;
 
   FUNCTION fn_high_value_to_date(p_high_value IN VARCHAR2) RETURN DATE IS
     l_date DATE;
@@ -84,14 +109,19 @@ AS
     p_target_table       IN VARCHAR2,
     p_staging_table_name IN VARCHAR2,
     p_execute            IN VARCHAR2 DEFAULT 'Y',
-    p_log_id             IN NUMBER DEFAULT NULL
+    p_log_id             IN NUMBER DEFAULT NULL,
+    p_parallel_degree    IN NUMBER DEFAULT 4,
+    p_tablespace_name    IN VARCHAR2
   )
   IS
     l_sql          CLOB;
     l_column_list  VARCHAR2(4000);
     l_sql_rowcount NUMBER;
     l_index_name   VARCHAR2(128);
+    l_tablespace   VARCHAR2(128);
   BEGIN
+    l_tablespace := fn_normalize_tablespace_name(p_tablespace_name);
+
     FOR r IN (
       SELECT i.index_name, i.uniqueness
         FROM all_indexes i
@@ -126,7 +156,9 @@ AS
                PKG_SQL.fn_assert_simple_name(l_index_name) ||
                ' ON ' ||
                fn_qualified_table(p_target_owner, p_staging_table_name) ||
-               '(' || l_column_list || ')';
+               '(' || l_column_list || ')' ||
+               ' TABLESPACE ' || l_tablespace ||
+               ' PARALLEL ' || p_parallel_degree;
 
       l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
     END LOOP;
@@ -139,12 +171,16 @@ AS
     p_partition_name     IN VARCHAR2,
     p_staging_table_name OUT VARCHAR2,
     p_execute            IN VARCHAR2 DEFAULT 'Y',
-    p_log_id             IN NUMBER DEFAULT NULL
+    p_log_id             IN NUMBER DEFAULT NULL,
+    p_tablespace_name    IN VARCHAR2
   )
   IS
     l_sql          CLOB;
     l_sql_rowcount NUMBER;
+    l_tablespace   VARCHAR2(128);
   BEGIN
+    l_tablespace := fn_normalize_tablespace_name(p_tablespace_name);
+
     p_staging_table_name := SUBSTR(
       'STG_' || TO_CHAR(SYSTIMESTAMP, 'DDHH24MISSFF3') || '_' ||
       UPPER(p_target_table) || '_' || UPPER(p_partition_name),
@@ -154,6 +190,7 @@ AS
 
     l_sql := 'CREATE TABLE ' ||
              fn_qualified_table(p_target_owner, p_staging_table_name) ||
+             ' TABLESPACE ' || l_tablespace ||
              ' FOR EXCHANGE WITH TABLE ' ||
              fn_qualified_table(p_target_owner, p_target_table);
 
@@ -173,6 +210,7 @@ AS
     p_prev_high_value    IN VARCHAR2 DEFAULT NULL,
     p_execute            IN VARCHAR2 DEFAULT 'Y',
     p_log_id             IN NUMBER DEFAULT NULL,
+    p_parallel_degree    IN NUMBER DEFAULT 4,
     p_rows_loaded        OUT NUMBER
   )
   IS
@@ -189,7 +227,7 @@ AS
       raise_application_error(-20041, 'EXCHANGE requires a DATE high value for target partition');
     END IF;
 
-    l_sql := 'INSERT /*+ APPEND */ INTO ' ||
+    l_sql := 'INSERT /*+ APPEND PARALLEL(' || p_parallel_degree || ') */ INTO ' ||
              fn_qualified_table(p_target_owner, p_staging_table_name) ||
              ' SELECT * FROM ' ||
              fn_qualified_table(p_source_owner, p_source_table, p_source_db_link) ||
@@ -215,6 +253,7 @@ AS
     p_subpartition_high_value   IN VARCHAR2,
     p_execute                   IN VARCHAR2 DEFAULT 'Y',
     p_log_id                    IN NUMBER DEFAULT NULL,
+    p_parallel_degree           IN NUMBER DEFAULT 4,
     p_rows_loaded               OUT NUMBER
   )
   IS
@@ -237,7 +276,7 @@ AS
       raise_application_error(-20044, 'EXCHANGE SUBPARTITION requires a list subpartition high value');
     END IF;
 
-    l_sql := 'INSERT /*+ APPEND */ INTO ' ||
+    l_sql := 'INSERT /*+ APPEND PARALLEL(' || p_parallel_degree || ') */ INTO ' ||
              fn_qualified_table(p_target_owner, p_staging_table_name) ||
              ' SELECT * FROM ' ||
              fn_qualified_table(p_source_owner, p_source_table, p_source_db_link) ||

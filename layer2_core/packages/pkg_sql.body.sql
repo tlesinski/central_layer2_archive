@@ -1,5 +1,20 @@
 CREATE OR REPLACE PACKAGE BODY PKG_SQL
 AS
+  /*
+    Package      : PKG_SQL
+    Developer    : Tomasz Lesinski
+    Date         : 2026-05-28
+    Purpose      : SQL helper package - name validation, dynamic SQL execution,
+                   bind variable handling, SQL logging
+
+    Prerequisite : PKG_TL_LOGGING, MD_PROCESS_LOG
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-05-28   Tomasz Lesinski    Initial version
+  */
   FUNCTION fn_normalize_execute
   (
     p_execute IN VARCHAR2
@@ -157,6 +172,7 @@ AS
   IS
     l_cursor_id INTEGER;
     l_rows      INTEGER;
+    l_attempt   NUMBER := 0;
   BEGIN
     IF p_sql IS NULL THEN
       raise_application_error(-20001, 'SQL text is required');
@@ -188,26 +204,44 @@ AS
       RETURN 0;
     END IF;
 
-    l_cursor_id := DBMS_SQL.OPEN_CURSOR;
-    DBMS_SQL.PARSE(l_cursor_id, p_sql, DBMS_SQL.NATIVE);
+    LOOP
+      l_attempt := l_attempt + 1;
 
-    IF p_array_bind IS NOT NULL THEN
-      FOR i IN 1 .. p_array_bind.COUNT LOOP
-        DBMS_SQL.BIND_VARIABLE(l_cursor_id, ':' || i, p_array_bind(i));
-      END LOOP;
-    END IF;
+      BEGIN
+        l_cursor_id := DBMS_SQL.OPEN_CURSOR;
+        DBMS_SQL.PARSE(l_cursor_id, p_sql, DBMS_SQL.NATIVE);
 
-    l_rows := DBMS_SQL.EXECUTE(l_cursor_id);
-    DBMS_SQL.CLOSE_CURSOR(l_cursor_id);
+        IF p_array_bind IS NOT NULL THEN
+          FOR i IN 1 .. p_array_bind.COUNT LOOP
+            DBMS_SQL.BIND_VARIABLE(l_cursor_id, ':' || i, p_array_bind(i));
+          END LOOP;
+        END IF;
 
-    RETURN l_rows;
-  EXCEPTION
-    WHEN OTHERS THEN
-      IF DBMS_SQL.IS_OPEN(l_cursor_id) THEN
+        l_rows := DBMS_SQL.EXECUTE(l_cursor_id);
         DBMS_SQL.CLOSE_CURSOR(l_cursor_id);
-      END IF;
 
-      RAISE;
+        RETURN l_rows;
+      EXCEPTION
+        WHEN OTHERS THEN
+          IF DBMS_SQL.IS_OPEN(l_cursor_id) THEN
+            DBMS_SQL.CLOSE_CURSOR(l_cursor_id);
+          END IF;
+
+          IF SQLCODE IN (-4061, -4062, -4068) AND l_attempt = 1 THEN
+            IF p_log_id IS NOT NULL THEN
+              PKG_TL_LOGGING.prc_log
+              (
+                p_log_id    => p_log_id,
+                p_log_msg   => 'Retrying SQL after remote package state changed: ' || SQLERRM,
+                p_log_sttus => PKG_TL_LOGGING.g_sttus_running_const,
+                p_log_type  => 'SQL_RETRY'
+              );
+            END IF;
+          ELSE
+            RAISE;
+          END IF;
+      END;
+    END LOOP;
   END fn_run_sql_in_bind;
 
   FUNCTION fn_run_into_sql_in_bind
@@ -222,6 +256,7 @@ AS
     l_cursor_id INTEGER;
     l_rows      INTEGER;
     l_result    NUMBER;
+    l_attempt   NUMBER := 0;
   BEGIN
     IF p_sql IS NULL THEN
       raise_application_error(-20001, 'SQL text is required');
@@ -253,32 +288,50 @@ AS
       RETURN NULL;
     END IF;
 
-    l_cursor_id := DBMS_SQL.OPEN_CURSOR;
-    DBMS_SQL.PARSE(l_cursor_id, p_sql, DBMS_SQL.NATIVE);
+    LOOP
+      l_attempt := l_attempt + 1;
 
-    IF p_array_bind IS NOT NULL THEN
-      FOR i IN 1 .. p_array_bind.COUNT LOOP
-        DBMS_SQL.BIND_VARIABLE(l_cursor_id, ':' || i, p_array_bind(i));
-      END LOOP;
-    END IF;
+      BEGIN
+        l_cursor_id := DBMS_SQL.OPEN_CURSOR;
+        DBMS_SQL.PARSE(l_cursor_id, p_sql, DBMS_SQL.NATIVE);
 
-    DBMS_SQL.DEFINE_COLUMN(l_cursor_id, 1, l_result);
-    l_rows := DBMS_SQL.EXECUTE(l_cursor_id);
+        IF p_array_bind IS NOT NULL THEN
+          FOR i IN 1 .. p_array_bind.COUNT LOOP
+            DBMS_SQL.BIND_VARIABLE(l_cursor_id, ':' || i, p_array_bind(i));
+          END LOOP;
+        END IF;
 
-    IF DBMS_SQL.FETCH_ROWS(l_cursor_id) > 0 THEN
-      DBMS_SQL.COLUMN_VALUE(l_cursor_id, 1, l_result);
-    END IF;
+        DBMS_SQL.DEFINE_COLUMN(l_cursor_id, 1, l_result);
+        l_rows := DBMS_SQL.EXECUTE(l_cursor_id);
 
-    DBMS_SQL.CLOSE_CURSOR(l_cursor_id);
+        IF DBMS_SQL.FETCH_ROWS(l_cursor_id) > 0 THEN
+          DBMS_SQL.COLUMN_VALUE(l_cursor_id, 1, l_result);
+        END IF;
 
-    RETURN l_result;
-  EXCEPTION
-    WHEN OTHERS THEN
-      IF DBMS_SQL.IS_OPEN(l_cursor_id) THEN
         DBMS_SQL.CLOSE_CURSOR(l_cursor_id);
-      END IF;
 
-      RAISE;
+        RETURN l_result;
+      EXCEPTION
+        WHEN OTHERS THEN
+          IF DBMS_SQL.IS_OPEN(l_cursor_id) THEN
+            DBMS_SQL.CLOSE_CURSOR(l_cursor_id);
+          END IF;
+
+          IF SQLCODE IN (-4061, -4062, -4068) AND l_attempt = 1 THEN
+            IF p_log_id IS NOT NULL THEN
+              PKG_TL_LOGGING.prc_log
+              (
+                p_log_id    => p_log_id,
+                p_log_msg   => 'Retrying SQL after remote package state changed: ' || SQLERRM,
+                p_log_sttus => PKG_TL_LOGGING.g_sttus_running_const,
+                p_log_type  => 'SQL_RETRY'
+              );
+            END IF;
+          ELSE
+            RAISE;
+          END IF;
+      END;
+    END LOOP;
   END fn_run_into_sql_in_bind;
 END PKG_SQL;
 /

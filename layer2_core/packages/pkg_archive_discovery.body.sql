@@ -1,5 +1,21 @@
 CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_DISCOVERY
 AS
+  /*
+    Package      : PKG_ARCHIVE_DISCOVERY
+    Developer    : Tomasz Lesinski
+    Date         : 2026-05-28
+    Purpose      : Discover source partitions - add missing target partitions,
+                   insert partition metadata into TW_ARCHIVE_PARTITIONS
+
+    Prerequisite : PKG_SQL, PKG_ARCHIVE_LOG, TW_ARCHIVE_DISCOVERY_PARTITIONS_VW
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-05-28   Tomasz Lesinski    Initial version
+    1.1        2026-05-28   Tomasz Lesinski    Add process summary logging
+  */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
     RETURN CASE WHEN UPPER(NVL(TRIM(p_execute), 'N')) = 'Y' THEN 'Y' ELSE 'N' END;
@@ -19,6 +35,48 @@ AS
     RETURN PKG_SQL.fn_assert_simple_name(p_name);
   END;
 
+  FUNCTION fn_target_subpartition_name
+  (
+    p_target_owner             IN VARCHAR2,
+    p_target_table_name        IN VARCHAR2,
+    p_partition_name           IN VARCHAR2,
+    p_subpartition_high_value  IN VARCHAR2
+  )
+  RETURN VARCHAR2
+  IS
+    l_subpartition_name VARCHAR2(128);
+  BEGIN
+    SELECT x.subpartition_name
+      INTO l_subpartition_name
+      FROM XMLTABLE
+           (
+             '/ROWSET/ROW'
+             PASSING DBMS_XMLGEN.GETXMLTYPE
+             (
+               'SELECT subpartition_name, high_value ' ||
+               'FROM all_tab_subpartitions ' ||
+               'WHERE table_owner = ''' || REPLACE(PKG_SQL.fn_assert_simple_name(p_target_owner), '''', '''''') || ''' ' ||
+               'AND table_name = ''' || REPLACE(PKG_SQL.fn_assert_simple_name(p_target_table_name), '''', '''''') || ''' ' ||
+               'AND partition_name = ''' || REPLACE(PKG_SQL.fn_assert_simple_name(p_partition_name), '''', '''''') || ''''
+             )
+             COLUMNS
+               subpartition_name       VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
+               subpartition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE'
+           ) x
+     WHERE x.subpartition_high_value = p_subpartition_high_value;
+
+    RETURN l_subpartition_name;
+  EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+      raise_application_error
+      (
+        -20061,
+        'Target subpartition not found by high value for ' ||
+        p_target_owner || '.' || p_target_table_name || '.' || p_partition_name ||
+        ', subpartition_high_value=' || p_subpartition_high_value
+      );
+  END fn_target_subpartition_name;
+
   PROCEDURE prc_discover
   (
     p_execute           IN VARCHAR2 DEFAULT 'N',
@@ -34,11 +92,16 @@ AS
     l_sql             CLOB;
     l_add_sql         CLOB;
     l_insert_sql      CLOB;
+    l_target_subpart   VARCHAR2(128);
     l_rows            NUMBER;
     l_rows_discovered NUMBER := 0;
     l_rows_inserted   NUMBER := 0;
     l_tables          NUMBER := 0;
     l_partitions      NUMBER := 0;
+    l_summary         CLOB := NULL;
+    l_partition_summary CLOB;
+    l_summary_columns VARCHAR2(1000) :=
+      'TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
   BEGIN
     l_execute_flag := fn_normalize_execute(p_execute);
     l_target_owner := fn_normalize_name(p_target_owner);
@@ -93,6 +156,7 @@ AS
          ORDER BY partition_position
       ) LOOP
         l_partitions := l_partitions + 1;
+        l_partition_summary := NULL;
 
         l_add_sql :=
           'ALTER TABLE ' || fn_qualified_table(t.target_owner, t.target_table_name) ||
@@ -102,44 +166,104 @@ AS
         l_rows := PKG_SQL.fn_run_sql(l_log_id, l_add_sql, l_execute_flag);
 
         l_insert_sql :=
-          'INSERT INTO TW_ARCHIVE_PARTITIONS ' ||
-          '  (source_db_link, source_owner, source_table_name, target_owner, target_table_name, ' ||
-          '   archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name, ' ||
-          '   partition_high_value, subpartition_high_value, ' ||
-          '   partition_position, subpartition_position, archive_status, quality_status, truncate_status, last_run_id) ' ||
-          'SELECT source_db_link, source_owner, source_table_name, target_owner, target_table_name, ' ||
-          '       archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name, ' ||
-          '       partition_high_value, subpartition_high_value, ' ||
-          '       partition_position, subpartition_position, ''N'', ''N'', ''N'', :7 ' ||
-          '  FROM TW_ARCHIVE_DISCOVERY_PARTITIONS_VW ' ||
-          ' WHERE source_db_link = :1 ' ||
-          '   AND source_owner = :2 ' ||
-          '   AND source_table_name = :3 ' ||
-          '   AND partition_high_value = :4 ' ||
-          '   AND target_owner = :5 ' ||
-          '   AND target_table_name = :6';
+          'INSERT INTO TW_ARCHIVE_PARTITIONS ' || CHR(10) ||
+          '  (source_db_link, source_owner, source_table_name, target_owner, target_table_name, ' || CHR(10) ||
+          '   archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name, ' || CHR(10) ||
+          '   partition_high_value, subpartition_high_value, ' || CHR(10) ||
+          '   partition_position, subpartition_position, archive_status, quality_status, truncate_status, last_run_id) ' || CHR(10) ||
+          'VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, TO_NUMBER(:13), TO_NUMBER(:14), ''N'', ''N'', ''N'', TO_NUMBER(:15))';
 
-        l_rows := PKG_SQL.fn_run_sql_in_bind
-        (
-          p_log_id     => l_log_id,
-          p_sql        => l_insert_sql,
-          p_array_bind => SYS.ODCIVARCHAR2LIST
-                          (
-                            t.source_db_link,
-                            t.source_owner,
-                            t.source_table_name,
-                            p.partition_high_value,
-                            t.target_owner,
-                            t.target_table_name,
-                            TO_CHAR(l_run_id)
-                          ),
-          p_execute    => l_execute_flag
-        );
+        IF l_execute_flag = 'Y' THEN
+          FOR s IN (
+            SELECT target_owner,
+                   target_table_name,
+                   source_db_link,
+                   source_owner,
+                   source_table_name,
+                   source_partition_name,
+                   source_subpartition_name,
+                   partition_name,
+                   subpartition_name,
+                   partition_high_value,
+                   subpartition_high_value,
+                   partition_position,
+                   subpartition_position,
+                   archive_unit_type
+              FROM tw_archive_discovery_partitions_vw
+             WHERE source_db_link = t.source_db_link
+               AND source_owner = t.source_owner
+               AND source_table_name = t.source_table_name
+               AND target_owner = t.target_owner
+               AND target_table_name = t.target_table_name
+               AND partition_high_value = p.partition_high_value
+             ORDER BY partition_position, subpartition_position
+          ) LOOP
+            IF s.archive_unit_type = 'SUBPARTITION' THEN
+              l_target_subpart := fn_target_subpartition_name
+                                  (
+                                    s.target_owner,
+                                    s.target_table_name,
+                                    s.partition_name,
+                                    s.subpartition_high_value
+                                  );
+            ELSE
+              l_target_subpart := '#';
+            END IF;
 
-        l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
+            l_rows := PKG_SQL.fn_run_sql_in_bind
+            (
+              p_log_id     => l_log_id,
+              p_sql        => l_insert_sql,
+              p_array_bind => SYS.ODCIVARCHAR2LIST
+                              (
+                                s.source_db_link,
+                                s.source_owner,
+                                s.source_table_name,
+                                s.target_owner,
+                                s.target_table_name,
+                                s.archive_unit_type,
+                                s.source_partition_name,
+                                s.source_subpartition_name,
+                                s.partition_name,
+                                l_target_subpart,
+                                s.partition_high_value,
+                                s.subpartition_high_value,
+                                TO_CHAR(s.partition_position),
+                                TO_CHAR(s.subpartition_position),
+                                TO_CHAR(l_run_id)
+                              ),
+              p_execute    => l_execute_flag
+            );
+
+            l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
+
+            l_partition_summary := l_partition_summary ||
+              PKG_ARCHIVE_LOG.fn_summary_row
+              (
+                p_table_owner             => s.source_owner,
+                p_table_name              => s.source_table_name,
+                p_partition_name          => s.source_partition_name,
+                p_subpartition_name       => s.source_subpartition_name,
+                p_partition_high_value    => s.partition_high_value,
+                p_subpartition_high_value => s.subpartition_high_value,
+                p_archive_status          => 'N',
+                p_quality_status          => 'N',
+                p_truncate_status         => 'N',
+                p_source_row_count        => NULL,
+                p_target_row_count        => NULL,
+                p_note                    => 'target=' || s.target_owner || '.' || s.target_table_name ||
+                                             ' ' || s.partition_name ||
+                                             CASE WHEN s.archive_unit_type = 'SUBPARTITION' THEN '.' || l_target_subpart END ||
+                                             ', execute=' || l_execute_flag
+              );
+          END LOOP;
+        ELSE
+          l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
+        END IF;
 
         IF l_execute_flag = 'Y' THEN
           COMMIT;
+          l_summary := l_summary || l_partition_summary;
         END IF;
       END LOOP;
     END LOOP;
@@ -153,6 +277,16 @@ AS
       ' target_table=' || NVL(l_target_table, '<ALL>') ||
       ' execute=' || l_execute_flag
     );
+
+    IF l_summary IS NOT NULL THEN
+      PKG_ARCHIVE_LOG.prc_log_summary
+      (
+        p_run_id       => l_run_id,
+        p_process_name => 'DISCOVER',
+        p_columns      => l_summary_columns,
+        p_rows         => l_summary
+      );
+    END IF;
 
     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
   EXCEPTION

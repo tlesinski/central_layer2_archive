@@ -1,5 +1,22 @@
 CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_QUALITY
 AS
+  /*
+    Package      : PKG_ARCHIVE_QUALITY
+    Developer    : Tomasz Lesinski
+    Date         : 2026-05-28
+    Purpose      : Quality check - compare source and target row counts,
+                   set QUALITY_STATUS
+
+    Prerequisite : PKG_SQL, PKG_ARCHIVE_LOG, PKG_ARCHIVE_AGENT,
+                   TW_ARCHIVE_QUALITY_PARTITIONS_VW
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-05-28   Tomasz Lesinski    Initial version
+    1.1        2026-05-28   Tomasz Lesinski    Add process summary logging
+  */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
     RETURN CASE WHEN UPPER(NVL(TRIM(p_execute), 'N')) = 'Y' THEN 'Y' ELSE 'N' END;
@@ -45,6 +62,9 @@ AS
     l_ok              NUMBER := 0;
     l_failed          NUMBER := 0;
     l_quality_status  VARCHAR2(1);
+    l_summary         CLOB := NULL;
+    l_summary_columns VARCHAR2(1000) :=
+      'TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
   BEGIN
     l_execute_flag := fn_normalize_execute(p_execute);
     l_target_owner := fn_normalize_name(p_target_owner);
@@ -124,12 +144,12 @@ AS
         END IF;
 
         DBMS_OUTPUT.PUT_LINE('QUALITY ' || r.SOURCE_DB_LINK || '.' || r.SOURCE_OWNER || '.' ||
-                             r.SOURCE_TABLE_NAME || ' source=' || r.SOURCE_PARTITION_NAME ||
+                             r.SOURCE_TABLE_NAME || ' source_name=' || r.SOURCE_PARTITION_NAME ||
                              CASE WHEN r.SOURCE_SUBPARTITION_NAME <> '#' THEN '.' || r.SOURCE_SUBPARTITION_NAME ELSE NULL END ||
-                             ' target=' || r.PARTITION_NAME ||
+                             ' target_name=' || r.PARTITION_NAME ||
                              CASE WHEN r.SUBPARTITION_NAME <> '#' THEN '.' || r.SUBPARTITION_NAME ELSE NULL END ||
-                             ' source=' || NVL(TO_CHAR(l_source_rows), 'NULL') ||
-                             ' target=' || NVL(TO_CHAR(r.TARGET_ROW_COUNT), 'NULL') ||
+                             ' source_rows=' || NVL(TO_CHAR(l_source_rows), 'NULL') ||
+                             ' target_rows=' || NVL(TO_CHAR(r.TARGET_ROW_COUNT), 'NULL') ||
                              ' status=' || l_quality_status || ' execute=' || l_execute_flag);
 
         IF l_execute_flag = 'Y' THEN
@@ -150,6 +170,26 @@ AS
 
           COMMIT;
         END IF;
+
+        l_summary := l_summary ||
+          PKG_ARCHIVE_LOG.fn_summary_row
+          (
+            p_table_owner             => r.source_owner,
+            p_table_name              => r.source_table_name,
+            p_partition_name          => r.source_partition_name,
+            p_subpartition_name       => r.source_subpartition_name,
+            p_partition_high_value    => r.partition_high_value,
+            p_subpartition_high_value => r.subpartition_high_value,
+            p_archive_status          => r.archive_status,
+            p_quality_status          => l_quality_status,
+            p_truncate_status         => r.truncate_status,
+            p_source_row_count        => l_source_rows,
+            p_target_row_count        => r.target_row_count,
+            p_note                    => 'target=' || r.target_owner || '.' || r.target_table_name ||
+                                         ' ' || r.partition_name ||
+                                         CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END ||
+                                         ', execute=' || l_execute_flag
+          );
       END LOOP;
     END LOOP;
 
@@ -163,6 +203,16 @@ AS
       ' target_table=' || NVL(l_target_table, '<ALL>') ||
       ' execute=' || l_execute_flag
     );
+
+    IF l_summary IS NOT NULL THEN
+      PKG_ARCHIVE_LOG.prc_log_summary
+      (
+        p_run_id       => l_run_id,
+        p_process_name => 'QUALITY',
+        p_columns      => l_summary_columns,
+        p_rows         => l_summary
+      );
+    END IF;
 
     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, CASE WHEN l_failed > 0 THEN 'WARNING' ELSE 'SUCCESS' END);
   EXCEPTION

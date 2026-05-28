@@ -1,5 +1,21 @@
 CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_RUNNER
 AS
+  /*
+    Package      : PKG_ARCHIVE_RUNNER
+    Developer    : Tomasz Lesinski
+    Date         : 2026-05-28
+    Purpose      : Archive runner - orchestrates DISCOVER -> ARCHIVE -> QUALITY
+                   -> TRUNCATE flow for one or all tables
+
+    Prerequisite : PKG_ARCHIVE_DISCOVERY, PKG_ARCHIVE_IMPORT, PKG_ARCHIVE_QUALITY,
+                   PKG_ARCHIVE_TRUNCATE, PKG_ARCHIVE_LOG
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-05-28   Tomasz Lesinski    Initial version
+  */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
     RETURN CASE WHEN UPPER(NVL(TRIM(p_execute), 'N')) = 'Y' THEN 'Y' ELSE 'N' END;

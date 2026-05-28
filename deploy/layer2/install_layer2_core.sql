@@ -10,7 +10,6 @@ PROMPT Installing Central Layer 2 Archive core objects
 @@../../layer2_core/tables/tw_archive_tables.sql
 @@../../layer2_core/tables/tw_archive_runs.sql
 @@../../layer2_core/tables/tw_archive_partitions.sql
-@@migrate_tw_archive_partitions_source_names.sql
 @@../../layer2_core/functions/fn_archive_high_value_date.sql
 @@../../layer2_core/views/tw_archive_source_partitions_vw.sql
 @@../../layer2_core/views/tw_archive_discovery_partitions_vw.sql

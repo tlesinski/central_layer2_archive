@@ -81,10 +81,26 @@ For PL/SQL:
 - use bind variables for values
 - log generated dynamic SQL where useful
 - include preview/execute behavior for operational routines
+- place header comments (`/* ... */`) inside the PL/SQL block (after AS)
+  so they appear in user_source / dba_source in the database
 ```
 
 Use `VARCHAR2(128)` for Oracle object names unless there is a specific reason
 not to.
+
+## Windows SQL\*Plus
+
+```text
+- @@../../ relative paths fail with SP2-0310 — use @ with paths from repo root
+- In PowerShell, escape the @ operator with backtick: `@path/to/file.sql
+  (or use the call operator: & sqlplus ... `@script.sql)
+```
+
+## CARCH Password Convention
+
+```text
+CarchDev2026_42  (derived from the Cagent1Dev2026_42 pattern)
+```
 
 ## Central Model Rules
 
@@ -125,3 +141,22 @@ For structural changes, check:
 
 For database-facing changes, prefer adding a clear install or smoke-test script
 over relying on manual execution order.
+
+## Reinstall (Clean Drop + Full Install)
+
+Connect as SYS and run in order:
+
+```text
+1. @deploy/drop_all_schemas.sql
+2. @full_reinstall.sql
+```
+
+Step 1 drops all objects in CARCH, CAGENT1, CLIENT1. Step 2 recreates everything
+and seeds metadata. Verify with:
+
+```text
+- all SHOW ERRORS = "No errors"
+- seed TW_ARCHIVE_TABLES = 1 row merged per table
+- seed TW_ARCHIVE_PARTITIONS = N rows merged per table
+- DB link test: SELECT * FROM dual@CLIENT1_LOOPBACK_LINK
+```

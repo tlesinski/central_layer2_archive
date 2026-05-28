@@ -1,5 +1,20 @@
 CREATE OR REPLACE PACKAGE PKG_ARCHIVE_AGENT
 AS
+  /*
+    Package      : PKG_ARCHIVE_AGENT
+    Developer    : Tomasz Lesinski
+    Date         : 2026-05-28
+    Purpose      : Layer 1 archive agent - exposes partition info, row count,
+                   cleanup unit, and health check operations
+
+    Prerequisite : ARCHIVE_PARTITION_INFO_OBJ, ARCHIVE_PARTITION_INFO_TAB
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-05-28   Tomasz Lesinski    Initial version
+  */
   FUNCTION fn_get_partition_info
   (
     p_owner      IN VARCHAR2,

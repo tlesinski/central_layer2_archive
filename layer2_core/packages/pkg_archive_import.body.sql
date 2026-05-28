@@ -1,5 +1,23 @@
 CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_IMPORT
 AS
+  /*
+    Package      : PKG_ARCHIVE_IMPORT
+    Developer    : Tomasz Lesinski
+    Date         : 2026-05-28
+    Purpose      : Import source partitions into target archive via EXCHANGE
+
+    Prerequisite : PKG_SQL, PKG_ARCHIVE_LOG, PKG_ARCHIVE_PARTITION,
+                   TW_ARCHIVE_IMPORT_PARTITIONS_VW
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-05-28   Tomasz Lesinski    Initial version
+    1.1        2026-05-28   Tomasz Lesinski    Add PARALLEL_DEGREE support,
+                                               ALTER SESSION ENABLE PARALLEL DML,
+                                               process summary logging
+  */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
     RETURN CASE WHEN UPPER(NVL(TRIM(p_execute), 'N')) = 'Y' THEN 'Y' ELSE 'N' END;
@@ -61,6 +79,11 @@ AS
     l_imported        NUMBER := 0;
     l_tables          NUMBER := 0;
     l_staging_table   VARCHAR2(128);
+    l_parallel_degree NUMBER;
+    l_tablespace_name VARCHAR2(128);
+    l_summary         CLOB := NULL;
+    l_summary_columns VARCHAR2(1000) :=
+      'TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
   BEGIN
     l_execute_flag := fn_normalize_execute(p_execute);
     l_target_owner := fn_normalize_name(p_target_owner);
@@ -74,6 +97,11 @@ AS
       p_log_msg => 'Import filter: target_owner=' || NVL(l_target_owner, '<ALL>') ||
                    ', target_table_name=' || NVL(l_target_table, '<ALL>')
     );
+
+    IF l_execute_flag = 'Y' THEN
+      COMMIT;
+      EXECUTE IMMEDIATE 'ALTER SESSION ENABLE PARALLEL DML';
+    END IF;
 
     l_sql :=
       'SELECT COUNT(*) ' ||
@@ -101,6 +129,15 @@ AS
        ORDER BY source_db_link, source_owner, source_table_name
     ) LOOP
       l_tables := l_tables + 1;
+
+      SELECT NVL(PARALLEL_DEGREE, 4),
+             TABLESPACE_NAME
+        INTO l_parallel_degree,
+             l_tablespace_name
+        FROM TW_ARCHIVE_TABLES
+       WHERE SOURCE_DB_LINK = t.source_db_link
+         AND SOURCE_OWNER = t.source_owner
+         AND SOURCE_TABLE_NAME = t.source_table_name;
 
       FOR r IN (
         SELECT p.*
@@ -134,7 +171,8 @@ AS
           p_partition_name     => r.PARTITION_NAME,
           p_staging_table_name => l_staging_table,
           p_execute            => l_execute_flag,
-          p_log_id             => l_log_id
+          p_log_id             => l_log_id,
+          p_tablespace_name    => l_tablespace_name
         );
 
         IF r.ARCHIVE_UNIT_TYPE = 'SUBPARTITION' THEN
@@ -151,6 +189,7 @@ AS
             p_subpartition_high_value    => r.SUBPARTITION_HIGH_VALUE,
             p_execute                    => l_execute_flag,
             p_log_id                     => l_log_id,
+            p_parallel_degree            => l_parallel_degree,
             p_rows_loaded                => l_rows_loaded
           );
         ELSE
@@ -166,9 +205,32 @@ AS
             p_prev_high_value    => r.PREV_PARTITION_HIGH_VALUE,
             p_execute            => l_execute_flag,
             p_log_id             => l_log_id,
+            p_parallel_degree    => l_parallel_degree,
             p_rows_loaded        => l_rows_loaded
           );
         END IF;
+
+        PKG_ARCHIVE_LOG.prc_log_message
+        (
+          p_run_id   => l_run_id,
+          p_log_type => 'ARCHIVE_LOAD',
+          p_log_msg  => 'ARCHIVE_LOAD ' ||
+                        'source=' || r.source_db_link || '.' || r.source_owner || '.' || r.source_table_name ||
+                        ' ' || r.source_partition_name ||
+                        CASE
+                          WHEN r.archive_unit_type = 'SUBPARTITION'
+                            THEN '.' || r.source_subpartition_name
+                        END ||
+                        ', target=' || r.target_owner || '.' || r.target_table_name ||
+                        ' ' || r.partition_name ||
+                        CASE
+                          WHEN r.archive_unit_type = 'SUBPARTITION'
+                            THEN '.' || r.subpartition_name
+                        END ||
+                        ', staging=' || r.target_owner || '.' || l_staging_table ||
+                        ', rows_loaded=' || NVL(TO_CHAR(l_rows_loaded), '<DRY_RUN>') ||
+                        ', execute=' || l_execute_flag
+        );
 
         PKG_ARCHIVE_PARTITION.prc_build_staging_indexes
         (
@@ -176,7 +238,9 @@ AS
           p_target_table       => r.TARGET_TABLE_NAME,
           p_staging_table_name => l_staging_table,
           p_execute            => l_execute_flag,
-          p_log_id             => l_log_id
+          p_log_id             => l_log_id,
+          p_parallel_degree    => l_parallel_degree,
+          p_tablespace_name    => l_tablespace_name
         );
 
         IF r.ARCHIVE_UNIT_TYPE = 'SUBPARTITION' THEN
@@ -231,8 +295,40 @@ AS
                              CASE WHEN r.ARCHIVE_UNIT_TYPE = 'SUBPARTITION' THEN '.' || r.SUBPARTITION_NAME END ||
                              ' loaded=' || NVL(TO_CHAR(l_rows_loaded), '<DRY_RUN>') ||
                              ' target_rows=' || NVL(TO_CHAR(l_rows_loaded), '<DRY_RUN>'));
+
+        IF l_execute_flag = 'Y' THEN
+          l_summary := l_summary ||
+            PKG_ARCHIVE_LOG.fn_summary_row
+            (
+              p_table_owner             => r.source_owner,
+              p_table_name              => r.source_table_name,
+              p_partition_name          => r.source_partition_name,
+              p_subpartition_name       => r.source_subpartition_name,
+              p_partition_high_value    => r.partition_high_value,
+              p_subpartition_high_value => r.subpartition_high_value,
+              p_archive_status          => 'Y',
+              p_quality_status          => 'N',
+              p_truncate_status         => r.truncate_status,
+              p_source_row_count        => r.source_row_count,
+              p_target_row_count        => l_rows_loaded,
+              p_note                    => 'target=' || r.target_owner || '.' || r.target_table_name ||
+                                           ' ' || r.partition_name ||
+                                           CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END ||
+                                           ', execute=' || l_execute_flag
+            );
+        END IF;
       END LOOP;
     END LOOP;
+
+    IF l_summary IS NOT NULL THEN
+      PKG_ARCHIVE_LOG.prc_log_summary
+      (
+        p_run_id       => l_run_id,
+        p_process_name => 'ARCHIVE',
+        p_columns      => l_summary_columns,
+        p_rows         => l_summary
+      );
+    END IF;
 
     DBMS_OUTPUT.PUT_LINE(
       'IMPORT tables=' || l_tables ||
@@ -255,5 +351,3 @@ AS
   END prc_import;
 END PKG_ARCHIVE_IMPORT;
 /
-
-
