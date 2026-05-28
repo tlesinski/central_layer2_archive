@@ -333,5 +333,247 @@ AS
       END;
     END LOOP;
   END fn_run_into_sql_in_bind;
+
+  FUNCTION fn_col_count
+  (
+    p_line IN VARCHAR2,
+    p_sep  IN VARCHAR2 DEFAULT '|'
+  )
+  RETURN PLS_INTEGER
+  IS
+    l_count PLS_INTEGER := 1;
+    l_pos   PLS_INTEGER := 0;
+  BEGIN
+    IF p_line IS NULL THEN
+      RETURN 0;
+    END IF;
+
+    LOOP
+      l_pos := INSTR(p_line, p_sep, l_pos + 1);
+      EXIT WHEN l_pos = 0;
+      l_count := l_count + 1;
+    END LOOP;
+
+    RETURN l_count;
+  END fn_col_count;
+
+  FUNCTION fn_col_value
+  (
+    p_line   IN VARCHAR2,
+    p_col_no IN PLS_INTEGER,
+    p_sep    IN VARCHAR2 DEFAULT '|'
+  )
+  RETURN VARCHAR2
+  IS
+    l_text      VARCHAR2(32767) := p_line;
+    l_start_pos PLS_INTEGER := 1;
+    l_end_pos   PLS_INTEGER;
+  BEGIN
+    FOR i IN 1 .. p_col_no LOOP
+      l_end_pos := INSTR(l_text, p_sep, l_start_pos);
+
+      IF i = p_col_no THEN
+        IF l_end_pos = 0 THEN
+          RETURN SUBSTR(l_text, l_start_pos);
+        ELSE
+          RETURN SUBSTR(l_text, l_start_pos, l_end_pos - l_start_pos);
+        END IF;
+      END IF;
+
+      IF l_end_pos = 0 THEN
+        RETURN NULL;
+      END IF;
+
+      l_start_pos := l_end_pos + 1;
+    END LOOP;
+
+    RETURN NULL;
+  END fn_col_value;
+
+  FUNCTION fn_next_line
+  (
+    p_clob IN CLOB,
+    p_pos  IN OUT PLS_INTEGER
+  )
+  RETURN VARCHAR2
+  IS
+    l_end_pos PLS_INTEGER;
+    l_line    VARCHAR2(32767);
+  BEGIN
+    IF p_clob IS NULL OR p_pos > DBMS_LOB.GETLENGTH(p_clob) THEN
+      RETURN NULL;
+    END IF;
+
+    l_end_pos := DBMS_LOB.INSTR(p_clob, CHR(10), p_pos);
+
+    IF l_end_pos = 0 THEN
+      l_line := DBMS_LOB.SUBSTR(p_clob, 32767, p_pos);
+      p_pos := DBMS_LOB.GETLENGTH(p_clob) + 1;
+    ELSE
+      l_line := DBMS_LOB.SUBSTR(p_clob, l_end_pos - p_pos, p_pos);
+      p_pos := l_end_pos + 1;
+    END IF;
+
+    RETURN l_line;
+  END fn_next_line;
+
+  FUNCTION fn_sanitize
+  (
+    p_value    IN VARCHAR2,
+    p_null_text IN VARCHAR2 DEFAULT '-',
+    p_sep      IN VARCHAR2 DEFAULT '|'
+  )
+  RETURN VARCHAR2
+  IS
+  BEGIN
+    IF p_value IS NULL OR TRIM(p_value) IS NULL THEN
+      RETURN p_null_text;
+    END IF;
+
+    RETURN REPLACE(REPLACE(REPLACE(TRIM(p_value), CHR(13), ' '), CHR(10), ' '), p_sep, ' ');
+  END fn_sanitize;
+
+  FUNCTION fn_format_table
+  (
+    p_columns       IN VARCHAR2,
+    p_rows          IN CLOB,
+    p_col_align     IN VARCHAR2 DEFAULT NULL,
+    p_separator     IN VARCHAR2 DEFAULT '|',
+    p_null_text     IN VARCHAR2 DEFAULT '-',
+    p_max_col_width IN NUMBER   DEFAULT 120,
+    p_box_style     IN VARCHAR2 DEFAULT 'SIMPLE'
+  )
+  RETURN CLOB
+  IS
+    TYPE t_widths IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
+
+    l_widths       t_widths;
+    l_col_count    PLS_INTEGER;
+    l_max_width    PLS_INTEGER := LEAST(GREATEST(NVL(p_max_col_width, 120), 8), 300);
+    l_pos          PLS_INTEGER;
+    l_line         VARCHAR2(32767);
+    l_value        VARCHAR2(32767);
+    l_sanitized    VARCHAR2(32767);
+    l_result       CLOB;
+    l_rows_count   NUMBER := 0;
+    l_box          VARCHAR2(20);
+    l_is_right     BOOLEAN;
+  BEGIN
+    l_box := UPPER(NVL(TRIM(p_box_style), 'SIMPLE'));
+
+    IF l_box NOT IN ('NONE', 'SIMPLE') THEN
+      l_box := 'SIMPLE';
+    END IF;
+
+    l_col_count := fn_col_count(p_columns, p_separator);
+
+    IF l_col_count = 0 THEN
+      RETURN 'FORMAT_TABLE: no columns' || CHR(10);
+    END IF;
+
+    -- pass 1: measure max widths per column
+    FOR i IN 1 .. l_col_count LOOP
+      l_value := fn_col_value(p_columns, i, p_separator);
+      l_widths(i) := LEAST(GREATEST(LENGTH(NVL(l_value, '-')), 1), l_max_width);
+    END LOOP;
+
+    l_pos := 1;
+
+    LOOP
+      l_line := fn_next_line(p_rows, l_pos);
+      EXIT WHEN l_line IS NULL;
+      CONTINUE WHEN TRIM(l_line) IS NULL;
+
+      l_rows_count := l_rows_count + 1;
+
+      FOR i IN 1 .. l_col_count LOOP
+        l_value := fn_col_value(l_line, i, p_separator);
+        l_sanitized := fn_sanitize(l_value, p_null_text, p_separator);
+        l_widths(i) := LEAST(GREATEST(l_widths(i), LENGTH(l_sanitized)), l_max_width);
+      END LOOP;
+    END LOOP;
+
+    -- pass 2: build output
+    l_result := 'FORMAT_TABLE:' || CHR(10);
+    l_result := l_result || 'Columns : ' || l_col_count || CHR(10);
+    l_result := l_result || 'Rows    : ' || l_rows_count || CHR(10) || CHR(10);
+
+    -- header + top border
+    IF l_box = 'SIMPLE' THEN
+      l_result := l_result || '+';
+      FOR i IN 1 .. l_col_count LOOP
+        l_result := l_result || RPAD('-', l_widths(i) + 2, '-') || '+';
+      END LOOP;
+      l_result := l_result || CHR(10) || '|';
+
+      FOR i IN 1 .. l_col_count LOOP
+        l_value := fn_col_value(p_columns, i, p_separator);
+        l_result := l_result || ' ' || RPAD(NVL(l_value, '-'), l_widths(i)) || ' |';
+      END LOOP;
+
+      l_result := l_result || CHR(10) || '+';
+      FOR i IN 1 .. l_col_count LOOP
+        l_result := l_result || RPAD('-', l_widths(i) + 2, '-') || '+';
+      END LOOP;
+      l_result := l_result || CHR(10);
+    ELSE
+      FOR i IN 1 .. l_col_count LOOP
+        l_value := fn_col_value(p_columns, i, p_separator);
+        l_result := l_result || RPAD(NVL(l_value, '-'), l_widths(i));
+        l_result := l_result || CASE WHEN i < l_col_count THEN '  ' END;
+      END LOOP;
+
+      l_result := l_result || CHR(10);
+
+      FOR i IN 1 .. l_col_count LOOP
+        l_result := l_result || RPAD('-', l_widths(i), '-');
+        l_result := l_result || CASE WHEN i < l_col_count THEN '  ' END;
+      END LOOP;
+
+      l_result := l_result || CHR(10);
+    END IF;
+
+    -- data rows
+    l_pos := 1;
+
+    LOOP
+      l_line := fn_next_line(p_rows, l_pos);
+      EXIT WHEN l_line IS NULL;
+      CONTINUE WHEN TRIM(l_line) IS NULL;
+
+      IF l_box = 'SIMPLE' THEN
+        l_result := l_result || '|';
+      END IF;
+
+      FOR i IN 1 .. l_col_count LOOP
+        l_value := fn_col_value(l_line, i, p_separator);
+        l_sanitized := fn_sanitize(l_value, p_null_text, p_separator);
+        l_is_right := p_col_align IS NOT NULL AND LENGTH(p_col_align) >= i AND SUBSTR(p_col_align, i, 1) = '>';
+
+        IF l_box = 'SIMPLE' THEN
+          l_result := l_result || ' ' ||
+            CASE WHEN l_is_right THEN LPAD(l_sanitized, l_widths(i)) ELSE RPAD(l_sanitized, l_widths(i)) END ||
+            ' |';
+        ELSE
+          l_result := l_result ||
+            CASE WHEN l_is_right THEN LPAD(l_sanitized, l_widths(i)) ELSE RPAD(l_sanitized, l_widths(i)) END;
+          l_result := l_result || CASE WHEN i < l_col_count THEN '  ' END;
+        END IF;
+      END LOOP;
+
+      l_result := l_result || CHR(10);
+    END LOOP;
+
+    -- bottom border
+    IF l_box = 'SIMPLE' AND l_rows_count > 0 THEN
+      l_result := l_result || '+';
+      FOR i IN 1 .. l_col_count LOOP
+        l_result := l_result || RPAD('-', l_widths(i) + 2, '-') || '+';
+      END LOOP;
+      l_result := l_result || CHR(10);
+    END IF;
+
+    RETURN l_result;
+  END fn_format_table;
 END PKG_SQL;
 /

@@ -34,7 +34,8 @@ BEGIN
          'PKG_ARCHIVE_PARTITION',
          'PKG_ARCHIVE_LOG',
          'PKG_SQL',
-         'PKG_TL_LOGGING'
+         'PKG_TL_LOGGING',
+         'PKG_DATE'
        )
      ORDER BY object_type DESC
   ) LOOP
@@ -83,6 +84,23 @@ BEGIN
     END;
   END LOOP;
 
+  -- drop orphan staging tables
+  FOR r IN (
+    SELECT table_name
+      FROM dba_tables
+     WHERE owner = 'CARCH'
+       AND table_name LIKE 'STG\_TMP\_ARCH\_%' ESCAPE '\'
+  ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'DROP TABLE CARCH.' || r.table_name || ' PURGE';
+      DBMS_OUTPUT.PUT_LINE('Dropped staging TABLE CARCH.' || r.table_name);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Could not drop staging TABLE ' ||
+                             r.table_name || ': ' || SQLERRM);
+    END;
+  END LOOP;
+
   -- tables
   FOR r IN (
     SELECT table_name
@@ -93,10 +111,13 @@ BEGIN
          'TW_ARCHIVE_RUNS',
          'TW_ARCHIVE_TABLES',
          'MD_PROCESS_LOG',
-         'ORDERS_ARCH_SRC',
-         'ORDERS_SUBPART_SRC',
-         'ORDERS_DAILY_INT_SRC'
-       )
+          'ORDERS_ARCH_SRC',
+          'ORDERS_SUBPART_SRC',
+          'ORDERS_DAILY_INT_SRC',
+          'ORDERS_ARCH_SRC_2',
+          'ORDERS_SUBPART_SRC_2',
+          'ORDERS_DAILY_INT_SRC_2'
+        )
   ) LOOP
     BEGIN
       EXECUTE IMMEDIATE 'DROP TABLE CARCH.' || r.table_name || ' PURGE';
@@ -113,7 +134,7 @@ BEGIN
     SELECT sequence_name
       FROM dba_sequences
      WHERE sequence_owner = 'CARCH'
-       AND sequence_name = 'MD_PROCESS_LOG_SEQ'
+        AND sequence_name IN ('MD_PROCESS_LOG_SEQ', 'STG_TMP_ARCH_SEQ')
   ) LOOP
     BEGIN
       EXECUTE IMMEDIATE 'DROP SEQUENCE CARCH.' || r.sequence_name;
@@ -176,6 +197,34 @@ PROMPT CLIENT1 grants revoked.
 
 PROMPT
 PROMPT ============================================================
+PROMPT Section 2b: Revoking CLIENT2 grants
+PROMPT ============================================================
+
+BEGIN
+  FOR r IN (
+    SELECT owner, table_name, grantee, privilege
+      FROM dba_tab_privs
+     WHERE owner = 'CLIENT2'
+       AND table_name IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
+       AND grantee IN ('CAGENT1', 'CARCH')
+  ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'REVOKE ' || r.privilege || ' ON CLIENT2.' ||
+                        r.table_name || ' FROM ' || r.grantee;
+      DBMS_OUTPUT.PUT_LINE('Revoked ' || r.privilege || ' ON CLIENT2.' ||
+                           r.table_name || ' FROM ' || r.grantee);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Could not revoke: ' || SQLERRM);
+    END;
+  END LOOP;
+END;
+/
+
+PROMPT CLIENT2 grants revoked.
+
+PROMPT
+PROMPT ============================================================
 PROMPT Section 3: Dropping CLIENT1 (source) objects
 PROMPT ============================================================
 
@@ -199,6 +248,32 @@ END;
 /
 
 PROMPT CLIENT1 objects dropped.
+
+PROMPT
+PROMPT ============================================================
+PROMPT Section 3b: Dropping CLIENT2 (source) objects
+PROMPT ============================================================
+
+BEGIN
+  FOR r IN (
+    SELECT table_name
+      FROM dba_tables
+     WHERE owner = 'CLIENT2'
+       AND table_name IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
+  ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'DROP TABLE CLIENT2.' || r.table_name || ' PURGE';
+      DBMS_OUTPUT.PUT_LINE('Dropped TABLE CLIENT2.' || r.table_name);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Could not drop TABLE ' ||
+                             r.table_name || ': ' || SQLERRM);
+    END;
+  END LOOP;
+END;
+/
+
+PROMPT CLIENT2 objects dropped.
 
 PROMPT
 PROMPT ============================================================

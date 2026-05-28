@@ -78,66 +78,86 @@ SQL> BEGIN
  63  	 END;
  64    END LOOP;
  65  
- 66    -- tables
+ 66    -- drop orphan staging tables
  67    FOR r IN (
  68  	 SELECT table_name
  69  	   FROM dba_tables
  70  	  WHERE owner = 'CARCH'
- 71  	    AND table_name IN (
- 72  	      'TW_ARCHIVE_PARTITIONS',
- 73  	      'TW_ARCHIVE_RUNS',
- 74  	      'TW_ARCHIVE_TABLES',
- 75  	      'MD_PROCESS_LOG',
- 76  	      'ORDERS_ARCH_SRC',
- 77  	      'ORDERS_SUBPART_SRC',
- 78  	      'ORDERS_DAILY_INT_SRC'
- 79  	    )
- 80    ) LOOP
- 81  	 BEGIN
- 82  	   EXECUTE IMMEDIATE 'DROP TABLE CARCH.' || r.table_name || ' PURGE';
- 83  	   DBMS_OUTPUT.PUT_LINE('Dropped TABLE CARCH.' || r.table_name);
- 84  	 EXCEPTION
- 85  	   WHEN OTHERS THEN
- 86  	     DBMS_OUTPUT.PUT_LINE('Could not drop TABLE ' ||
- 87  				  r.table_name || ': ' || SQLERRM);
- 88  	 END;
- 89    END LOOP;
- 90  
- 91    -- sequence
- 92    FOR r IN (
- 93  	 SELECT sequence_name
- 94  	   FROM dba_sequences
- 95  	  WHERE sequence_owner = 'CARCH'
- 96  	    AND sequence_name = 'MD_PROCESS_LOG_SEQ'
- 97    ) LOOP
- 98  	 BEGIN
- 99  	   EXECUTE IMMEDIATE 'DROP SEQUENCE CARCH.' || r.sequence_name;
-100  	   DBMS_OUTPUT.PUT_LINE('Dropped SEQUENCE CARCH.' || r.sequence_name);
-101  	 EXCEPTION
-102  	   WHEN OTHERS THEN
-103  	     DBMS_OUTPUT.PUT_LINE('Could not drop SEQUENCE ' ||
-104  				  r.sequence_name || ': ' || SQLERRM);
-105  	 END;
-106    END LOOP;
-107  
-108    -- database link (must be connected as the owner to drop)
-109    FOR r IN (
-110  	 SELECT db_link
-111  	   FROM dba_db_links
-112  	  WHERE owner = 'CARCH'
-113  	    AND db_link = 'CLIENT1_LOOPBACK_LINK'
-114    ) LOOP
-115  	 BEGIN
-116  	   EXECUTE IMMEDIATE 'DROP DATABASE LINK CARCH.' || r.db_link;
-117  	   DBMS_OUTPUT.PUT_LINE('Dropped DATABASE LINK CARCH.' || r.db_link);
-118  	 EXCEPTION
-119  	   WHEN OTHERS THEN
-120  	     DBMS_OUTPUT.PUT_LINE('Could not drop DATABASE LINK ' ||
-121  				  r.db_link || ': ' || SQLERRM);
-122  	 END;
-123    END LOOP;
-124  END;
-125  /
+ 71  	    AND table_name LIKE 'STG\_TMP\_ARCH\_%' ESCAPE '\'
+ 72    ) LOOP
+ 73  	 BEGIN
+ 74  	   EXECUTE IMMEDIATE 'DROP TABLE CARCH.' || r.table_name || ' PURGE';
+ 75  	   DBMS_OUTPUT.PUT_LINE('Dropped staging TABLE CARCH.' || r.table_name);
+ 76  	 EXCEPTION
+ 77  	   WHEN OTHERS THEN
+ 78  	     DBMS_OUTPUT.PUT_LINE('Could not drop staging TABLE ' ||
+ 79  				  r.table_name || ': ' || SQLERRM);
+ 80  	 END;
+ 81    END LOOP;
+ 82  
+ 83    -- tables
+ 84    FOR r IN (
+ 85  	 SELECT table_name
+ 86  	   FROM dba_tables
+ 87  	  WHERE owner = 'CARCH'
+ 88  	    AND table_name IN (
+ 89  	      'TW_ARCHIVE_PARTITIONS',
+ 90  	      'TW_ARCHIVE_RUNS',
+ 91  	      'TW_ARCHIVE_TABLES',
+ 92  	      'MD_PROCESS_LOG',
+ 93  	       'ORDERS_ARCH_SRC',
+ 94  	       'ORDERS_SUBPART_SRC',
+ 95  	       'ORDERS_DAILY_INT_SRC',
+ 96  	       'ORDERS_ARCH_SRC_2',
+ 97  	       'ORDERS_SUBPART_SRC_2',
+ 98  	       'ORDERS_DAILY_INT_SRC_2'
+ 99  	     )
+100    ) LOOP
+101  	 BEGIN
+102  	   EXECUTE IMMEDIATE 'DROP TABLE CARCH.' || r.table_name || ' PURGE';
+103  	   DBMS_OUTPUT.PUT_LINE('Dropped TABLE CARCH.' || r.table_name);
+104  	 EXCEPTION
+105  	   WHEN OTHERS THEN
+106  	     DBMS_OUTPUT.PUT_LINE('Could not drop TABLE ' ||
+107  				  r.table_name || ': ' || SQLERRM);
+108  	 END;
+109    END LOOP;
+110  
+111    -- sequence
+112    FOR r IN (
+113  	 SELECT sequence_name
+114  	   FROM dba_sequences
+115  	  WHERE sequence_owner = 'CARCH'
+116  	     AND sequence_name IN ('MD_PROCESS_LOG_SEQ', 'STG_TMP_ARCH_SEQ')
+117    ) LOOP
+118  	 BEGIN
+119  	   EXECUTE IMMEDIATE 'DROP SEQUENCE CARCH.' || r.sequence_name;
+120  	   DBMS_OUTPUT.PUT_LINE('Dropped SEQUENCE CARCH.' || r.sequence_name);
+121  	 EXCEPTION
+122  	   WHEN OTHERS THEN
+123  	     DBMS_OUTPUT.PUT_LINE('Could not drop SEQUENCE ' ||
+124  				  r.sequence_name || ': ' || SQLERRM);
+125  	 END;
+126    END LOOP;
+127  
+128    -- database link (must be connected as the owner to drop)
+129    FOR r IN (
+130  	 SELECT db_link
+131  	   FROM dba_db_links
+132  	  WHERE owner = 'CARCH'
+133  	    AND db_link = 'CLIENT1_LOOPBACK_LINK'
+134    ) LOOP
+135  	 BEGIN
+136  	   EXECUTE IMMEDIATE 'DROP DATABASE LINK CARCH.' || r.db_link;
+137  	   DBMS_OUTPUT.PUT_LINE('Dropped DATABASE LINK CARCH.' || r.db_link);
+138  	 EXCEPTION
+139  	   WHEN OTHERS THEN
+140  	     DBMS_OUTPUT.PUT_LINE('Could not drop DATABASE LINK ' ||
+141  				  r.db_link || ': ' || SQLERRM);
+142  	 END;
+143    END LOOP;
+144  END;
+145  /
 Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_PARTITION                                
 Dropped PACKAGE BODY CARCH.PKG_SQL                                              
 Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_IMPORT                                   
@@ -164,8 +184,11 @@ Dropped VIEW CARCH.TW_ARCHIVE_SOURCE_PARTITIONS_VW
 Dropped VIEW CARCH.TW_ARCHIVE_TRUNCATE_PARTITIONS_VW                            
 Dropped TABLE CARCH.MD_PROCESS_LOG                                              
 Dropped TABLE CARCH.ORDERS_ARCH_SRC                                             
+Dropped TABLE CARCH.ORDERS_ARCH_SRC_2                                           
 Dropped TABLE CARCH.ORDERS_DAILY_INT_SRC                                        
+Dropped TABLE CARCH.ORDERS_DAILY_INT_SRC_2                                      
 Dropped TABLE CARCH.ORDERS_SUBPART_SRC                                          
+Dropped TABLE CARCH.ORDERS_SUBPART_SRC_2                                        
 Dropped TABLE CARCH.TW_ARCHIVE_PARTITIONS                                       
 Dropped TABLE CARCH.TW_ARCHIVE_RUNS                                             
 Dropped TABLE CARCH.TW_ARCHIVE_TABLES                                           
@@ -231,6 +254,54 @@ SQL> PROMPT
 
 SQL> PROMPT ============================================================
 ============================================================
+SQL> PROMPT Section 2b: Revoking CLIENT2 grants
+Section 2b: Revoking CLIENT2 grants
+SQL> PROMPT ============================================================
+============================================================
+SQL> 
+SQL> BEGIN
+  2    FOR r IN (
+  3  	 SELECT owner, table_name, grantee, privilege
+  4  	   FROM dba_tab_privs
+  5  	  WHERE owner = 'CLIENT2'
+  6  	    AND table_name IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
+  7  	    AND grantee IN ('CAGENT1', 'CARCH')
+  8    ) LOOP
+  9  	 BEGIN
+ 10  	   EXECUTE IMMEDIATE 'REVOKE ' || r.privilege || ' ON CLIENT2.' ||
+ 11  			     r.table_name || ' FROM ' || r.grantee;
+ 12  	   DBMS_OUTPUT.PUT_LINE('Revoked ' || r.privilege || ' ON CLIENT2.' ||
+ 13  				r.table_name || ' FROM ' || r.grantee);
+ 14  	 EXCEPTION
+ 15  	   WHEN OTHERS THEN
+ 16  	     DBMS_OUTPUT.PUT_LINE('Could not revoke: ' || SQLERRM);
+ 17  	 END;
+ 18    END LOOP;
+ 19  END;
+ 20  /
+Revoked ALTER ON CLIENT2.ORDERS_ARCH_SRC FROM CAGENT1                           
+Revoked ALTER ON CLIENT2.ORDERS_DAILY_INT_SRC FROM CAGENT1                      
+Revoked ALTER ON CLIENT2.ORDERS_SUBPART_SRC FROM CAGENT1                        
+Revoked DELETE ON CLIENT2.ORDERS_ARCH_SRC FROM CAGENT1                          
+Revoked DELETE ON CLIENT2.ORDERS_DAILY_INT_SRC FROM CAGENT1                     
+Revoked DELETE ON CLIENT2.ORDERS_SUBPART_SRC FROM CAGENT1                       
+Revoked SELECT ON CLIENT2.ORDERS_ARCH_SRC FROM CAGENT1                          
+Revoked SELECT ON CLIENT2.ORDERS_DAILY_INT_SRC FROM CAGENT1                     
+Revoked SELECT ON CLIENT2.ORDERS_SUBPART_SRC FROM CAGENT1                       
+Revoked SELECT ON CLIENT2.ORDERS_ARCH_SRC FROM CARCH                            
+Revoked SELECT ON CLIENT2.ORDERS_DAILY_INT_SRC FROM CARCH                       
+Revoked SELECT ON CLIENT2.ORDERS_SUBPART_SRC FROM CARCH                         
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> PROMPT CLIENT2 grants revoked.
+CLIENT2 grants revoked.
+SQL> 
+SQL> PROMPT
+
+SQL> PROMPT ============================================================
+============================================================
 SQL> PROMPT Section 3: Dropping CLIENT1 (source) objects
 Section 3: Dropping CLIENT1 (source) objects
 SQL> PROMPT ============================================================
@@ -263,6 +334,43 @@ PL/SQL procedure successfully completed.
 SQL> 
 SQL> PROMPT CLIENT1 objects dropped.
 CLIENT1 objects dropped.
+SQL> 
+SQL> PROMPT
+
+SQL> PROMPT ============================================================
+============================================================
+SQL> PROMPT Section 3b: Dropping CLIENT2 (source) objects
+Section 3b: Dropping CLIENT2 (source) objects
+SQL> PROMPT ============================================================
+============================================================
+SQL> 
+SQL> BEGIN
+  2    FOR r IN (
+  3  	 SELECT table_name
+  4  	   FROM dba_tables
+  5  	  WHERE owner = 'CLIENT2'
+  6  	    AND table_name IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
+  7    ) LOOP
+  8  	 BEGIN
+  9  	   EXECUTE IMMEDIATE 'DROP TABLE CLIENT2.' || r.table_name || ' PURGE';
+ 10  	   DBMS_OUTPUT.PUT_LINE('Dropped TABLE CLIENT2.' || r.table_name);
+ 11  	 EXCEPTION
+ 12  	   WHEN OTHERS THEN
+ 13  	     DBMS_OUTPUT.PUT_LINE('Could not drop TABLE ' ||
+ 14  				  r.table_name || ': ' || SQLERRM);
+ 15  	 END;
+ 16    END LOOP;
+ 17  END;
+ 18  /
+Dropped TABLE CLIENT2.ORDERS_ARCH_SRC                                           
+Dropped TABLE CLIENT2.ORDERS_DAILY_INT_SRC                                      
+Dropped TABLE CLIENT2.ORDERS_SUBPART_SRC                                        
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> PROMPT CLIENT2 objects dropped.
+CLIENT2 objects dropped.
 SQL> 
 SQL> PROMPT
 

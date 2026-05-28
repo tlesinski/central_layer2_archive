@@ -60,5 +60,17 @@ AS
     p_execute    IN VARCHAR2 DEFAULT 'Y'
   )
   RETURN NUMBER;
+
+  FUNCTION fn_format_table
+  (
+    p_columns       IN VARCHAR2,
+    p_rows          IN CLOB,
+    p_col_align     IN VARCHAR2 DEFAULT NULL,
+    p_separator     IN VARCHAR2 DEFAULT '|',
+    p_null_text     IN VARCHAR2 DEFAULT '-',
+    p_max_col_width IN NUMBER   DEFAULT 120,
+    p_box_style     IN VARCHAR2 DEFAULT 'SIMPLE'
+  )
+  RETURN CLOB;
 END PKG_SQL;
 /

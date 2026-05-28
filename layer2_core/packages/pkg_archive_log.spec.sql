@@ -52,6 +52,7 @@ AS
 
   FUNCTION fn_summary_row
   (
+    p_source_db_link          IN VARCHAR2,
     p_table_owner             IN VARCHAR2,
     p_table_name              IN VARCHAR2,
     p_partition_name          IN VARCHAR2,
@@ -64,15 +65,6 @@ AS
     p_source_row_count        IN NUMBER DEFAULT NULL,
     p_target_row_count        IN NUMBER DEFAULT NULL,
     p_note                    IN VARCHAR2 DEFAULT NULL
-  )
-  RETURN CLOB;
-
-  FUNCTION fn_render_summary
-  (
-    p_process_name  IN VARCHAR2,
-    p_columns       IN VARCHAR2,
-    p_rows          IN CLOB,
-    p_max_col_width IN NUMBER DEFAULT 120
   )
   RETURN CLOB;
 

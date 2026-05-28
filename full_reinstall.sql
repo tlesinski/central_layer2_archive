@@ -11,9 +11,32 @@ PROMPT   - Users CARCH, CAGENT1, CLIENT1 must exist
 PROMPT   - Run deploy/drop_all_schemas.sql first for a clean slate
 PROMPT   - This script connects as SYS for most steps, then as CARCH
 PROMPT     for DB link creation (uses CarchDev2026_42 convention)
+PROMPT   - CLIENT2 is created automatically if not present
 PROMPT ============================================================
 
 SPOOL full_reinstall.log
+
+PROMPT
+PROMPT ============================================================
+PROMPT Step 0: Creating CLIENT2 user if not exists
+PROMPT ============================================================
+
+DECLARE
+  l_cnt NUMBER;
+BEGIN
+  SELECT COUNT(*) INTO l_cnt FROM dba_users WHERE username = 'CLIENT2';
+  IF l_cnt = 0 THEN
+    EXECUTE IMMEDIATE 'CREATE USER CLIENT2 IDENTIFIED BY CLIENT2' ||
+                      ' DEFAULT TABLESPACE USERS QUOTA UNLIMITED ON USERS';
+    EXECUTE IMMEDIATE 'GRANT CONNECT TO CLIENT2';
+    EXECUTE IMMEDIATE 'GRANT CREATE TABLE TO CLIENT2';
+    EXECUTE IMMEDIATE 'GRANT CREATE SESSION TO CLIENT2';
+    DBMS_OUTPUT.PUT_LINE('CLIENT2 user created');
+  ELSE
+    DBMS_OUTPUT.PUT_LINE('CLIENT2 user already exists');
+  END IF;
+END;
+/
 
 PROMPT
 PROMPT ============================================================
@@ -28,6 +51,17 @@ ALTER SESSION SET CURRENT_SCHEMA = CLIENT1;
 
 PROMPT
 PROMPT ============================================================
+PROMPT Step 1b: Installing CLIENT2 source tables
+PROMPT ============================================================
+
+ALTER SESSION SET CURRENT_SCHEMA = CLIENT2;
+
+@deploy/client2/install_client2_test_source.sql
+@deploy/client2/install_client2_subpart_test_source.sql
+@deploy/client2/install_client2_daily_interval_test_source.sql
+
+PROMPT
+PROMPT ============================================================
 PROMPT Step 2: Granting CLIENT1 access to CAGENT1 and CARCH
 PROMPT ============================================================
 
@@ -37,6 +71,17 @@ ALTER SESSION SET CURRENT_SCHEMA = CLIENT1;
 @deploy/client1/grant_client1_subpart_to_cagent1.sql
 @deploy/client1/grant_client1_daily_interval_to_cagent1.sql
 @deploy/client1/grant_cleanup_admin_to_cagent1.sql
+
+PROMPT
+PROMPT ============================================================
+PROMPT Step 2b: Granting CLIENT2 access to CAGENT1 and CARCH
+PROMPT ============================================================
+
+ALTER SESSION SET CURRENT_SCHEMA = CLIENT2;
+
+@deploy/client2/grant_client2_to_cagent1.sql
+@deploy/client2/grant_client2_subpart_to_cagent1.sql
+@deploy/client2/grant_client2_daily_interval_to_cagent1.sql
 
 PROMPT
 PROMPT ============================================================
@@ -74,6 +119,7 @@ PROMPT ============================================================
 ALTER SESSION SET CURRENT_SCHEMA = CARCH;
 
 @layer2_core/sequences/md_process_log_seq.sql
+@deploy/layer2/sequences/stg_tmp_arch_seq.sql
 @layer2_core/tables/md_process_log.sql
 @layer2_core/tables/tw_archive_tables.sql
 @layer2_core/tables/tw_archive_runs.sql
@@ -88,6 +134,8 @@ ALTER SESSION SET CURRENT_SCHEMA = CARCH;
 @layer2_core/packages/pkg_tl_logging.body.sql
 @layer2_core/packages/pkg_sql.spec.sql
 @layer2_core/packages/pkg_sql.body.sql
+@layer2_core/packages/pkg_date.spec.sql
+@layer2_core/packages/pkg_date.body.sql
 @layer2_core/packages/pkg_archive_log.spec.sql
 @layer2_core/packages/pkg_archive_log.body.sql
 @layer2_core/packages/pkg_archive_partition.spec.sql
@@ -113,6 +161,8 @@ SHOW ERRORS VIEW TW_ARCHIVE_QUALITY_PARTITIONS_VW
 SHOW ERRORS VIEW TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
 SHOW ERRORS PACKAGE PKG_SQL
 SHOW ERRORS PACKAGE BODY PKG_SQL
+SHOW ERRORS PACKAGE PKG_DATE
+SHOW ERRORS PACKAGE BODY PKG_DATE
 SHOW ERRORS PACKAGE PKG_ARCHIVE_LOG
 SHOW ERRORS PACKAGE BODY PKG_ARCHIVE_LOG
 SHOW ERRORS PACKAGE PKG_ARCHIVE_PARTITION
@@ -184,6 +234,9 @@ ALTER SESSION SET CURRENT_SCHEMA = CARCH;
 @deploy/layer2/install_orders_archive_target.sql
 @deploy/layer2/install_orders_subpart_archive_target.sql
 @deploy/layer2/install_orders_daily_interval_archive_target.sql
+@deploy/layer2/install_orders_archive_target2.sql
+@deploy/layer2/install_orders_subpart_archive_target2.sql
+@deploy/layer2/install_orders_daily_interval_archive_target2.sql
 
 PROMPT
 PROMPT ============================================================
@@ -195,6 +248,9 @@ ALTER SESSION SET CURRENT_SCHEMA = CARCH;
 @deploy/layer2/seed_client1_loopback.sql
 @deploy/layer2/seed_client1_loopback_subpart.sql
 @deploy/layer2/seed_client1_loopback_daily_interval.sql
+@deploy/layer2/seed_client2_loopback.sql
+@deploy/layer2/seed_client2_loopback_subpart.sql
+@deploy/layer2/seed_client2_loopback_daily_interval.sql
 
 PROMPT
 PROMPT ============================================================

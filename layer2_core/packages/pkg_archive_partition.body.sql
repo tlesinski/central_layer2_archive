@@ -182,8 +182,7 @@ AS
     l_tablespace := fn_normalize_tablespace_name(p_tablespace_name);
 
     p_staging_table_name := SUBSTR(
-      'STG_' || TO_CHAR(SYSTIMESTAMP, 'DDHH24MISSFF3') || '_' ||
-      UPPER(p_target_table) || '_' || UPPER(p_partition_name),
+      'STG_TMP_ARCH_' || TO_CHAR(STG_TMP_ARCH_SEQ.NEXTVAL),
       1,
       128
     );
@@ -355,5 +354,46 @@ AS
 
     l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
   END prc_drop_staging;
+
+  PROCEDURE prc_cleanup_orphan_staging
+  (
+    p_retention_days IN NUMBER DEFAULT 30,
+    p_execute        IN VARCHAR2 DEFAULT 'N',
+    p_log_id         IN NUMBER DEFAULT NULL
+  )
+  IS
+    l_execute_flag VARCHAR2(1);
+  BEGIN
+    l_execute_flag := fn_normalize_execute(p_execute);
+
+    DBMS_OUTPUT.PUT_LINE('CLEANUP orphan staging tables older than ' || p_retention_days || ' days');
+
+    FOR r IN (
+      SELECT o.object_name AS table_name, o.created
+        FROM all_objects o
+       WHERE o.owner = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
+         AND o.object_type = 'TABLE'
+         AND o.object_name LIKE 'STG\_TMP\_ARCH\_%' ESCAPE '\'
+         AND o.created < SYSDATE - NVL(p_retention_days, 30)
+       ORDER BY o.object_name
+    ) LOOP
+      DBMS_OUTPUT.PUT_LINE('[CLEANUP] Candidate: ' || r.table_name ||
+                           ' (created: ' || TO_CHAR(r.created, 'YYYY-MM-DD HH24:MI:SS') || ')');
+
+      IF l_execute_flag = 'Y' THEN
+        prc_drop_staging(
+          p_staging_owner      => SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA'),
+          p_staging_table_name => r.table_name,
+          p_execute            => 'Y',
+          p_log_id             => p_log_id
+        );
+        DBMS_OUTPUT.PUT_LINE('[CLEANUP] Dropped: ' || r.table_name);
+      END IF;
+    END LOOP;
+
+    IF l_execute_flag = 'N' THEN
+      DBMS_OUTPUT.PUT_LINE('[CLEANUP] Preview mode - no tables dropped');
+    END IF;
+  END prc_cleanup_orphan_staging;
 END PKG_ARCHIVE_PARTITION;
 /

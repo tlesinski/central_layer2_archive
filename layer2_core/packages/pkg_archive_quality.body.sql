@@ -64,7 +64,7 @@ AS
     l_quality_status  VARCHAR2(1);
     l_summary         CLOB := NULL;
     l_summary_columns VARCHAR2(1000) :=
-      'TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
+      'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
   BEGIN
     l_execute_flag := fn_normalize_execute(p_execute);
     l_target_owner := fn_normalize_name(p_target_owner);
@@ -75,8 +75,10 @@ AS
     PKG_ARCHIVE_LOG.prc_log_message
     (
       p_run_id  => l_run_id,
-      p_log_msg => 'Quality filter: target_owner=' || NVL(l_target_owner, '<ALL>') ||
-                   ', target_table_name=' || NVL(l_target_table, '<ALL>')
+      p_log_msg => 'Started QUALITY with parameters:' || CHR(10) ||
+                   '  p_execute           => ' || l_execute_flag || CHR(10) ||
+                   '  p_target_owner      => ' || NVL(l_target_owner, '<ALL>') || CHR(10) ||
+                   '  p_target_table_name => ' || NVL(l_target_table, '<ALL>')
     );
 
     l_sql :=
@@ -174,6 +176,7 @@ AS
         l_summary := l_summary ||
           PKG_ARCHIVE_LOG.fn_summary_row
           (
+            p_source_db_link          => r.source_db_link,
             p_table_owner             => r.source_owner,
             p_table_name              => r.source_table_name,
             p_partition_name          => r.source_partition_name,

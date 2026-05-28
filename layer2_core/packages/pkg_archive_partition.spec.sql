@@ -97,5 +97,12 @@ AS
     p_execute            IN VARCHAR2 DEFAULT 'Y',
     p_log_id             IN NUMBER DEFAULT NULL
   );
+
+  PROCEDURE prc_cleanup_orphan_staging
+  (
+    p_retention_days IN NUMBER DEFAULT 30,
+    p_execute        IN VARCHAR2 DEFAULT 'N',
+    p_log_id         IN NUMBER DEFAULT NULL
+  );
 END PKG_ARCHIVE_PARTITION;
 /

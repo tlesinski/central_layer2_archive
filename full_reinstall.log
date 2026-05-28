@@ -3,6 +3,36 @@ SQL> PROMPT
 
 SQL> PROMPT ============================================================
 ============================================================
+SQL> PROMPT Step 0: Creating CLIENT2 user if not exists
+Step 0: Creating CLIENT2 user if not exists
+SQL> PROMPT ============================================================
+============================================================
+SQL> 
+SQL> DECLARE
+  2    l_cnt NUMBER;
+  3  BEGIN
+  4    SELECT COUNT(*) INTO l_cnt FROM dba_users WHERE username = 'CLIENT2';
+  5    IF l_cnt = 0 THEN
+  6  	 EXECUTE IMMEDIATE 'CREATE USER CLIENT2 IDENTIFIED BY CLIENT2' ||
+  7  			   ' DEFAULT TABLESPACE USERS QUOTA UNLIMITED ON USERS';
+  8  	 EXECUTE IMMEDIATE 'GRANT CONNECT TO CLIENT2';
+  9  	 EXECUTE IMMEDIATE 'GRANT CREATE TABLE TO CLIENT2';
+ 10  	 EXECUTE IMMEDIATE 'GRANT CREATE SESSION TO CLIENT2';
+ 11  	 DBMS_OUTPUT.PUT_LINE('CLIENT2 user created');
+ 12    ELSE
+ 13  	 DBMS_OUTPUT.PUT_LINE('CLIENT2 user already exists');
+ 14    END IF;
+ 15  END;
+ 16  /
+CLIENT2 user already exists                                                     
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> PROMPT
+
+SQL> PROMPT ============================================================
+============================================================
 SQL> PROMPT Step 1: Installing CLIENT1 source tables
 Step 1: Installing CLIENT1 source tables
 SQL> PROMPT ============================================================
@@ -316,6 +346,319 @@ SQL> PROMPT
 
 SQL> PROMPT ============================================================
 ============================================================
+SQL> PROMPT Step 1b: Installing CLIENT2 source tables
+Step 1b: Installing CLIENT2 source tables
+SQL> PROMPT ============================================================
+============================================================
+SQL> 
+SQL> ALTER SESSION SET CURRENT_SCHEMA = CLIENT2;
+
+Session altered.
+
+SQL> 
+SQL> @deploy/client2/install_client2_test_source.sql
+SQL> SET DEFINE OFF
+SQL> SET SERVEROUTPUT ON
+SQL> SET FEEDBACK ON
+SQL> SET ECHO ON
+SQL> 
+SQL> PROMPT Installing CLIENT2 test source objects
+Installing CLIENT2 test source objects
+SQL> 
+SQL> BEGIN
+  2    EXECUTE IMMEDIATE 'DROP TABLE ORDERS_ARCH_SRC PURGE';
+  3  EXCEPTION
+  4    WHEN OTHERS THEN
+  5  	 IF SQLCODE != -942 THEN
+  6  	   RAISE;
+  7  	 END IF;
+  8  END;
+  9  /
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> CREATE TABLE ORDERS_ARCH_SRC
+  2  (
+  3    ORDER_ID     NUMBER NOT NULL,
+  4    CUSTOMER_ID  NUMBER NOT NULL,
+  5    ORDER_DATE   DATE NOT NULL,
+  6    STATUS_CODE  VARCHAR2(20) NOT NULL,
+  7    AMOUNT	    NUMBER(12,2) NOT NULL,
+  8    CREATED_AT   TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+  9    CONSTRAINT ORDERS_ARCH_SRC_PK PRIMARY KEY (ORDER_ID, ORDER_DATE)
+ 10  )
+ 11  PARTITION BY RANGE (ORDER_DATE)
+ 12  (
+ 13    PARTITION P_ERROR VALUES LESS THAN
+ 14  	 (TO_DATE(' 1800-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')),
+ 15    PARTITION P202401 VALUES LESS THAN (DATE '2024-02-01'),
+ 16    PARTITION P202402 VALUES LESS THAN (DATE '2024-03-01'),
+ 17    PARTITION P202403 VALUES LESS THAN (DATE '2024-04-01'),
+ 18    PARTITION P202404 VALUES LESS THAN (DATE '2024-05-01'),
+ 19    PARTITION PMAX VALUES LESS THAN (MAXVALUE)
+ 20  );
+
+Table created.
+
+SQL> 
+SQL> CREATE INDEX ORDERS_ARCH_SRC_LIX1
+  2    ON ORDERS_ARCH_SRC (CUSTOMER_ID, ORDER_DATE)
+  3    LOCAL;
+
+Index created.
+
+SQL> 
+SQL> CREATE INDEX ORDERS_ARCH_SRC_LIX2
+  2    ON ORDERS_ARCH_SRC (STATUS_CODE, ORDER_DATE)
+  3    LOCAL;
+
+Index created.
+
+SQL> 
+SQL> INSERT INTO ORDERS_ARCH_SRC (ORDER_ID, CUSTOMER_ID, ORDER_DATE, STATUS_CODE, AMOUNT)
+  2  SELECT LEVEL,
+  3  	    1000 + MOD(LEVEL, 17),
+  4  	    DATE '2024-01-01' + MOD(LEVEL - 1, 115),
+  5  	    CASE MOD(LEVEL, 4)
+  6  	      WHEN 0 THEN 'NEW'
+  7  	      WHEN 1 THEN 'PAID'
+  8  	      WHEN 2 THEN 'SHIPPED'
+  9  	      ELSE 'CLOSED'
+ 10  	    END,
+ 11  	    ROUND(10 + (LEVEL * 1.37), 2)
+ 12    FROM dual
+ 13   CONNECT BY LEVEL <= 250;
+
+250 rows created.
+
+SQL> 
+SQL> COMMIT;
+
+Commit complete.
+
+SQL> 
+SQL> PROMPT CLIENT2 test source install completed
+CLIENT2 test source install completed
+SQL> @deploy/client2/install_client2_subpart_test_source.sql
+SQL> SET DEFINE OFF
+SQL> SET SERVEROUTPUT ON
+SQL> SET FEEDBACK ON
+SQL> SET ECHO ON
+SQL> 
+SQL> PROMPT Installing CLIENT2 subpartitioned test source objects
+Installing CLIENT2 subpartitioned test source objects
+SQL> 
+SQL> BEGIN
+  2    EXECUTE IMMEDIATE 'DROP TABLE ORDERS_SUBPART_SRC PURGE';
+  3  EXCEPTION
+  4    WHEN OTHERS THEN
+  5  	 IF SQLCODE != -942 THEN
+  6  	   RAISE;
+  7  	 END IF;
+  8  END;
+  9  /
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> CREATE TABLE ORDERS_SUBPART_SRC
+  2  (
+  3    ORDER_ID     NUMBER NOT NULL,
+  4    CUSTOMER_ID  NUMBER NOT NULL,
+  5    ORDER_DATE   DATE NOT NULL,
+  6    STATUS_CODE  VARCHAR2(20) NOT NULL,
+  7    REGION_CODE  VARCHAR2(10) NOT NULL,
+  8    AMOUNT	    NUMBER(12,2) NOT NULL,
+  9    CREATED_AT   TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL
+ 10  )
+ 11  PARTITION BY RANGE (ORDER_DATE)
+ 12  SUBPARTITION BY LIST (STATUS_CODE)
+ 13  SUBPARTITION TEMPLATE
+ 14  (
+ 15    SUBPARTITION SP_OPEN VALUES ('NEW', 'PAID'),
+ 16    SUBPARTITION SP_DONE VALUES ('SHIPPED', 'CLOSED')
+ 17  )
+ 18  (
+ 19    PARTITION P_ERROR VALUES LESS THAN
+ 20  	 (TO_DATE(' 1800-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')),
+ 21    PARTITION P202401 VALUES LESS THAN (DATE '2024-02-01'),
+ 22    PARTITION P202402 VALUES LESS THAN (DATE '2024-03-01'),
+ 23    PARTITION P202403 VALUES LESS THAN (DATE '2024-04-01'),
+ 24    PARTITION P202404 VALUES LESS THAN (DATE '2024-05-01'),
+ 25    PARTITION PMAX VALUES LESS THAN (MAXVALUE)
+ 26  );
+
+Table created.
+
+SQL> 
+SQL> CREATE INDEX ORDERS_SUBPART_SRC_LIX1
+  2    ON ORDERS_SUBPART_SRC (CUSTOMER_ID, ORDER_DATE)
+  3    LOCAL;
+
+Index created.
+
+SQL> 
+SQL> CREATE INDEX ORDERS_SUBPART_SRC_LIX2
+  2    ON ORDERS_SUBPART_SRC (REGION_CODE, ORDER_DATE)
+  3    LOCAL;
+
+Index created.
+
+SQL> 
+SQL> INSERT INTO ORDERS_SUBPART_SRC
+  2    (ORDER_ID, CUSTOMER_ID, ORDER_DATE, STATUS_CODE, REGION_CODE, AMOUNT)
+  3  SELECT LEVEL,
+  4  	    4000 + MOD(LEVEL, 23),
+  5  	    DATE '2024-01-01' + MOD(LEVEL - 1, 115),
+  6  	    CASE MOD(LEVEL, 4)
+  7  	      WHEN 0 THEN 'NEW'
+  8  	      WHEN 1 THEN 'PAID'
+  9  	      WHEN 2 THEN 'SHIPPED'
+ 10  	      ELSE 'CLOSED'
+ 11  	    END,
+ 12  	    CASE MOD(LEVEL, 3)
+ 13  	      WHEN 0 THEN 'N'
+ 14  	      WHEN 1 THEN 'S'
+ 15  	      ELSE 'W'
+ 16  	    END,
+ 17  	    ROUND(40 + (LEVEL * 3.22), 2)
+ 18    FROM dual
+ 19  CONNECT BY LEVEL <= 360;
+
+360 rows created.
+
+SQL> 
+SQL> COMMIT;
+
+Commit complete.
+
+SQL> 
+SQL> PROMPT CLIENT2 subpartitioned test source install completed
+CLIENT2 subpartitioned test source install completed
+SQL> @deploy/client2/install_client2_daily_interval_test_source.sql
+SQL> SET DEFINE OFF
+SQL> SET SERVEROUTPUT ON
+SQL> SET FEEDBACK ON
+SQL> SET ECHO ON
+SQL> 
+SQL> PROMPT Installing CLIENT2 daily interval-list test source objects
+Installing CLIENT2 daily interval-list test source objects
+SQL> 
+SQL> BEGIN
+  2    EXECUTE IMMEDIATE 'DROP TABLE ORDERS_DAILY_INT_SRC PURGE';
+  3  EXCEPTION
+  4    WHEN OTHERS THEN
+  5  	 IF SQLCODE != -942 THEN
+  6  	   RAISE;
+  7  	 END IF;
+  8  END;
+  9  /
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> CREATE TABLE ORDERS_DAILY_INT_SRC
+  2  (
+  3    ORDER_ID     NUMBER NOT NULL,
+  4    CUSTOMER_ID  NUMBER NOT NULL,
+  5    ORDER_DATE   DATE NOT NULL,
+  6    STATUS_CODE  VARCHAR2(20) NOT NULL,
+  7    REGION_CODE  VARCHAR2(10) NOT NULL,
+  8    AMOUNT	    NUMBER(12,2) NOT NULL,
+  9    CREATED_AT   TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL
+ 10  )
+ 11  PARTITION BY RANGE (ORDER_DATE)
+ 12  INTERVAL (NUMTODSINTERVAL(1, 'DAY'))
+ 13  SUBPARTITION BY LIST (STATUS_CODE)
+ 14  SUBPARTITION TEMPLATE
+ 15  (
+ 16    SUBPARTITION SP_OPEN VALUES ('NEW', 'PAID'),
+ 17    SUBPARTITION SP_DONE VALUES ('SHIPPED', 'CLOSED')
+ 18  )
+ 19  (
+ 20    PARTITION P_ERROR VALUES LESS THAN
+ 21  	 (TO_DATE(' 1800-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN')),
+ 22    PARTITION P20240501 VALUES LESS THAN (DATE '2024-05-02')
+ 23  );
+
+Table created.
+
+SQL> 
+SQL> CREATE INDEX ORDERS_DAILY_INT_SRC_LIX1
+  2    ON ORDERS_DAILY_INT_SRC (CUSTOMER_ID, ORDER_DATE)
+  3    LOCAL;
+
+Index created.
+
+SQL> 
+SQL> CREATE INDEX ORDERS_DAILY_INT_SRC_LIX2
+  2    ON ORDERS_DAILY_INT_SRC (REGION_CODE, ORDER_DATE)
+  3    LOCAL;
+
+Index created.
+
+SQL> 
+SQL> INSERT INTO ORDERS_DAILY_INT_SRC
+  2    (ORDER_ID, CUSTOMER_ID, ORDER_DATE, STATUS_CODE, REGION_CODE, AMOUNT)
+  3  SELECT LEVEL,
+  4  	    5000 + MOD(LEVEL, 19),
+  5  	    DATE '2024-05-01' + MOD(LEVEL - 1, 4),
+  6  	    CASE MOD(LEVEL, 4)
+  7  	      WHEN 0 THEN 'NEW'
+  8  	      WHEN 1 THEN 'PAID'
+  9  	      WHEN 2 THEN 'SHIPPED'
+ 10  	      ELSE 'CLOSED'
+ 11  	    END,
+ 12  	    CASE MOD(LEVEL, 3)
+ 13  	      WHEN 0 THEN 'N'
+ 14  	      WHEN 1 THEN 'S'
+ 15  	      ELSE 'W'
+ 16  	    END,
+ 17  	    ROUND(50 + (LEVEL * 2.77), 2)
+ 18    FROM dual
+ 19  CONNECT BY LEVEL <= 96;
+
+96 rows created.
+
+SQL> 
+SQL> COMMIT;
+
+Commit complete.
+
+SQL> 
+SQL> DECLARE
+  2    l_new_name VARCHAR2(128);
+  3  BEGIN
+  4    FOR r IN (
+  5  	 SELECT partition_name,
+  6  		partition_position
+  7  	   FROM all_tab_partitions p
+  8  	  WHERE p.table_owner = 'CLIENT2'
+  9  	    AND p.table_name = 'ORDERS_DAILY_INT_SRC'
+ 10  	    AND p.partition_name <> 'P_ERROR'
+ 11  	  ORDER BY p.partition_position
+ 12    ) LOOP
+ 13  	 l_new_name := 'P' || TO_CHAR(DATE '2024-05-01' + r.partition_position - 2, 'YYYYMMDD');
+ 14  
+ 15  	 IF r.partition_name <> l_new_name THEN
+ 16  	   EXECUTE IMMEDIATE 'ALTER TABLE ORDERS_DAILY_INT_SRC RENAME PARTITION ' ||
+ 17  			     r.partition_name || ' TO ' || l_new_name;
+ 18  	 END IF;
+ 19    END LOOP;
+ 20  END;
+ 21  /
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> PROMPT CLIENT2 daily interval-list test source install completed
+CLIENT2 daily interval-list test source install completed
+SQL> 
+SQL> PROMPT
+
+SQL> PROMPT ============================================================
+============================================================
 SQL> PROMPT Step 2: Granting CLIENT1 access to CAGENT1 and CARCH
 Step 2: Granting CLIENT1 access to CAGENT1 and CARCH
 SQL> PROMPT ============================================================
@@ -427,6 +770,105 @@ SQL>
 SQL> PROMPT CAGENT1 cleanup administration grants completed
 CAGENT1 cleanup administration grants completed
 SQL> 
+SQL> 
+SQL> PROMPT
+
+SQL> PROMPT ============================================================
+============================================================
+SQL> PROMPT Step 2b: Granting CLIENT2 access to CAGENT1 and CARCH
+Step 2b: Granting CLIENT2 access to CAGENT1 and CARCH
+SQL> PROMPT ============================================================
+============================================================
+SQL> 
+SQL> ALTER SESSION SET CURRENT_SCHEMA = CLIENT2;
+
+Session altered.
+
+SQL> 
+SQL> @deploy/client2/grant_client2_to_cagent1.sql
+SQL> SET DEFINE OFF
+SQL> SET SERVEROUTPUT ON
+SQL> SET FEEDBACK ON
+SQL> SET ECHO ON
+SQL> 
+SQL> PROMPT Granting CLIENT2 test source access to CAGENT1
+Granting CLIENT2 test source access to CAGENT1
+SQL> 
+SQL> GRANT SELECT ON ORDERS_ARCH_SRC TO CAGENT1;
+
+Grant succeeded.
+
+SQL> GRANT DELETE ON ORDERS_ARCH_SRC TO CAGENT1;
+
+Grant succeeded.
+
+SQL> GRANT ALTER ON ORDERS_ARCH_SRC TO CAGENT1;
+
+Grant succeeded.
+
+SQL> GRANT SELECT ON ORDERS_ARCH_SRC TO CARCH;
+
+Grant succeeded.
+
+SQL> 
+SQL> PROMPT CLIENT2 grants completed
+CLIENT2 grants completed
+SQL> @deploy/client2/grant_client2_subpart_to_cagent1.sql
+SQL> SET DEFINE OFF
+SQL> SET SERVEROUTPUT ON
+SQL> SET FEEDBACK ON
+SQL> SET ECHO ON
+SQL> 
+SQL> PROMPT Granting CLIENT2 subpartitioned test source access to CAGENT1
+Granting CLIENT2 subpartitioned test source access to CAGENT1
+SQL> 
+SQL> GRANT SELECT ON ORDERS_SUBPART_SRC TO CAGENT1;
+
+Grant succeeded.
+
+SQL> GRANT DELETE ON ORDERS_SUBPART_SRC TO CAGENT1;
+
+Grant succeeded.
+
+SQL> GRANT ALTER ON ORDERS_SUBPART_SRC TO CAGENT1;
+
+Grant succeeded.
+
+SQL> GRANT SELECT ON ORDERS_SUBPART_SRC TO CARCH;
+
+Grant succeeded.
+
+SQL> 
+SQL> PROMPT CLIENT2 subpartitioned grants completed
+CLIENT2 subpartitioned grants completed
+SQL> @deploy/client2/grant_client2_daily_interval_to_cagent1.sql
+SQL> SET DEFINE OFF
+SQL> SET SERVEROUTPUT ON
+SQL> SET FEEDBACK ON
+SQL> SET ECHO ON
+SQL> 
+SQL> PROMPT Granting CLIENT2 daily interval-list test source access to CAGENT1
+Granting CLIENT2 daily interval-list test source access to CAGENT1
+SQL> 
+SQL> GRANT SELECT ON ORDERS_DAILY_INT_SRC TO CAGENT1;
+
+Grant succeeded.
+
+SQL> GRANT DELETE ON ORDERS_DAILY_INT_SRC TO CAGENT1;
+
+Grant succeeded.
+
+SQL> GRANT ALTER ON ORDERS_DAILY_INT_SRC TO CAGENT1;
+
+Grant succeeded.
+
+SQL> GRANT SELECT ON ORDERS_DAILY_INT_SRC TO CARCH;
+
+Grant succeeded.
+
+SQL> 
+SQL> PROMPT CLIENT2 daily interval-list grants completed
+CLIENT2 daily interval-list grants completed
 SQL> 
 SQL> PROMPT
 
@@ -847,6 +1289,21 @@ Session altered.
 SQL> 
 SQL> @layer2_core/sequences/md_process_log_seq.sql
 SQL> CREATE SEQUENCE MD_PROCESS_LOG_SEQ
+  2    MINVALUE 1
+  3    MAXVALUE 9999999999999999999999999999
+  4    INCREMENT BY 1
+  5    START WITH 1
+  6    CACHE 20
+  7    NOORDER
+  8    NOCYCLE
+  9    NOKEEP
+ 10    NOSCALE
+ 11    GLOBAL;
+
+Sequence created.
+
+SQL> @deploy/layer2/sequences/stg_tmp_arch_seq.sql
+SQL> CREATE SEQUENCE STG_TMP_ARCH_SEQ
   2    MINVALUE 1
   3    MAXVALUE 9999999999999999999999999999
   4    INCREMENT BY 1
@@ -1985,8 +2442,20 @@ SQL> CREATE OR REPLACE PACKAGE PKG_SQL
  60  	 p_execute    IN VARCHAR2 DEFAULT 'Y'
  61    )
  62    RETURN NUMBER;
- 63  END PKG_SQL;
- 64  /
+ 63  
+ 64    FUNCTION fn_format_table
+ 65    (
+ 66  	 p_columns	 IN VARCHAR2,
+ 67  	 p_rows 	 IN CLOB,
+ 68  	 p_col_align	 IN VARCHAR2 DEFAULT NULL,
+ 69  	 p_separator	 IN VARCHAR2 DEFAULT '|',
+ 70  	 p_null_text	 IN VARCHAR2 DEFAULT '-',
+ 71  	 p_max_col_width IN NUMBER   DEFAULT 120,
+ 72  	 p_box_style	 IN VARCHAR2 DEFAULT 'SIMPLE'
+ 73    )
+ 74    RETURN CLOB;
+ 75  END PKG_SQL;
+ 76  /
 
 Package created.
 
@@ -2326,8 +2795,250 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_SQL
 333  	   END;
 334  	 END LOOP;
 335    END fn_run_into_sql_in_bind;
-336  END PKG_SQL;
-337  /
+336  
+337    FUNCTION fn_col_count
+338    (
+339  	 p_line IN VARCHAR2,
+340  	 p_sep	IN VARCHAR2 DEFAULT '|'
+341    )
+342    RETURN PLS_INTEGER
+343    IS
+344  	 l_count PLS_INTEGER := 1;
+345  	 l_pos	 PLS_INTEGER := 0;
+346    BEGIN
+347  	 IF p_line IS NULL THEN
+348  	   RETURN 0;
+349  	 END IF;
+350  
+351  	 LOOP
+352  	   l_pos := INSTR(p_line, p_sep, l_pos + 1);
+353  	   EXIT WHEN l_pos = 0;
+354  	   l_count := l_count + 1;
+355  	 END LOOP;
+356  
+357  	 RETURN l_count;
+358    END fn_col_count;
+359  
+360    FUNCTION fn_col_value
+361    (
+362  	 p_line   IN VARCHAR2,
+363  	 p_col_no IN PLS_INTEGER,
+364  	 p_sep	  IN VARCHAR2 DEFAULT '|'
+365    )
+366    RETURN VARCHAR2
+367    IS
+368  	 l_text      VARCHAR2(32767) := p_line;
+369  	 l_start_pos PLS_INTEGER := 1;
+370  	 l_end_pos   PLS_INTEGER;
+371    BEGIN
+372  	 FOR i IN 1 .. p_col_no LOOP
+373  	   l_end_pos := INSTR(l_text, p_sep, l_start_pos);
+374  
+375  	   IF i = p_col_no THEN
+376  	     IF l_end_pos = 0 THEN
+377  	       RETURN SUBSTR(l_text, l_start_pos);
+378  	     ELSE
+379  	       RETURN SUBSTR(l_text, l_start_pos, l_end_pos - l_start_pos);
+380  	     END IF;
+381  	   END IF;
+382  
+383  	   IF l_end_pos = 0 THEN
+384  	     RETURN NULL;
+385  	   END IF;
+386  
+387  	   l_start_pos := l_end_pos + 1;
+388  	 END LOOP;
+389  
+390  	 RETURN NULL;
+391    END fn_col_value;
+392  
+393    FUNCTION fn_next_line
+394    (
+395  	 p_clob IN CLOB,
+396  	 p_pos	IN OUT PLS_INTEGER
+397    )
+398    RETURN VARCHAR2
+399    IS
+400  	 l_end_pos PLS_INTEGER;
+401  	 l_line    VARCHAR2(32767);
+402    BEGIN
+403  	 IF p_clob IS NULL OR p_pos > DBMS_LOB.GETLENGTH(p_clob) THEN
+404  	   RETURN NULL;
+405  	 END IF;
+406  
+407  	 l_end_pos := DBMS_LOB.INSTR(p_clob, CHR(10), p_pos);
+408  
+409  	 IF l_end_pos = 0 THEN
+410  	   l_line := DBMS_LOB.SUBSTR(p_clob, 32767, p_pos);
+411  	   p_pos := DBMS_LOB.GETLENGTH(p_clob) + 1;
+412  	 ELSE
+413  	   l_line := DBMS_LOB.SUBSTR(p_clob, l_end_pos - p_pos, p_pos);
+414  	   p_pos := l_end_pos + 1;
+415  	 END IF;
+416  
+417  	 RETURN l_line;
+418    END fn_next_line;
+419  
+420    FUNCTION fn_sanitize
+421    (
+422  	 p_value    IN VARCHAR2,
+423  	 p_null_text IN VARCHAR2 DEFAULT '-',
+424  	 p_sep	    IN VARCHAR2 DEFAULT '|'
+425    )
+426    RETURN VARCHAR2
+427    IS
+428    BEGIN
+429  	 IF p_value IS NULL OR TRIM(p_value) IS NULL THEN
+430  	   RETURN p_null_text;
+431  	 END IF;
+432  
+433  	 RETURN REPLACE(REPLACE(REPLACE(TRIM(p_value), CHR(13), ' '), CHR(10), ' '), p_sep, ' ');
+434    END fn_sanitize;
+435  
+436    FUNCTION fn_format_table
+437    (
+438  	 p_columns	 IN VARCHAR2,
+439  	 p_rows 	 IN CLOB,
+440  	 p_col_align	 IN VARCHAR2 DEFAULT NULL,
+441  	 p_separator	 IN VARCHAR2 DEFAULT '|',
+442  	 p_null_text	 IN VARCHAR2 DEFAULT '-',
+443  	 p_max_col_width IN NUMBER   DEFAULT 120,
+444  	 p_box_style	 IN VARCHAR2 DEFAULT 'SIMPLE'
+445    )
+446    RETURN CLOB
+447    IS
+448  	 TYPE t_widths IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
+449  
+450  	 l_widths	t_widths;
+451  	 l_col_count	PLS_INTEGER;
+452  	 l_max_width	PLS_INTEGER := LEAST(GREATEST(NVL(p_max_col_width, 120), 8), 300);
+453  	 l_pos		PLS_INTEGER;
+454  	 l_line 	VARCHAR2(32767);
+455  	 l_value	VARCHAR2(32767);
+456  	 l_sanitized	VARCHAR2(32767);
+457  	 l_result	CLOB;
+458  	 l_rows_count	NUMBER := 0;
+459  	 l_box		VARCHAR2(20);
+460  	 l_is_right	BOOLEAN;
+461    BEGIN
+462  	 l_box := UPPER(NVL(TRIM(p_box_style), 'SIMPLE'));
+463  
+464  	 IF l_box NOT IN ('NONE', 'SIMPLE') THEN
+465  	   l_box := 'SIMPLE';
+466  	 END IF;
+467  
+468  	 l_col_count := fn_col_count(p_columns, p_separator);
+469  
+470  	 IF l_col_count = 0 THEN
+471  	   RETURN 'FORMAT_TABLE: no columns' || CHR(10);
+472  	 END IF;
+473  
+474  	 -- pass 1: measure max widths per column
+475  	 FOR i IN 1 .. l_col_count LOOP
+476  	   l_value := fn_col_value(p_columns, i, p_separator);
+477  	   l_widths(i) := LEAST(GREATEST(LENGTH(NVL(l_value, '-')), 1), l_max_width);
+478  	 END LOOP;
+479  
+480  	 l_pos := 1;
+481  
+482  	 LOOP
+483  	   l_line := fn_next_line(p_rows, l_pos);
+484  	   EXIT WHEN l_line IS NULL;
+485  	   CONTINUE WHEN TRIM(l_line) IS NULL;
+486  
+487  	   l_rows_count := l_rows_count + 1;
+488  
+489  	   FOR i IN 1 .. l_col_count LOOP
+490  	     l_value := fn_col_value(l_line, i, p_separator);
+491  	     l_sanitized := fn_sanitize(l_value, p_null_text, p_separator);
+492  	     l_widths(i) := LEAST(GREATEST(l_widths(i), LENGTH(l_sanitized)), l_max_width);
+493  	   END LOOP;
+494  	 END LOOP;
+495  
+496  	 -- pass 2: build output
+497  	 l_result := 'FORMAT_TABLE:' || CHR(10);
+498  	 l_result := l_result || 'Columns : ' || l_col_count || CHR(10);
+499  	 l_result := l_result || 'Rows	  : ' || l_rows_count || CHR(10) || CHR(10);
+500  
+501  	 -- header + top border
+502  	 IF l_box = 'SIMPLE' THEN
+503  	   l_result := l_result || '+';
+504  	   FOR i IN 1 .. l_col_count LOOP
+505  	     l_result := l_result || RPAD('-', l_widths(i) + 2, '-') || '+';
+506  	   END LOOP;
+507  	   l_result := l_result || CHR(10) || '|';
+508  
+509  	   FOR i IN 1 .. l_col_count LOOP
+510  	     l_value := fn_col_value(p_columns, i, p_separator);
+511  	     l_result := l_result || ' ' || RPAD(NVL(l_value, '-'), l_widths(i)) || ' |';
+512  	   END LOOP;
+513  
+514  	   l_result := l_result || CHR(10) || '+';
+515  	   FOR i IN 1 .. l_col_count LOOP
+516  	     l_result := l_result || RPAD('-', l_widths(i) + 2, '-') || '+';
+517  	   END LOOP;
+518  	   l_result := l_result || CHR(10);
+519  	 ELSE
+520  	   FOR i IN 1 .. l_col_count LOOP
+521  	     l_value := fn_col_value(p_columns, i, p_separator);
+522  	     l_result := l_result || RPAD(NVL(l_value, '-'), l_widths(i));
+523  	     l_result := l_result || CASE WHEN i < l_col_count THEN '  ' END;
+524  	   END LOOP;
+525  
+526  	   l_result := l_result || CHR(10);
+527  
+528  	   FOR i IN 1 .. l_col_count LOOP
+529  	     l_result := l_result || RPAD('-', l_widths(i), '-');
+530  	     l_result := l_result || CASE WHEN i < l_col_count THEN '  ' END;
+531  	   END LOOP;
+532  
+533  	   l_result := l_result || CHR(10);
+534  	 END IF;
+535  
+536  	 -- data rows
+537  	 l_pos := 1;
+538  
+539  	 LOOP
+540  	   l_line := fn_next_line(p_rows, l_pos);
+541  	   EXIT WHEN l_line IS NULL;
+542  	   CONTINUE WHEN TRIM(l_line) IS NULL;
+543  
+544  	   IF l_box = 'SIMPLE' THEN
+545  	     l_result := l_result || '|';
+546  	   END IF;
+547  
+548  	   FOR i IN 1 .. l_col_count LOOP
+549  	     l_value := fn_col_value(l_line, i, p_separator);
+550  	     l_sanitized := fn_sanitize(l_value, p_null_text, p_separator);
+551  	     l_is_right := p_col_align IS NOT NULL AND LENGTH(p_col_align) >= i AND SUBSTR(p_col_align, i, 1) = '>';
+552  
+553  	     IF l_box = 'SIMPLE' THEN
+554  	       l_result := l_result || ' ' ||
+555  		 CASE WHEN l_is_right THEN LPAD(l_sanitized, l_widths(i)) ELSE RPAD(l_sanitized, l_widths(i)) END ||
+556  		 ' |';
+557  	     ELSE
+558  	       l_result := l_result ||
+559  		 CASE WHEN l_is_right THEN LPAD(l_sanitized, l_widths(i)) ELSE RPAD(l_sanitized, l_widths(i)) END;
+560  	       l_result := l_result || CASE WHEN i < l_col_count THEN '  ' END;
+561  	     END IF;
+562  	   END LOOP;
+563  
+564  	   l_result := l_result || CHR(10);
+565  	 END LOOP;
+566  
+567  	 -- bottom border
+568  	 IF l_box = 'SIMPLE' AND l_rows_count > 0 THEN
+569  	   l_result := l_result || '+';
+570  	   FOR i IN 1 .. l_col_count LOOP
+571  	     l_result := l_result || RPAD('-', l_widths(i) + 2, '-') || '+';
+572  	   END LOOP;
+573  	   l_result := l_result || CHR(10);
+574  	 END IF;
+575  
+576  	 RETURN l_result;
+577    END fn_format_table;
+578  END PKG_SQL;
+579  /
 
 Package body created.
 
@@ -2386,47 +3097,39 @@ SQL> CREATE OR REPLACE PACKAGE PKG_ARCHIVE_LOG
  52  
  53    FUNCTION fn_summary_row
  54    (
- 55  	 p_table_owner		   IN VARCHAR2,
- 56  	 p_table_name		   IN VARCHAR2,
- 57  	 p_partition_name	   IN VARCHAR2,
- 58  	 p_subpartition_name	   IN VARCHAR2,
- 59  	 p_partition_high_value    IN VARCHAR2,
- 60  	 p_subpartition_high_value IN VARCHAR2,
- 61  	 p_archive_status	   IN VARCHAR2,
- 62  	 p_quality_status	   IN VARCHAR2,
- 63  	 p_truncate_status	   IN VARCHAR2,
- 64  	 p_source_row_count	   IN NUMBER DEFAULT NULL,
- 65  	 p_target_row_count	   IN NUMBER DEFAULT NULL,
- 66  	 p_note 		   IN VARCHAR2 DEFAULT NULL
- 67    )
- 68    RETURN CLOB;
- 69  
- 70    FUNCTION fn_render_summary
- 71    (
- 72  	 p_process_name  IN VARCHAR2,
- 73  	 p_columns	 IN VARCHAR2,
- 74  	 p_rows 	 IN CLOB,
- 75  	 p_max_col_width IN NUMBER DEFAULT 120
- 76    )
- 77    RETURN CLOB;
- 78  
- 79    PROCEDURE prc_log_summary
- 80    (
- 81  	 p_run_id	 IN NUMBER,
- 82  	 p_process_name  IN VARCHAR2,
- 83  	 p_columns	 IN VARCHAR2,
- 84  	 p_rows 	 IN CLOB,
- 85  	 p_max_col_width IN NUMBER DEFAULT 120
- 86    );
- 87  
- 88    PROCEDURE prc_finish_run
- 89    (
- 90  	 p_run_id	 IN NUMBER,
- 91  	 p_status	 IN VARCHAR2,
- 92  	 p_error_message IN VARCHAR2 DEFAULT NULL
- 93    );
- 94  END PKG_ARCHIVE_LOG;
- 95  /
+ 55  	 p_source_db_link	   IN VARCHAR2,
+ 56  	 p_table_owner		   IN VARCHAR2,
+ 57  	 p_table_name		   IN VARCHAR2,
+ 58  	 p_partition_name	   IN VARCHAR2,
+ 59  	 p_subpartition_name	   IN VARCHAR2,
+ 60  	 p_partition_high_value    IN VARCHAR2,
+ 61  	 p_subpartition_high_value IN VARCHAR2,
+ 62  	 p_archive_status	   IN VARCHAR2,
+ 63  	 p_quality_status	   IN VARCHAR2,
+ 64  	 p_truncate_status	   IN VARCHAR2,
+ 65  	 p_source_row_count	   IN NUMBER DEFAULT NULL,
+ 66  	 p_target_row_count	   IN NUMBER DEFAULT NULL,
+ 67  	 p_note 		   IN VARCHAR2 DEFAULT NULL
+ 68    )
+ 69    RETURN CLOB;
+ 70  
+ 71    PROCEDURE prc_log_summary
+ 72    (
+ 73  	 p_run_id	 IN NUMBER,
+ 74  	 p_process_name  IN VARCHAR2,
+ 75  	 p_columns	 IN VARCHAR2,
+ 76  	 p_rows 	 IN CLOB,
+ 77  	 p_max_col_width IN NUMBER DEFAULT 120
+ 78    );
+ 79  
+ 80    PROCEDURE prc_finish_run
+ 81    (
+ 82  	 p_run_id	 IN NUMBER,
+ 83  	 p_status	 IN VARCHAR2,
+ 84  	 p_error_message IN VARCHAR2 DEFAULT NULL
+ 85    );
+ 86  END PKG_ARCHIVE_LOG;
+ 87  /
 
 Package created.
 
@@ -2478,393 +3181,201 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_LOG
  45  	   (l_run_type, 'RUNNING', UPPER(p_source_db_link), UPPER(p_source_owner), UPPER(p_source_table), l_log_id, l_execute_flag)
  46  	 RETURNING RUN_ID INTO l_run_id;
  47  
- 48  	 PKG_TL_LOGGING.prc_log
- 49  	 (
- 50  	   p_log_id	 => l_log_id,
- 51  	   p_mstr_log_id => l_log_id,
- 52  	   p_log_categ	 => l_run_type,
- 53  	   p_mstr_fun	 => 'PKG_ARCHIVE_' || l_run_type,
- 54  	   p_log_sttus	 => PKG_TL_LOGGING.g_sttus_running_const,
- 55  	   p_start_date  => SYSDATE,
- 56  	   p_log_msg	 => 'Started ' || l_run_type || ' for ' ||
- 57  			    UPPER(p_source_db_link) || '.' ||
- 58  			    UPPER(p_source_owner) || '.' ||
- 59  			    UPPER(p_source_table) ||
- 60  			    ', execute=' || l_execute_flag
- 61  	 );
- 62  
- 63  	 RETURN l_run_id;
- 64    END fn_create_run;
- 65  
- 66    FUNCTION fn_get_log_id
- 67    (
- 68  	 p_run_id IN NUMBER
- 69    )
- 70    RETURN NUMBER
- 71    IS
- 72  	 l_log_id NUMBER;
- 73    BEGIN
- 74  	 SELECT MSTR_LOG_ID
- 75  	   INTO l_log_id
- 76  	   FROM TW_ARCHIVE_RUNS
- 77  	  WHERE RUN_ID = p_run_id;
- 78  
- 79  	 RETURN l_log_id;
- 80    END fn_get_log_id;
- 81  
- 82    PROCEDURE prc_log_message
- 83    (
- 84  	 p_run_id    IN NUMBER,
- 85  	 p_log_msg   IN CLOB,
- 86  	 p_log_type  IN VARCHAR2 DEFAULT 'TEXT',
- 87  	 p_log_sttus IN VARCHAR2 DEFAULT PKG_TL_LOGGING.g_sttus_running_const
- 88    )
- 89    IS
- 90  	 l_log_id NUMBER;
- 91    BEGIN
- 92  	 IF p_run_id IS NULL THEN
- 93  	   RETURN;
- 94  	 END IF;
- 95  
- 96  	 l_log_id := fn_get_log_id(p_run_id);
- 97  
- 98  	 PKG_TL_LOGGING.prc_log
- 99  	 (
-100  	   p_log_id	 => l_log_id,
-101  	   p_mstr_log_id => l_log_id,
-102  	   p_log_msg	 => p_log_msg,
-103  	   p_log_sttus	 => p_log_sttus,
-104  	   p_log_type	 => p_log_type
-105  	 );
-106    END prc_log_message;
-107  
-108    PROCEDURE prc_log_error_stack
-109    (
-110  	 p_run_id IN NUMBER
-111    )
-112    IS
-113  	 l_log_id NUMBER;
-114    BEGIN
-115  	 IF p_run_id IS NULL THEN
-116  	   RETURN;
-117  	 END IF;
-118  
-119  	 l_log_id := fn_get_log_id(p_run_id);
-120  	 PKG_TL_LOGGING.prc_error_stack
-121  	 (
-122  	   p_log_id	 => l_log_id,
-123  	   p_mstr_log_id => l_log_id
-124  	 );
-125    END prc_log_error_stack;
-126  
-127    FUNCTION fn_sanitize_summary_cell
-128    (
-129  	 p_value IN VARCHAR2
-130    )
-131    RETURN VARCHAR2
-132    IS
-133    BEGIN
-134  	 IF p_value IS NULL OR p_value = '#' THEN
-135  	   RETURN '-';
-136  	 END IF;
-137  
-138  	 RETURN REPLACE(REPLACE(REPLACE(TRIM(p_value), CHR(13), ' '), CHR(10), ' '), '|', '/');
-139    END fn_sanitize_summary_cell;
-140  
-141    FUNCTION fn_summary_cell
-142    (
-143  	 p_value IN VARCHAR2
-144    )
-145    RETURN VARCHAR2
-146    IS
-147    BEGIN
-148  	 RETURN fn_sanitize_summary_cell(p_value);
-149    END fn_summary_cell;
-150  
-151    FUNCTION fn_summary_row
-152    (
-153  	 p_table_owner		   IN VARCHAR2,
-154  	 p_table_name		   IN VARCHAR2,
-155  	 p_partition_name	   IN VARCHAR2,
-156  	 p_subpartition_name	   IN VARCHAR2,
-157  	 p_partition_high_value    IN VARCHAR2,
-158  	 p_subpartition_high_value IN VARCHAR2,
-159  	 p_archive_status	   IN VARCHAR2,
-160  	 p_quality_status	   IN VARCHAR2,
-161  	 p_truncate_status	   IN VARCHAR2,
-162  	 p_source_row_count	   IN NUMBER DEFAULT NULL,
-163  	 p_target_row_count	   IN NUMBER DEFAULT NULL,
-164  	 p_note 		   IN VARCHAR2 DEFAULT NULL
-165    )
-166    RETURN CLOB
-167    IS
-168    BEGIN
-169  	 RETURN fn_sanitize_summary_cell(p_table_owner) || '|' ||
-170  		fn_sanitize_summary_cell(p_table_name) || '|' ||
-171  		fn_sanitize_summary_cell(p_partition_name) || '|' ||
-172  		fn_sanitize_summary_cell(p_subpartition_name) || '|' ||
-173  		fn_sanitize_summary_cell(p_partition_high_value) || '|' ||
-174  		fn_sanitize_summary_cell(p_subpartition_high_value) || '|' ||
-175  		fn_sanitize_summary_cell(p_archive_status) || '|' ||
-176  		fn_sanitize_summary_cell(p_quality_status) || '|' ||
-177  		fn_sanitize_summary_cell(p_truncate_status) || '|' ||
-178  		fn_sanitize_summary_cell(TO_CHAR(p_source_row_count)) || '|' ||
-179  		fn_sanitize_summary_cell(TO_CHAR(p_target_row_count)) || '|' ||
-180  		fn_sanitize_summary_cell(p_note) || CHR(10);
-181    END fn_summary_row;
-182  
-183    FUNCTION fn_summary_col_count
-184    (
-185  	 p_columns IN VARCHAR2
-186    )
-187    RETURN PLS_INTEGER
-188    IS
-189  	 l_count PLS_INTEGER := 1;
-190  	 l_pos	 PLS_INTEGER := 0;
-191    BEGIN
-192  	 IF p_columns IS NULL THEN
-193  	   RETURN 0;
-194  	 END IF;
+ 48  	 RETURN l_run_id;
+ 49    END fn_create_run;
+ 50  
+ 51    FUNCTION fn_get_log_id
+ 52    (
+ 53  	 p_run_id IN NUMBER
+ 54    )
+ 55    RETURN NUMBER
+ 56    IS
+ 57  	 l_log_id NUMBER;
+ 58    BEGIN
+ 59  	 SELECT MSTR_LOG_ID
+ 60  	   INTO l_log_id
+ 61  	   FROM TW_ARCHIVE_RUNS
+ 62  	  WHERE RUN_ID = p_run_id;
+ 63  
+ 64  	 RETURN l_log_id;
+ 65    END fn_get_log_id;
+ 66  
+ 67    PROCEDURE prc_log_message
+ 68    (
+ 69  	 p_run_id    IN NUMBER,
+ 70  	 p_log_msg   IN CLOB,
+ 71  	 p_log_type  IN VARCHAR2 DEFAULT 'TEXT',
+ 72  	 p_log_sttus IN VARCHAR2 DEFAULT PKG_TL_LOGGING.g_sttus_running_const
+ 73    )
+ 74    IS
+ 75  	 l_log_id NUMBER;
+ 76    BEGIN
+ 77  	 IF p_run_id IS NULL THEN
+ 78  	   RETURN;
+ 79  	 END IF;
+ 80  
+ 81  	 l_log_id := fn_get_log_id(p_run_id);
+ 82  
+ 83  	 PKG_TL_LOGGING.prc_log
+ 84  	 (
+ 85  	   p_log_id	 => l_log_id,
+ 86  	   p_mstr_log_id => l_log_id,
+ 87  	   p_log_msg	 => p_log_msg,
+ 88  	   p_log_sttus	 => p_log_sttus,
+ 89  	   p_log_type	 => p_log_type
+ 90  	 );
+ 91    END prc_log_message;
+ 92  
+ 93    PROCEDURE prc_log_error_stack
+ 94    (
+ 95  	 p_run_id IN NUMBER
+ 96    )
+ 97    IS
+ 98  	 l_log_id NUMBER;
+ 99    BEGIN
+100  	 IF p_run_id IS NULL THEN
+101  	   RETURN;
+102  	 END IF;
+103  
+104  	 l_log_id := fn_get_log_id(p_run_id);
+105  	 PKG_TL_LOGGING.prc_error_stack
+106  	 (
+107  	   p_log_id	 => l_log_id,
+108  	   p_mstr_log_id => l_log_id
+109  	 );
+110    END prc_log_error_stack;
+111  
+112    FUNCTION fn_sanitize_summary_cell
+113    (
+114  	 p_value IN VARCHAR2
+115    )
+116    RETURN VARCHAR2
+117    IS
+118    BEGIN
+119  	 IF p_value IS NULL OR p_value = '#' THEN
+120  	   RETURN '-';
+121  	 END IF;
+122  
+123  	 RETURN REPLACE(REPLACE(REPLACE(TRIM(p_value), CHR(13), ' '), CHR(10), ' '), '|', '/');
+124    END fn_sanitize_summary_cell;
+125  
+126    FUNCTION fn_summary_cell
+127    (
+128  	 p_value IN VARCHAR2
+129    )
+130    RETURN VARCHAR2
+131    IS
+132    BEGIN
+133  	 RETURN fn_sanitize_summary_cell(p_value);
+134    END fn_summary_cell;
+135  
+136    FUNCTION fn_summary_row
+137    (
+138  	 p_source_db_link	   IN VARCHAR2,
+139  	 p_table_owner		   IN VARCHAR2,
+140  	 p_table_name		   IN VARCHAR2,
+141  	 p_partition_name	   IN VARCHAR2,
+142  	 p_subpartition_name	   IN VARCHAR2,
+143  	 p_partition_high_value    IN VARCHAR2,
+144  	 p_subpartition_high_value IN VARCHAR2,
+145  	 p_archive_status	   IN VARCHAR2,
+146  	 p_quality_status	   IN VARCHAR2,
+147  	 p_truncate_status	   IN VARCHAR2,
+148  	 p_source_row_count	   IN NUMBER DEFAULT NULL,
+149  	 p_target_row_count	   IN NUMBER DEFAULT NULL,
+150  	 p_note 		   IN VARCHAR2 DEFAULT NULL
+151    )
+152    RETURN CLOB
+153    IS
+154    BEGIN
+155  	 RETURN fn_sanitize_summary_cell(p_source_db_link) || '|' ||
+156  		fn_sanitize_summary_cell(p_table_owner) || '|' ||
+157  		fn_sanitize_summary_cell(p_table_name) || '|' ||
+158  		fn_sanitize_summary_cell(p_partition_name) || '|' ||
+159  		fn_sanitize_summary_cell(p_subpartition_name) || '|' ||
+160  		fn_sanitize_summary_cell(p_partition_high_value) || '|' ||
+161  		fn_sanitize_summary_cell(p_subpartition_high_value) || '|' ||
+162  		fn_sanitize_summary_cell(p_archive_status) || '|' ||
+163  		fn_sanitize_summary_cell(p_quality_status) || '|' ||
+164  		fn_sanitize_summary_cell(p_truncate_status) || '|' ||
+165  		fn_sanitize_summary_cell(TO_CHAR(p_source_row_count)) || '|' ||
+166  		fn_sanitize_summary_cell(TO_CHAR(p_target_row_count)) || '|' ||
+167  		fn_sanitize_summary_cell(p_note) || CHR(10);
+168    END fn_summary_row;
+169  
+170    PROCEDURE prc_log_summary
+171    (
+172  	 p_run_id	 IN NUMBER,
+173  	 p_process_name  IN VARCHAR2,
+174  	 p_columns	 IN VARCHAR2,
+175  	 p_rows 	 IN CLOB,
+176  	 p_max_col_width IN NUMBER DEFAULT 120
+177    )
+178    IS
+179  	 l_msg CLOB;
+180    BEGIN
+181  	 IF p_rows IS NULL THEN
+182  	   RETURN;
+183  	 END IF;
+184  
+185  	 l_msg := 'SUMMARY:' || CHR(10) ||
+186  		  'Process : ' || NVL(p_process_name, '-') || CHR(10) || CHR(10) ||
+187  		  PKG_SQL.fn_format_table
+188  		  (
+189  		    p_columns	    => p_columns,
+190  		    p_rows	    => p_rows,
+191  		    p_null_text     => '-',
+192  		    p_max_col_width => p_max_col_width,
+193  		    p_box_style     => 'SIMPLE'
+194  		  );
 195  
-196  	 LOOP
-197  	   l_pos := INSTR(p_columns, '|', l_pos + 1);
-198  	   EXIT WHEN l_pos = 0;
-199  	   l_count := l_count + 1;
-200  	 END LOOP;
-201  
-202  	 RETURN l_count;
-203    END fn_summary_col_count;
-204  
-205    FUNCTION fn_summary_col_value
-206    (
-207  	 p_line   IN VARCHAR2,
-208  	 p_col_no IN PLS_INTEGER
+196  	 prc_log_message
+197  	 (
+198  	   p_run_id   => p_run_id,
+199  	   p_log_msg  => l_msg,
+200  	   p_log_type => 'SUMMARY'
+201  	 );
+202    END prc_log_summary;
+203  
+204    PROCEDURE prc_finish_run
+205    (
+206  	 p_run_id	 IN NUMBER,
+207  	 p_status	 IN VARCHAR2,
+208  	 p_error_message IN VARCHAR2 DEFAULT NULL
 209    )
-210    RETURN VARCHAR2
-211    IS
-212  	 l_text       VARCHAR2(32767) := p_line || '|';
-213  	 l_start_pos  PLS_INTEGER := 1;
-214  	 l_end_pos    PLS_INTEGER;
-215    BEGIN
-216  	 FOR i IN 1 .. p_col_no LOOP
-217  	   l_end_pos := INSTR(l_text, '|', l_start_pos);
+210    IS
+211  	 l_log_id   NUMBER;
+212  	 l_run_type TW_ARCHIVE_RUNS.RUN_TYPE%TYPE;
+213    BEGIN
+214  	 SELECT MSTR_LOG_ID, RUN_TYPE
+215  	   INTO l_log_id, l_run_type
+216  	   FROM TW_ARCHIVE_RUNS
+217  	  WHERE RUN_ID = p_run_id;
 218  
-219  	   IF l_end_pos = 0 THEN
-220  	     RETURN NULL;
-221  	   END IF;
-222  
-223  	   IF i = p_col_no THEN
-224  	     RETURN SUBSTR(l_text, l_start_pos, l_end_pos - l_start_pos);
-225  	   END IF;
-226  
-227  	   l_start_pos := l_end_pos + 1;
-228  	 END LOOP;
-229  
-230  	 RETURN NULL;
-231    END fn_summary_col_value;
-232  
-233    FUNCTION fn_summary_next_line
-234    (
-235  	 p_rows IN CLOB,
-236  	 p_pos	IN OUT PLS_INTEGER
-237    )
-238    RETURN VARCHAR2
-239    IS
-240  	 l_end_pos PLS_INTEGER;
-241  	 l_line    VARCHAR2(32767);
-242    BEGIN
-243  	 IF p_rows IS NULL OR p_pos > DBMS_LOB.GETLENGTH(p_rows) THEN
-244  	   RETURN NULL;
-245  	 END IF;
-246  
-247  	 l_end_pos := DBMS_LOB.INSTR(p_rows, CHR(10), p_pos);
-248  
-249  	 IF l_end_pos = 0 THEN
-250  	   l_line := DBMS_LOB.SUBSTR(p_rows, 32767, p_pos);
-251  	   p_pos := DBMS_LOB.GETLENGTH(p_rows) + 1;
-252  	 ELSE
-253  	   l_line := DBMS_LOB.SUBSTR(p_rows, l_end_pos - p_pos, p_pos);
-254  	   p_pos := l_end_pos + 1;
-255  	 END IF;
-256  
-257  	 RETURN l_line;
-258    END fn_summary_next_line;
-259  
-260    FUNCTION fn_summary_fit
-261    (
-262  	 p_value IN VARCHAR2,
-263  	 p_width IN PLS_INTEGER
-264    )
-265    RETURN VARCHAR2
-266    IS
-267  	 l_value VARCHAR2(32767) := NVL(p_value, '-');
-268    BEGIN
-269  	 IF LENGTH(l_value) > p_width THEN
-270  	   IF p_width <= 3 THEN
-271  	     l_value := SUBSTR(l_value, 1, p_width);
-272  	   ELSE
-273  	     l_value := SUBSTR(l_value, 1, p_width - 3) || '...';
-274  	   END IF;
-275  	 END IF;
-276  
-277  	 RETURN RPAD(l_value, p_width);
-278    END fn_summary_fit;
-279  
-280    FUNCTION fn_render_summary
-281    (
-282  	 p_process_name  IN VARCHAR2,
-283  	 p_columns	 IN VARCHAR2,
-284  	 p_rows 	 IN CLOB,
-285  	 p_max_col_width IN NUMBER DEFAULT 120
-286    )
-287    RETURN CLOB
-288    IS
-289  	 TYPE t_widths IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
-290  
-291  	 l_widths	t_widths;
-292  	 l_col_count	PLS_INTEGER;
-293  	 l_max_width	PLS_INTEGER := LEAST(GREATEST(NVL(p_max_col_width, 120), 20), 300);
-294  	 l_pos		PLS_INTEGER;
-295  	 l_line 	VARCHAR2(32767);
-296  	 l_value	VARCHAR2(32767);
-297  	 l_result	CLOB;
-298  	 l_rows_count	NUMBER := 0;
-299  	 l_xml		CLOB;
-300    BEGIN
-301  	 l_col_count := fn_summary_col_count(p_columns);
-302  
-303  	 IF l_col_count = 0 THEN
-304  	   RETURN 'SUMMARY:' || CHR(10) ||
-305  		  'Process : ' || NVL(p_process_name, '-') || CHR(10) ||
-306  		  'Rows    : 0' || CHR(10);
-307  	 END IF;
-308  
-309  	 l_xml := '<summary><header>';
-310  
-311  	 FOR i IN 1 .. l_col_count LOOP
-312  	   l_value := fn_summary_col_value(p_columns, i);
-313  	   l_widths(i) := LEAST(GREATEST(LENGTH(NVL(l_value, '-')), 1), l_max_width);
-314  	   l_xml := l_xml || '<column>' || DBMS_XMLGEN.CONVERT(NVL(l_value, '-'), DBMS_XMLGEN.ENTITY_ENCODE) || '</column>';
-315  	 END LOOP;
-316  
-317  	 l_xml := l_xml || '</header><rows>';
-318  	 l_pos := 1;
-319  
-320  	 LOOP
-321  	   l_line := fn_summary_next_line(p_rows, l_pos);
-322  	   EXIT WHEN l_line IS NULL;
-323  	   CONTINUE WHEN TRIM(l_line) IS NULL;
-324  
-325  	   l_rows_count := l_rows_count + 1;
-326  	   l_xml := l_xml || '<row>';
-327  
-328  	   FOR i IN 1 .. l_col_count LOOP
-329  	     l_value := fn_summary_col_value(l_line, i);
-330  	     l_widths(i) := LEAST(GREATEST(l_widths(i), LENGTH(NVL(l_value, '-'))), l_max_width);
-331  	     l_xml := l_xml || '<column>' || DBMS_XMLGEN.CONVERT(NVL(l_value, '-'), DBMS_XMLGEN.ENTITY_ENCODE) || '</column>';
-332  	   END LOOP;
-333  
-334  	   l_xml := l_xml || '</row>';
-335  	 END LOOP;
-336  
-337  	 l_xml := l_xml || '</rows></summary>';
-338  
-339  	 l_result := 'SUMMARY:' || CHR(10) ||
-340  		     'Process : ' || NVL(p_process_name, '-') || CHR(10) ||
-341  		     'Rows    : ' || l_rows_count || CHR(10) || CHR(10);
-342  
-343  	 FOR i IN 1 .. l_col_count LOOP
-344  	   l_result := l_result || fn_summary_fit(fn_summary_col_value(p_columns, i), l_widths(i)) ||
-345  		       CASE WHEN i < l_col_count THEN '  ' END;
-346  	 END LOOP;
-347  
-348  	 l_result := l_result || CHR(10);
-349  
-350  	 FOR i IN 1 .. l_col_count LOOP
-351  	   l_result := l_result || RPAD('-', l_widths(i), '-') ||
-352  		       CASE WHEN i < l_col_count THEN '  ' END;
-353  	 END LOOP;
-354  
-355  	 l_result := l_result || CHR(10);
-356  	 l_pos := 1;
-357  
-358  	 LOOP
-359  	   l_line := fn_summary_next_line(p_rows, l_pos);
-360  	   EXIT WHEN l_line IS NULL;
-361  	   CONTINUE WHEN TRIM(l_line) IS NULL;
-362  
-363  	   FOR i IN 1 .. l_col_count LOOP
-364  	     l_result := l_result || fn_summary_fit(fn_summary_col_value(l_line, i), l_widths(i)) ||
-365  			 CASE WHEN i < l_col_count THEN '  ' END;
-366  	   END LOOP;
-367  
-368  	   l_result := l_result || CHR(10);
-369  	 END LOOP;
-370  
-371  	 RETURN l_result;
-372    END fn_render_summary;
-373  
-374    PROCEDURE prc_log_summary
-375    (
-376  	 p_run_id	 IN NUMBER,
-377  	 p_process_name  IN VARCHAR2,
-378  	 p_columns	 IN VARCHAR2,
-379  	 p_rows 	 IN CLOB,
-380  	 p_max_col_width IN NUMBER DEFAULT 120
-381    )
-382    IS
-383    BEGIN
-384  	 IF p_rows IS NULL THEN
-385  	   RETURN;
-386  	 END IF;
-387  
-388  	 prc_log_message
-389  	 (
-390  	   p_run_id   => p_run_id,
-391  	   p_log_msg  => fn_render_summary(p_process_name, p_columns, p_rows, p_max_col_width),
-392  	   p_log_type => 'SUMMARY'
-393  	 );
-394    END prc_log_summary;
-395  
-396    PROCEDURE prc_finish_run
-397    (
-398  	 p_run_id	 IN NUMBER,
-399  	 p_status	 IN VARCHAR2,
-400  	 p_error_message IN VARCHAR2 DEFAULT NULL
-401    )
-402    IS
-403  	 l_log_id   NUMBER;
-404  	 l_run_type TW_ARCHIVE_RUNS.RUN_TYPE%TYPE;
-405    BEGIN
-406  	 SELECT MSTR_LOG_ID, RUN_TYPE
-407  	   INTO l_log_id, l_run_type
-408  	   FROM TW_ARCHIVE_RUNS
-409  	  WHERE RUN_ID = p_run_id;
-410  
-411  	 UPDATE TW_ARCHIVE_RUNS
-412  	    SET RUN_STATUS = p_status,
-413  		ENDED_AT = SYSTIMESTAMP,
-414  		ERROR_MESSAGE = SUBSTR(p_error_message, 1, 4000),
-415  		UPDATED_AT = SYSTIMESTAMP
-416  	  WHERE RUN_ID = p_run_id;
-417  
-418  	 PKG_TL_LOGGING.prc_log
-419  	 (
-420  	   p_log_id	     => l_log_id,
-421  	   p_mstr_log_id     => l_log_id,
-422  	   p_log_categ	     => l_run_type,
-423  	   p_mstr_fun	     => 'PKG_ARCHIVE_' || l_run_type,
-424  	   p_log_sttus	     => p_status,
-425  	   p_end_date	     => SYSDATE,
-426  	   p_last_err_code   => CASE WHEN p_status = 'ERROR' THEN TO_CHAR(SQLCODE) END,
-427  	   p_last_err_desc   => CASE WHEN p_status = 'ERROR' THEN SUBSTR(p_error_message, 1, 256) END,
-428  	   p_log_type	     => CASE WHEN p_status = 'ERROR' THEN 'ERROR' ELSE 'TEXT' END,
-429  	   p_log_msg	     => 'Finished ' || l_run_type || ' with status ' || p_status ||
-430  				CASE WHEN p_error_message IS NOT NULL THEN ': ' || SUBSTR(p_error_message, 1, 3000) END
-431  	 );
-432    END prc_finish_run;
-433  END PKG_ARCHIVE_LOG;
-434  /
+219  	 UPDATE TW_ARCHIVE_RUNS
+220  	    SET RUN_STATUS = p_status,
+221  		ENDED_AT = SYSTIMESTAMP,
+222  		ERROR_MESSAGE = SUBSTR(p_error_message, 1, 4000),
+223  		UPDATED_AT = SYSTIMESTAMP
+224  	  WHERE RUN_ID = p_run_id;
+225  
+226  	 PKG_TL_LOGGING.prc_log
+227  	 (
+228  	   p_log_id	     => l_log_id,
+229  	   p_mstr_log_id     => l_log_id,
+230  	   p_log_categ	     => l_run_type,
+231  	   p_mstr_fun	     => 'PKG_ARCHIVE_' || l_run_type,
+232  	   p_log_sttus	     => p_status,
+233  	   p_end_date	     => SYSDATE,
+234  	   p_last_err_code   => CASE WHEN p_status = 'ERROR' THEN TO_CHAR(SQLCODE) END,
+235  	   p_last_err_desc   => CASE WHEN p_status = 'ERROR' THEN SUBSTR(p_error_message, 1, 256) END,
+236  	   p_log_type	     => CASE WHEN p_status = 'ERROR' THEN 'ERROR' ELSE 'TEXT' END,
+237  	   p_log_msg	     => 'Finished ' || l_run_type || ' with status ' || p_status ||
+238  				CASE WHEN p_error_message IS NOT NULL THEN ': ' || SUBSTR(p_error_message, 1, 3000) END
+239  	 );
+240    END prc_finish_run;
+241  END PKG_ARCHIVE_LOG;
+242  /
 
 Package body created.
 
@@ -2968,8 +3479,15 @@ SQL> CREATE OR REPLACE PACKAGE PKG_ARCHIVE_PARTITION
  97  	 p_execute	      IN VARCHAR2 DEFAULT 'Y',
  98  	 p_log_id	      IN NUMBER DEFAULT NULL
  99    );
-100  END PKG_ARCHIVE_PARTITION;
-101  /
+100  
+101    PROCEDURE prc_cleanup_orphan_staging
+102    (
+103  	 p_retention_days IN NUMBER DEFAULT 30,
+104  	 p_execute	  IN VARCHAR2 DEFAULT 'N',
+105  	 p_log_id	  IN NUMBER DEFAULT NULL
+106    );
+107  END PKG_ARCHIVE_PARTITION;
+108  /
 
 Package created.
 
@@ -3158,183 +3676,222 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_PARTITION
 182  	 l_tablespace := fn_normalize_tablespace_name(p_tablespace_name);
 183  
 184  	 p_staging_table_name := SUBSTR(
-185  	   'STG_' || TO_CHAR(SYSTIMESTAMP, 'DDHH24MISSFF3') || '_' ||
-186  	   UPPER(p_target_table) || '_' || UPPER(p_partition_name),
-187  	   1,
-188  	   128
-189  	 );
-190  
-191  	 l_sql := 'CREATE TABLE ' ||
-192  		  fn_qualified_table(p_target_owner, p_staging_table_name) ||
-193  		  ' TABLESPACE ' || l_tablespace ||
-194  		  ' FOR EXCHANGE WITH TABLE ' ||
-195  		  fn_qualified_table(p_target_owner, p_target_table);
-196  
-197  	 l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
-198  
-199    END prc_create_exchange_staging;
-200  
-201    PROCEDURE prc_load_exchange_staging
-202    (
-203  	 p_source_db_link     IN VARCHAR2,
-204  	 p_source_owner       IN VARCHAR2,
-205  	 p_source_table       IN VARCHAR2,
-206  	 p_target_owner       IN VARCHAR2,
-207  	 p_target_table       IN VARCHAR2,
-208  	 p_staging_table_name IN VARCHAR2,
-209  	 p_high_value	      IN VARCHAR2,
-210  	 p_prev_high_value    IN VARCHAR2 DEFAULT NULL,
-211  	 p_execute	      IN VARCHAR2 DEFAULT 'Y',
-212  	 p_log_id	      IN NUMBER DEFAULT NULL,
-213  	 p_parallel_degree    IN NUMBER DEFAULT 4,
-214  	 p_rows_loaded	      OUT NUMBER
-215    )
-216    IS
-217  	 l_sql		CLOB;
-218  	 l_key_column	VARCHAR2(128);
-219  	 l_high_date	DATE;
-220  	 l_low_date	DATE;
-221    BEGIN
-222  	 l_key_column := fn_first_partition_key_column(p_target_owner, p_target_table);
-223  	 l_high_date := fn_high_value_to_date(p_high_value);
-224  	 l_low_date := fn_high_value_to_date(p_prev_high_value);
-225  
-226  	 IF l_high_date IS NULL THEN
-227  	   raise_application_error(-20041, 'EXCHANGE requires a DATE high value for target partition');
-228  	 END IF;
-229  
-230  	 l_sql := 'INSERT /*+ APPEND PARALLEL(' || p_parallel_degree || ') */ INTO ' ||
-231  		  fn_qualified_table(p_target_owner, p_staging_table_name) ||
-232  		  ' SELECT * FROM ' ||
-233  		  fn_qualified_table(p_source_owner, p_source_table, p_source_db_link) ||
-234  		  ' WHERE ' || l_key_column || ' < DATE ''' || TO_CHAR(l_high_date, 'YYYY-MM-DD') || '''';
-235  
-236  	 IF l_low_date IS NOT NULL THEN
-237  	   l_sql := l_sql || ' AND ' || l_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
-238  	 END IF;
-239  
-240  	 p_rows_loaded := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
-241    END prc_load_exchange_staging;
-242  
-243    PROCEDURE prc_load_exchange_staging_subpartition
-244    (
-245  	 p_source_db_link	     IN VARCHAR2,
-246  	 p_source_owner 	     IN VARCHAR2,
-247  	 p_source_table 	     IN VARCHAR2,
-248  	 p_target_owner 	     IN VARCHAR2,
-249  	 p_target_table 	     IN VARCHAR2,
-250  	 p_staging_table_name	     IN VARCHAR2,
-251  	 p_partition_high_value      IN VARCHAR2,
-252  	 p_prev_partition_high_value IN VARCHAR2 DEFAULT NULL,
-253  	 p_subpartition_high_value   IN VARCHAR2,
-254  	 p_execute		     IN VARCHAR2 DEFAULT 'Y',
-255  	 p_log_id		     IN NUMBER DEFAULT NULL,
-256  	 p_parallel_degree	     IN NUMBER DEFAULT 4,
-257  	 p_rows_loaded		     OUT NUMBER
-258    )
-259    IS
-260  	 l_sql		   CLOB;
-261  	 l_part_key_column VARCHAR2(128);
-262  	 l_sub_key_column  VARCHAR2(128);
-263  	 l_high_date	   DATE;
-264  	 l_low_date	   DATE;
-265    BEGIN
-266  	 l_part_key_column := fn_first_partition_key_column(p_target_owner, p_target_table);
-267  	 l_sub_key_column := fn_first_subpartition_key_column(p_target_owner, p_target_table);
-268  	 l_high_date := fn_high_value_to_date(p_partition_high_value);
-269  	 l_low_date := fn_high_value_to_date(p_prev_partition_high_value);
-270  
-271  	 IF l_high_date IS NULL THEN
-272  	   raise_application_error(-20043, 'EXCHANGE SUBPARTITION requires a DATE partition high value');
-273  	 END IF;
-274  
-275  	 IF p_subpartition_high_value IS NULL OR TRIM(p_subpartition_high_value) = '#' THEN
-276  	   raise_application_error(-20044, 'EXCHANGE SUBPARTITION requires a list subpartition high value');
-277  	 END IF;
-278  
-279  	 l_sql := 'INSERT /*+ APPEND PARALLEL(' || p_parallel_degree || ') */ INTO ' ||
-280  		  fn_qualified_table(p_target_owner, p_staging_table_name) ||
-281  		  ' SELECT * FROM ' ||
-282  		  fn_qualified_table(p_source_owner, p_source_table, p_source_db_link) ||
-283  		  ' WHERE ' || l_part_key_column || ' < DATE ''' || TO_CHAR(l_high_date, 'YYYY-MM-DD') || '''' ||
-284  		  ' AND ' || l_sub_key_column || ' IN (' || p_subpartition_high_value || ')';
-285  
-286  	 IF l_low_date IS NOT NULL THEN
-287  	   l_sql := l_sql || ' AND ' || l_part_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
-288  	 END IF;
-289  
-290  	 p_rows_loaded := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
-291    END prc_load_exchange_staging_subpartition;
-292  
-293    PROCEDURE prc_exchange_partition
-294    (
-295  	 p_target_owner       IN VARCHAR2,
-296  	 p_target_table       IN VARCHAR2,
-297  	 p_partition_name     IN VARCHAR2,
-298  	 p_staging_table_name IN VARCHAR2,
-299  	 p_execute	      IN VARCHAR2 DEFAULT 'Y',
-300  	 p_log_id	      IN NUMBER DEFAULT NULL
-301    )
-302    IS
-303  	 l_sql		CLOB;
-304  	 l_sql_rowcount NUMBER;
-305    BEGIN
-306  	 l_sql := 'ALTER TABLE ' ||
-307  		  fn_qualified_table(p_target_owner, p_target_table) ||
-308  		  ' EXCHANGE PARTITION ' ||
-309  		  PKG_SQL.fn_assert_simple_name(p_partition_name) ||
-310  		  ' WITH TABLE ' ||
-311  		  fn_qualified_table(p_target_owner, p_staging_table_name) ||
-312  		  ' INCLUDING INDEXES WITHOUT VALIDATION';
-313  
-314  	 l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
-315    END prc_exchange_partition;
-316  
-317    PROCEDURE prc_exchange_subpartition
-318    (
-319  	 p_target_owner       IN VARCHAR2,
-320  	 p_target_table       IN VARCHAR2,
-321  	 p_subpartition_name  IN VARCHAR2,
-322  	 p_staging_table_name IN VARCHAR2,
-323  	 p_execute	      IN VARCHAR2 DEFAULT 'Y',
-324  	 p_log_id	      IN NUMBER DEFAULT NULL
-325    )
-326    IS
-327  	 l_sql		CLOB;
-328  	 l_sql_rowcount NUMBER;
-329    BEGIN
-330  	 l_sql := 'ALTER TABLE ' ||
-331  		  fn_qualified_table(p_target_owner, p_target_table) ||
-332  		  ' EXCHANGE SUBPARTITION ' ||
-333  		  PKG_SQL.fn_assert_simple_name(p_subpartition_name) ||
-334  		  ' WITH TABLE ' ||
-335  		  fn_qualified_table(p_target_owner, p_staging_table_name) ||
-336  		  ' INCLUDING INDEXES WITHOUT VALIDATION';
-337  
-338  	 l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
-339    END prc_exchange_subpartition;
-340  
-341    PROCEDURE prc_drop_staging
-342    (
-343  	 p_staging_owner      IN VARCHAR2,
-344  	 p_staging_table_name IN VARCHAR2,
-345  	 p_execute	      IN VARCHAR2 DEFAULT 'Y',
-346  	 p_log_id	      IN NUMBER DEFAULT NULL
-347    )
-348    IS
-349  	 l_sql		CLOB;
-350  	 l_sql_rowcount NUMBER;
-351    BEGIN
-352  	 l_sql := 'DROP TABLE ' ||
-353  		  fn_qualified_table(p_staging_owner, p_staging_table_name) ||
-354  		  ' PURGE';
-355  
-356  	 l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
-357    END prc_drop_staging;
-358  END PKG_ARCHIVE_PARTITION;
-359  /
+185  	   'STG_TMP_ARCH_' || TO_CHAR(STG_TMP_ARCH_SEQ.NEXTVAL),
+186  	   1,
+187  	   128
+188  	 );
+189  
+190  	 l_sql := 'CREATE TABLE ' ||
+191  		  fn_qualified_table(p_target_owner, p_staging_table_name) ||
+192  		  ' TABLESPACE ' || l_tablespace ||
+193  		  ' FOR EXCHANGE WITH TABLE ' ||
+194  		  fn_qualified_table(p_target_owner, p_target_table);
+195  
+196  	 l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+197  
+198    END prc_create_exchange_staging;
+199  
+200    PROCEDURE prc_load_exchange_staging
+201    (
+202  	 p_source_db_link     IN VARCHAR2,
+203  	 p_source_owner       IN VARCHAR2,
+204  	 p_source_table       IN VARCHAR2,
+205  	 p_target_owner       IN VARCHAR2,
+206  	 p_target_table       IN VARCHAR2,
+207  	 p_staging_table_name IN VARCHAR2,
+208  	 p_high_value	      IN VARCHAR2,
+209  	 p_prev_high_value    IN VARCHAR2 DEFAULT NULL,
+210  	 p_execute	      IN VARCHAR2 DEFAULT 'Y',
+211  	 p_log_id	      IN NUMBER DEFAULT NULL,
+212  	 p_parallel_degree    IN NUMBER DEFAULT 4,
+213  	 p_rows_loaded	      OUT NUMBER
+214    )
+215    IS
+216  	 l_sql		CLOB;
+217  	 l_key_column	VARCHAR2(128);
+218  	 l_high_date	DATE;
+219  	 l_low_date	DATE;
+220    BEGIN
+221  	 l_key_column := fn_first_partition_key_column(p_target_owner, p_target_table);
+222  	 l_high_date := fn_high_value_to_date(p_high_value);
+223  	 l_low_date := fn_high_value_to_date(p_prev_high_value);
+224  
+225  	 IF l_high_date IS NULL THEN
+226  	   raise_application_error(-20041, 'EXCHANGE requires a DATE high value for target partition');
+227  	 END IF;
+228  
+229  	 l_sql := 'INSERT /*+ APPEND PARALLEL(' || p_parallel_degree || ') */ INTO ' ||
+230  		  fn_qualified_table(p_target_owner, p_staging_table_name) ||
+231  		  ' SELECT * FROM ' ||
+232  		  fn_qualified_table(p_source_owner, p_source_table, p_source_db_link) ||
+233  		  ' WHERE ' || l_key_column || ' < DATE ''' || TO_CHAR(l_high_date, 'YYYY-MM-DD') || '''';
+234  
+235  	 IF l_low_date IS NOT NULL THEN
+236  	   l_sql := l_sql || ' AND ' || l_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
+237  	 END IF;
+238  
+239  	 p_rows_loaded := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+240    END prc_load_exchange_staging;
+241  
+242    PROCEDURE prc_load_exchange_staging_subpartition
+243    (
+244  	 p_source_db_link	     IN VARCHAR2,
+245  	 p_source_owner 	     IN VARCHAR2,
+246  	 p_source_table 	     IN VARCHAR2,
+247  	 p_target_owner 	     IN VARCHAR2,
+248  	 p_target_table 	     IN VARCHAR2,
+249  	 p_staging_table_name	     IN VARCHAR2,
+250  	 p_partition_high_value      IN VARCHAR2,
+251  	 p_prev_partition_high_value IN VARCHAR2 DEFAULT NULL,
+252  	 p_subpartition_high_value   IN VARCHAR2,
+253  	 p_execute		     IN VARCHAR2 DEFAULT 'Y',
+254  	 p_log_id		     IN NUMBER DEFAULT NULL,
+255  	 p_parallel_degree	     IN NUMBER DEFAULT 4,
+256  	 p_rows_loaded		     OUT NUMBER
+257    )
+258    IS
+259  	 l_sql		   CLOB;
+260  	 l_part_key_column VARCHAR2(128);
+261  	 l_sub_key_column  VARCHAR2(128);
+262  	 l_high_date	   DATE;
+263  	 l_low_date	   DATE;
+264    BEGIN
+265  	 l_part_key_column := fn_first_partition_key_column(p_target_owner, p_target_table);
+266  	 l_sub_key_column := fn_first_subpartition_key_column(p_target_owner, p_target_table);
+267  	 l_high_date := fn_high_value_to_date(p_partition_high_value);
+268  	 l_low_date := fn_high_value_to_date(p_prev_partition_high_value);
+269  
+270  	 IF l_high_date IS NULL THEN
+271  	   raise_application_error(-20043, 'EXCHANGE SUBPARTITION requires a DATE partition high value');
+272  	 END IF;
+273  
+274  	 IF p_subpartition_high_value IS NULL OR TRIM(p_subpartition_high_value) = '#' THEN
+275  	   raise_application_error(-20044, 'EXCHANGE SUBPARTITION requires a list subpartition high value');
+276  	 END IF;
+277  
+278  	 l_sql := 'INSERT /*+ APPEND PARALLEL(' || p_parallel_degree || ') */ INTO ' ||
+279  		  fn_qualified_table(p_target_owner, p_staging_table_name) ||
+280  		  ' SELECT * FROM ' ||
+281  		  fn_qualified_table(p_source_owner, p_source_table, p_source_db_link) ||
+282  		  ' WHERE ' || l_part_key_column || ' < DATE ''' || TO_CHAR(l_high_date, 'YYYY-MM-DD') || '''' ||
+283  		  ' AND ' || l_sub_key_column || ' IN (' || p_subpartition_high_value || ')';
+284  
+285  	 IF l_low_date IS NOT NULL THEN
+286  	   l_sql := l_sql || ' AND ' || l_part_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
+287  	 END IF;
+288  
+289  	 p_rows_loaded := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+290    END prc_load_exchange_staging_subpartition;
+291  
+292    PROCEDURE prc_exchange_partition
+293    (
+294  	 p_target_owner       IN VARCHAR2,
+295  	 p_target_table       IN VARCHAR2,
+296  	 p_partition_name     IN VARCHAR2,
+297  	 p_staging_table_name IN VARCHAR2,
+298  	 p_execute	      IN VARCHAR2 DEFAULT 'Y',
+299  	 p_log_id	      IN NUMBER DEFAULT NULL
+300    )
+301    IS
+302  	 l_sql		CLOB;
+303  	 l_sql_rowcount NUMBER;
+304    BEGIN
+305  	 l_sql := 'ALTER TABLE ' ||
+306  		  fn_qualified_table(p_target_owner, p_target_table) ||
+307  		  ' EXCHANGE PARTITION ' ||
+308  		  PKG_SQL.fn_assert_simple_name(p_partition_name) ||
+309  		  ' WITH TABLE ' ||
+310  		  fn_qualified_table(p_target_owner, p_staging_table_name) ||
+311  		  ' INCLUDING INDEXES WITHOUT VALIDATION';
+312  
+313  	 l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+314    END prc_exchange_partition;
+315  
+316    PROCEDURE prc_exchange_subpartition
+317    (
+318  	 p_target_owner       IN VARCHAR2,
+319  	 p_target_table       IN VARCHAR2,
+320  	 p_subpartition_name  IN VARCHAR2,
+321  	 p_staging_table_name IN VARCHAR2,
+322  	 p_execute	      IN VARCHAR2 DEFAULT 'Y',
+323  	 p_log_id	      IN NUMBER DEFAULT NULL
+324    )
+325    IS
+326  	 l_sql		CLOB;
+327  	 l_sql_rowcount NUMBER;
+328    BEGIN
+329  	 l_sql := 'ALTER TABLE ' ||
+330  		  fn_qualified_table(p_target_owner, p_target_table) ||
+331  		  ' EXCHANGE SUBPARTITION ' ||
+332  		  PKG_SQL.fn_assert_simple_name(p_subpartition_name) ||
+333  		  ' WITH TABLE ' ||
+334  		  fn_qualified_table(p_target_owner, p_staging_table_name) ||
+335  		  ' INCLUDING INDEXES WITHOUT VALIDATION';
+336  
+337  	 l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+338    END prc_exchange_subpartition;
+339  
+340    PROCEDURE prc_drop_staging
+341    (
+342  	 p_staging_owner      IN VARCHAR2,
+343  	 p_staging_table_name IN VARCHAR2,
+344  	 p_execute	      IN VARCHAR2 DEFAULT 'Y',
+345  	 p_log_id	      IN NUMBER DEFAULT NULL
+346    )
+347    IS
+348  	 l_sql		CLOB;
+349  	 l_sql_rowcount NUMBER;
+350    BEGIN
+351  	 l_sql := 'DROP TABLE ' ||
+352  		  fn_qualified_table(p_staging_owner, p_staging_table_name) ||
+353  		  ' PURGE';
+354  
+355  	 l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+356    END prc_drop_staging;
+357  
+358    PROCEDURE prc_cleanup_orphan_staging
+359    (
+360  	 p_retention_days IN NUMBER DEFAULT 30,
+361  	 p_execute	  IN VARCHAR2 DEFAULT 'N',
+362  	 p_log_id	  IN NUMBER DEFAULT NULL
+363    )
+364    IS
+365  	 l_execute_flag VARCHAR2(1);
+366    BEGIN
+367  	 l_execute_flag := fn_normalize_execute(p_execute);
+368  
+369  	 DBMS_OUTPUT.PUT_LINE('CLEANUP orphan staging tables older than ' || p_retention_days || ' days');
+370  
+371  	 FOR r IN (
+372  	   SELECT table_name, created
+373  	     FROM all_tables
+374  	    WHERE owner = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
+375  	      AND table_name LIKE 'STG\_TMP\_ARCH\_%' ESCAPE '\'
+376  	      AND created < SYSDATE - NVL(p_retention_days, 30)
+377  	    ORDER BY table_name
+378  	 ) LOOP
+379  	   DBMS_OUTPUT.PUT_LINE('[CLEANUP] Candidate: ' || r.table_name ||
+380  				' (created: ' || TO_CHAR(r.created, 'YYYY-MM-DD HH24:MI:SS') || ')');
+381  
+382  	   IF l_execute_flag = 'Y' THEN
+383  	     prc_drop_staging(
+384  	       p_staging_owner	    => SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA'),
+385  	       p_staging_table_name => r.table_name,
+386  	       p_execute	    => 'Y',
+387  	       p_log_id 	    => p_log_id
+388  	     );
+389  	     DBMS_OUTPUT.PUT_LINE('[CLEANUP] Dropped: ' || r.table_name);
+390  	   END IF;
+391  	 END LOOP;
+392  
+393  	 IF l_execute_flag = 'N' THEN
+394  	   DBMS_OUTPUT.PUT_LINE('[CLEANUP] Preview mode - no tables dropped');
+395  	 END IF;
+396    END prc_cleanup_orphan_staging;
+397  END PKG_ARCHIVE_PARTITION;
+398  /
 
-Package body created.
+Warning: Package Body created with compilation errors.
 
 SQL> @layer2_core/packages/pkg_archive_discovery.spec.sql
 SQL> CREATE OR REPLACE PACKAGE PKG_ARCHIVE_DISCOVERY
@@ -3469,7 +4026,7 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_DISCOVERY
 101  	 l_summary	   CLOB := NULL;
 102  	 l_partition_summary CLOB;
 103  	 l_summary_columns VARCHAR2(1000) :=
-104  	   'TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
+104  	   'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
 105    BEGIN
 106  	 l_execute_flag := fn_normalize_execute(p_execute);
 107  	 l_target_owner := fn_normalize_name(p_target_owner);
@@ -3480,193 +4037,196 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_DISCOVERY
 112  	 PKG_ARCHIVE_LOG.prc_log_message
 113  	 (
 114  	   p_run_id  => l_run_id,
-115  	   p_log_msg => 'Discovery filter: target_owner=' || NVL(l_target_owner, '<ALL>') ||
-116  			', target_table_name=' || NVL(l_target_table, '<ALL>')
-117  	 );
-118  
-119  	 l_sql :=
-120  	   'SELECT COUNT(*) ' ||
-121  	   '  FROM TW_ARCHIVE_DISCOVERY_PARTITIONS_VW ' ||
-122  	   ' WHERE (:1 IS NULL OR target_owner = :1) ' ||
-123  	   '   AND (:2 IS NULL OR target_table_name = :2)';
-124  
-125  	 l_rows_discovered := PKG_SQL.fn_run_into_sql_in_bind
-126  	 (
-127  	   p_log_id	=> l_log_id,
-128  	   p_sql	=> l_sql,
-129  	   p_array_bind => SYS.ODCIVARCHAR2LIST(l_target_owner, l_target_table),
-130  	   p_execute	=> 'Y'
-131  	 );
-132  
-133  	 FOR t IN (
-134  	   SELECT DISTINCT source_db_link,
-135  		  source_owner,
-136  		  source_table_name,
-137  		  target_owner,
-138  		  target_table_name
-139  	     FROM tw_archive_discovery_partitions_vw
-140  	    WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
-141  	      AND (l_target_table IS NULL OR target_table_name = l_target_table)
-142  	    ORDER BY source_db_link, source_owner, source_table_name
-143  	 ) LOOP
-144  	   l_tables := l_tables + 1;
-145  
-146  	   FOR p IN (
-147  	     SELECT DISTINCT partition_name,
-148  		    partition_high_value,
-149  		    partition_position
-150  	       FROM tw_archive_discovery_partitions_vw
-151  	      WHERE source_db_link = t.source_db_link
-152  		AND source_owner = t.source_owner
-153  		AND source_table_name = t.source_table_name
-154  		AND target_owner = t.target_owner
-155  		AND target_table_name = t.target_table_name
-156  	      ORDER BY partition_position
-157  	   ) LOOP
-158  	     l_partitions := l_partitions + 1;
-159  	     l_partition_summary := NULL;
-160  
-161  	     l_add_sql :=
-162  	       'ALTER TABLE ' || fn_qualified_table(t.target_owner, t.target_table_name) ||
-163  	       ' ADD PARTITION ' || PKG_SQL.fn_assert_simple_name(p.partition_name) ||
-164  	       ' VALUES LESS THAN (' || p.partition_high_value || ')';
-165  
-166  	     l_rows := PKG_SQL.fn_run_sql(l_log_id, l_add_sql, l_execute_flag);
+115  	   p_log_msg => 'Started DISCOVER with parameters:' || CHR(10) ||
+116  			'  p_execute	       => ' || l_execute_flag || CHR(10) ||
+117  			'  p_target_owner      => ' || NVL(l_target_owner, '<ALL>') || CHR(10) ||
+118  			'  p_target_table_name => ' || NVL(l_target_table, '<ALL>')
+119  	 );
+120  
+121  	 l_sql :=
+122  	   'SELECT COUNT(*) ' ||
+123  	   '  FROM TW_ARCHIVE_DISCOVERY_PARTITIONS_VW ' ||
+124  	   ' WHERE (:1 IS NULL OR target_owner = :1) ' ||
+125  	   '   AND (:2 IS NULL OR target_table_name = :2)';
+126  
+127  	 l_rows_discovered := PKG_SQL.fn_run_into_sql_in_bind
+128  	 (
+129  	   p_log_id	=> l_log_id,
+130  	   p_sql	=> l_sql,
+131  	   p_array_bind => SYS.ODCIVARCHAR2LIST(l_target_owner, l_target_table),
+132  	   p_execute	=> 'Y'
+133  	 );
+134  
+135  	 FOR t IN (
+136  	   SELECT DISTINCT source_db_link,
+137  		  source_owner,
+138  		  source_table_name,
+139  		  target_owner,
+140  		  target_table_name
+141  	     FROM tw_archive_discovery_partitions_vw
+142  	    WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
+143  	      AND (l_target_table IS NULL OR target_table_name = l_target_table)
+144  	    ORDER BY source_db_link, source_owner, source_table_name
+145  	 ) LOOP
+146  	   l_tables := l_tables + 1;
+147  
+148  	   FOR p IN (
+149  	     SELECT DISTINCT partition_name,
+150  		    partition_high_value,
+151  		    partition_position
+152  	       FROM tw_archive_discovery_partitions_vw
+153  	      WHERE source_db_link = t.source_db_link
+154  		AND source_owner = t.source_owner
+155  		AND source_table_name = t.source_table_name
+156  		AND target_owner = t.target_owner
+157  		AND target_table_name = t.target_table_name
+158  	      ORDER BY partition_position
+159  	   ) LOOP
+160  	     l_partitions := l_partitions + 1;
+161  	     l_partition_summary := NULL;
+162  
+163  	     l_add_sql :=
+164  	       'ALTER TABLE ' || fn_qualified_table(t.target_owner, t.target_table_name) ||
+165  	       ' ADD PARTITION ' || PKG_SQL.fn_assert_simple_name(p.partition_name) ||
+166  	       ' VALUES LESS THAN (' || p.partition_high_value || ')';
 167  
-168  	     l_insert_sql :=
-169  	       'INSERT INTO TW_ARCHIVE_PARTITIONS ' || CHR(10) ||
-170  	       '  (source_db_link, source_owner, source_table_name, target_owner, target_table_name, ' || CHR(10) ||
-171  	       '   archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name, ' || CHR(10) ||
-172  	       '   partition_high_value, subpartition_high_value, ' || CHR(10) ||
-173  	       '   partition_position, subpartition_position, archive_status, quality_status, truncate_status, last_run_id) ' || CHR(10) ||
-174  	       'VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, TO_NUMBER(:13), TO_NUMBER(:14), ''N'', ''N'', ''N'', TO_NUMBER(:15))';
-175  
-176  	     IF l_execute_flag = 'Y' THEN
-177  	       FOR s IN (
-178  		 SELECT target_owner,
-179  			target_table_name,
-180  			source_db_link,
-181  			source_owner,
-182  			source_table_name,
-183  			source_partition_name,
-184  			source_subpartition_name,
-185  			partition_name,
-186  			subpartition_name,
-187  			partition_high_value,
-188  			subpartition_high_value,
-189  			partition_position,
-190  			subpartition_position,
-191  			archive_unit_type
-192  		   FROM tw_archive_discovery_partitions_vw
-193  		  WHERE source_db_link = t.source_db_link
-194  		    AND source_owner = t.source_owner
-195  		    AND source_table_name = t.source_table_name
-196  		    AND target_owner = t.target_owner
-197  		    AND target_table_name = t.target_table_name
-198  		    AND partition_high_value = p.partition_high_value
-199  		  ORDER BY partition_position, subpartition_position
-200  	       ) LOOP
-201  		 IF s.archive_unit_type = 'SUBPARTITION' THEN
-202  		   l_target_subpart := fn_target_subpartition_name
-203  				       (
-204  					 s.target_owner,
-205  					 s.target_table_name,
-206  					 s.partition_name,
-207  					 s.subpartition_high_value
-208  				       );
-209  		 ELSE
-210  		   l_target_subpart := '#';
-211  		 END IF;
-212  
-213  		 l_rows := PKG_SQL.fn_run_sql_in_bind
-214  		 (
-215  		   p_log_id	=> l_log_id,
-216  		   p_sql	=> l_insert_sql,
-217  		   p_array_bind => SYS.ODCIVARCHAR2LIST
-218  				   (
-219  				     s.source_db_link,
-220  				     s.source_owner,
-221  				     s.source_table_name,
-222  				     s.target_owner,
-223  				     s.target_table_name,
-224  				     s.archive_unit_type,
-225  				     s.source_partition_name,
-226  				     s.source_subpartition_name,
-227  				     s.partition_name,
-228  				     l_target_subpart,
-229  				     s.partition_high_value,
-230  				     s.subpartition_high_value,
-231  				     TO_CHAR(s.partition_position),
-232  				     TO_CHAR(s.subpartition_position),
-233  				     TO_CHAR(l_run_id)
-234  				   ),
-235  		   p_execute	=> l_execute_flag
-236  		 );
-237  
-238  		 l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
+168  	     l_rows := PKG_SQL.fn_run_sql(l_log_id, l_add_sql, l_execute_flag);
+169  
+170  	     l_insert_sql :=
+171  	       'INSERT INTO TW_ARCHIVE_PARTITIONS ' || CHR(10) ||
+172  	       '  (source_db_link, source_owner, source_table_name, target_owner, target_table_name, ' || CHR(10) ||
+173  	       '   archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name, ' || CHR(10) ||
+174  	       '   partition_high_value, subpartition_high_value, ' || CHR(10) ||
+175  	       '   partition_position, subpartition_position, archive_status, quality_status, truncate_status, last_run_id) ' || CHR(10) ||
+176  	       'VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, TO_NUMBER(:13), TO_NUMBER(:14), ''N'', ''N'', ''N'', TO_NUMBER(:15))';
+177  
+178  	     IF l_execute_flag = 'Y' THEN
+179  	       FOR s IN (
+180  		 SELECT target_owner,
+181  			target_table_name,
+182  			source_db_link,
+183  			source_owner,
+184  			source_table_name,
+185  			source_partition_name,
+186  			source_subpartition_name,
+187  			partition_name,
+188  			subpartition_name,
+189  			partition_high_value,
+190  			subpartition_high_value,
+191  			partition_position,
+192  			subpartition_position,
+193  			archive_unit_type
+194  		   FROM tw_archive_discovery_partitions_vw
+195  		  WHERE source_db_link = t.source_db_link
+196  		    AND source_owner = t.source_owner
+197  		    AND source_table_name = t.source_table_name
+198  		    AND target_owner = t.target_owner
+199  		    AND target_table_name = t.target_table_name
+200  		    AND partition_high_value = p.partition_high_value
+201  		  ORDER BY partition_position, subpartition_position
+202  	       ) LOOP
+203  		 IF s.archive_unit_type = 'SUBPARTITION' THEN
+204  		   l_target_subpart := fn_target_subpartition_name
+205  				       (
+206  					 s.target_owner,
+207  					 s.target_table_name,
+208  					 s.partition_name,
+209  					 s.subpartition_high_value
+210  				       );
+211  		 ELSE
+212  		   l_target_subpart := '#';
+213  		 END IF;
+214  
+215  		 l_rows := PKG_SQL.fn_run_sql_in_bind
+216  		 (
+217  		   p_log_id	=> l_log_id,
+218  		   p_sql	=> l_insert_sql,
+219  		   p_array_bind => SYS.ODCIVARCHAR2LIST
+220  				   (
+221  				     s.source_db_link,
+222  				     s.source_owner,
+223  				     s.source_table_name,
+224  				     s.target_owner,
+225  				     s.target_table_name,
+226  				     s.archive_unit_type,
+227  				     s.source_partition_name,
+228  				     s.source_subpartition_name,
+229  				     s.partition_name,
+230  				     l_target_subpart,
+231  				     s.partition_high_value,
+232  				     s.subpartition_high_value,
+233  				     TO_CHAR(s.partition_position),
+234  				     TO_CHAR(s.subpartition_position),
+235  				     TO_CHAR(l_run_id)
+236  				   ),
+237  		   p_execute	=> l_execute_flag
+238  		 );
 239  
-240  		 l_partition_summary := l_partition_summary ||
-241  		   PKG_ARCHIVE_LOG.fn_summary_row
-242  		   (
-243  		     p_table_owner	       => s.source_owner,
-244  		     p_table_name	       => s.source_table_name,
-245  		     p_partition_name	       => s.source_partition_name,
-246  		     p_subpartition_name       => s.source_subpartition_name,
-247  		     p_partition_high_value    => s.partition_high_value,
-248  		     p_subpartition_high_value => s.subpartition_high_value,
-249  		     p_archive_status	       => 'N',
-250  		     p_quality_status	       => 'N',
-251  		     p_truncate_status	       => 'N',
-252  		     p_source_row_count        => NULL,
-253  		     p_target_row_count        => NULL,
-254  		     p_note		       => 'target=' || s.target_owner || '.' || s.target_table_name ||
-255  						  ' ' || s.partition_name ||
-256  						  CASE WHEN s.archive_unit_type = 'SUBPARTITION' THEN '.' || l_target_subpart END ||
-257  						  ', execute=' || l_execute_flag
-258  		   );
-259  	       END LOOP;
-260  	     ELSE
-261  	       l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
-262  	     END IF;
-263  
-264  	     IF l_execute_flag = 'Y' THEN
-265  	       COMMIT;
-266  	       l_summary := l_summary || l_partition_summary;
-267  	     END IF;
-268  	   END LOOP;
-269  	 END LOOP;
-270  
-271  	 DBMS_OUTPUT.PUT_LINE(
-272  	   'DISCOVER tables=' || l_tables ||
-273  	   ' partitions=' || l_partitions ||
-274  	   ' found=' || l_rows_discovered ||
-275  	   ' inserted=' || l_rows_inserted ||
-276  	   ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
-277  	   ' target_table=' || NVL(l_target_table, '<ALL>') ||
-278  	   ' execute=' || l_execute_flag
-279  	 );
-280  
-281  	 IF l_summary IS NOT NULL THEN
-282  	   PKG_ARCHIVE_LOG.prc_log_summary
-283  	   (
-284  	     p_run_id	    => l_run_id,
-285  	     p_process_name => 'DISCOVER',
-286  	     p_columns	    => l_summary_columns,
-287  	     p_rows	    => l_summary
-288  	   );
-289  	 END IF;
-290  
-291  	 PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
-292    EXCEPTION
-293  	 WHEN OTHERS THEN
-294  	   IF l_run_id IS NOT NULL THEN
-295  	     PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
-296  	     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
-297  	   END IF;
-298  	   RAISE;
-299    END prc_discover;
-300  END PKG_ARCHIVE_DISCOVERY;
-301  /
+240  		 l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
+241  
+242  		 l_partition_summary := l_partition_summary ||
+243  		   PKG_ARCHIVE_LOG.fn_summary_row
+244  		   (
+245  		     p_source_db_link	       => s.source_db_link,
+246  		     p_table_owner	       => s.source_owner,
+247  		     p_table_name	       => s.source_table_name,
+248  		     p_partition_name	       => s.source_partition_name,
+249  		     p_subpartition_name       => s.source_subpartition_name,
+250  		     p_partition_high_value    => s.partition_high_value,
+251  		     p_subpartition_high_value => s.subpartition_high_value,
+252  		     p_archive_status	       => 'N',
+253  		     p_quality_status	       => 'N',
+254  		     p_truncate_status	       => 'N',
+255  		     p_source_row_count        => NULL,
+256  		     p_target_row_count        => NULL,
+257  		     p_note		       => 'target=' || s.target_owner || '.' || s.target_table_name ||
+258  						  ' ' || s.partition_name ||
+259  						  CASE WHEN s.archive_unit_type = 'SUBPARTITION' THEN '.' || l_target_subpart END ||
+260  						  ', execute=' || l_execute_flag
+261  		   );
+262  	       END LOOP;
+263  	     ELSE
+264  	       l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
+265  	     END IF;
+266  
+267  	     IF l_execute_flag = 'Y' THEN
+268  	       COMMIT;
+269  	       l_summary := l_summary || l_partition_summary;
+270  	     END IF;
+271  	   END LOOP;
+272  	 END LOOP;
+273  
+274  	 DBMS_OUTPUT.PUT_LINE(
+275  	   'DISCOVER tables=' || l_tables ||
+276  	   ' partitions=' || l_partitions ||
+277  	   ' found=' || l_rows_discovered ||
+278  	   ' inserted=' || l_rows_inserted ||
+279  	   ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
+280  	   ' target_table=' || NVL(l_target_table, '<ALL>') ||
+281  	   ' execute=' || l_execute_flag
+282  	 );
+283  
+284  	 IF l_summary IS NOT NULL THEN
+285  	   PKG_ARCHIVE_LOG.prc_log_summary
+286  	   (
+287  	     p_run_id	    => l_run_id,
+288  	     p_process_name => 'DISCOVER',
+289  	     p_columns	    => l_summary_columns,
+290  	     p_rows	    => l_summary
+291  	   );
+292  	 END IF;
+293  
+294  	 PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+295    EXCEPTION
+296  	 WHEN OTHERS THEN
+297  	   IF l_run_id IS NOT NULL THEN
+298  	     PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
+299  	     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
+300  	   END IF;
+301  	   RAISE;
+302    END prc_discover;
+303  END PKG_ARCHIVE_DISCOVERY;
+304  /
 
 Package body created.
 
@@ -3785,7 +4345,7 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_IMPORT
  83  	 l_tablespace_name VARCHAR2(128);
  84  	 l_summary	   CLOB := NULL;
  85  	 l_summary_columns VARCHAR2(1000) :=
- 86  	   'TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
+ 86  	   'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
  87    BEGIN
  88  	 l_execute_flag := fn_normalize_execute(p_execute);
  89  	 l_target_owner := fn_normalize_name(p_target_owner);
@@ -3796,263 +4356,266 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_IMPORT
  94  	 PKG_ARCHIVE_LOG.prc_log_message
  95  	 (
  96  	   p_run_id  => l_run_id,
- 97  	   p_log_msg => 'Import filter: target_owner=' || NVL(l_target_owner, '<ALL>') ||
- 98  			', target_table_name=' || NVL(l_target_table, '<ALL>')
- 99  	 );
-100  
-101  	 IF l_execute_flag = 'Y' THEN
-102  	   COMMIT;
-103  	   EXECUTE IMMEDIATE 'ALTER SESSION ENABLE PARALLEL DML';
-104  	 END IF;
-105  
-106  	 l_sql :=
-107  	   'SELECT COUNT(*) ' ||
-108  	   '  FROM TW_ARCHIVE_IMPORT_PARTITIONS_VW ' ||
-109  	   ' WHERE (:1 IS NULL OR target_owner = :1) ' ||
-110  	   '   AND (:2 IS NULL OR target_table_name = :2)';
-111  
-112  	 l_rows_available := PKG_SQL.fn_run_into_sql_in_bind
-113  	 (
-114  	   p_log_id	=> l_log_id,
-115  	   p_sql	=> l_sql,
-116  	   p_array_bind => SYS.ODCIVARCHAR2LIST(l_target_owner, l_target_table),
-117  	   p_execute	=> 'Y'
-118  	 );
-119  
-120  	 FOR t IN (
-121  	   SELECT DISTINCT source_db_link,
-122  		  source_owner,
-123  		  source_table_name,
-124  		  target_owner,
-125  		  target_table_name
-126  	     FROM TW_ARCHIVE_IMPORT_PARTITIONS_VW
-127  	    WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
-128  	      AND (l_target_table IS NULL OR target_table_name = l_target_table)
-129  	    ORDER BY source_db_link, source_owner, source_table_name
-130  	 ) LOOP
-131  	   l_tables := l_tables + 1;
-132  
-133  	   SELECT NVL(PARALLEL_DEGREE, 4),
-134  		  TABLESPACE_NAME
-135  	     INTO l_parallel_degree,
-136  		  l_tablespace_name
-137  	     FROM TW_ARCHIVE_TABLES
-138  	    WHERE SOURCE_DB_LINK = t.source_db_link
-139  	      AND SOURCE_OWNER = t.source_owner
-140  	      AND SOURCE_TABLE_NAME = t.source_table_name;
-141  
-142  	   FOR r IN (
-143  	     SELECT p.*
-144  	       FROM TW_ARCHIVE_IMPORT_PARTITIONS_VW p
-145  	      WHERE p.source_db_link = t.source_db_link
-146  		AND p.source_owner = t.source_owner
-147  		AND p.source_table_name = t.source_table_name
-148  		AND p.target_owner = t.target_owner
-149  		AND p.target_table_name = t.target_table_name
-150  	      ORDER BY p.partition_position, p.subpartition_position
-151  	   ) LOOP
-152  	     l_units := l_units + 1;
-153  	     l_rows_loaded := NULL;
-154  
-155  	     IF l_execute_flag = 'Y' THEN
-156  	       prc_mark_partition(
-157  		 r.SOURCE_DB_LINK,
-158  		 r.SOURCE_OWNER,
-159  		 r.SOURCE_TABLE_NAME,
-160  		 r.PARTITION_HIGH_VALUE,
-161  		 r.SUBPARTITION_HIGH_VALUE,
-162  		 'N',
-163  		 l_run_id
-164  	       );
-165  	     END IF;
-166  
-167  	     PKG_ARCHIVE_PARTITION.prc_create_exchange_staging
-168  	     (
-169  	       p_target_owner	    => r.TARGET_OWNER,
-170  	       p_target_table	    => r.TARGET_TABLE_NAME,
-171  	       p_partition_name     => r.PARTITION_NAME,
-172  	       p_staging_table_name => l_staging_table,
-173  	       p_execute	    => l_execute_flag,
-174  	       p_log_id 	    => l_log_id,
-175  	       p_tablespace_name    => l_tablespace_name
-176  	     );
-177  
-178  	     IF r.ARCHIVE_UNIT_TYPE = 'SUBPARTITION' THEN
-179  	       PKG_ARCHIVE_PARTITION.prc_load_exchange_staging_subpartition
-180  	       (
-181  		 p_source_db_link	      => r.SOURCE_DB_LINK,
-182  		 p_source_owner 	      => r.SOURCE_OWNER,
-183  		 p_source_table 	      => r.SOURCE_TABLE_NAME,
-184  		 p_target_owner 	      => r.TARGET_OWNER,
-185  		 p_target_table 	      => r.TARGET_TABLE_NAME,
-186  		 p_staging_table_name	      => l_staging_table,
-187  		 p_partition_high_value       => r.PARTITION_HIGH_VALUE,
-188  		 p_prev_partition_high_value  => r.PREV_PARTITION_HIGH_VALUE,
-189  		 p_subpartition_high_value    => r.SUBPARTITION_HIGH_VALUE,
-190  		 p_execute		      => l_execute_flag,
-191  		 p_log_id		      => l_log_id,
-192  		 p_parallel_degree	      => l_parallel_degree,
-193  		 p_rows_loaded		      => l_rows_loaded
-194  	       );
-195  	     ELSE
-196  	       PKG_ARCHIVE_PARTITION.prc_load_exchange_staging
-197  	       (
-198  		 p_source_db_link     => r.SOURCE_DB_LINK,
-199  		 p_source_owner       => r.SOURCE_OWNER,
-200  		 p_source_table       => r.SOURCE_TABLE_NAME,
-201  		 p_target_owner       => r.TARGET_OWNER,
-202  		 p_target_table       => r.TARGET_TABLE_NAME,
-203  		 p_staging_table_name => l_staging_table,
-204  		 p_high_value	      => r.PARTITION_HIGH_VALUE,
-205  		 p_prev_high_value    => r.PREV_PARTITION_HIGH_VALUE,
-206  		 p_execute	      => l_execute_flag,
-207  		 p_log_id	      => l_log_id,
-208  		 p_parallel_degree    => l_parallel_degree,
-209  		 p_rows_loaded	      => l_rows_loaded
-210  	       );
-211  	     END IF;
-212  
-213  	     PKG_ARCHIVE_LOG.prc_log_message
-214  	     (
-215  	       p_run_id   => l_run_id,
-216  	       p_log_type => 'ARCHIVE_LOAD',
-217  	       p_log_msg  => 'ARCHIVE_LOAD ' ||
-218  			     'source=' || r.source_db_link || '.' || r.source_owner || '.' || r.source_table_name ||
-219  			     ' ' || r.source_partition_name ||
-220  			     CASE
-221  			       WHEN r.archive_unit_type = 'SUBPARTITION'
-222  				 THEN '.' || r.source_subpartition_name
-223  			     END ||
-224  			     ', target=' || r.target_owner || '.' || r.target_table_name ||
-225  			     ' ' || r.partition_name ||
-226  			     CASE
-227  			       WHEN r.archive_unit_type = 'SUBPARTITION'
-228  				 THEN '.' || r.subpartition_name
-229  			     END ||
-230  			     ', staging=' || r.target_owner || '.' || l_staging_table ||
-231  			     ', rows_loaded=' || NVL(TO_CHAR(l_rows_loaded), '<DRY_RUN>') ||
-232  			     ', execute=' || l_execute_flag
-233  	     );
-234  
-235  	     PKG_ARCHIVE_PARTITION.prc_build_staging_indexes
-236  	     (
-237  	       p_target_owner	    => r.TARGET_OWNER,
-238  	       p_target_table	    => r.TARGET_TABLE_NAME,
-239  	       p_staging_table_name => l_staging_table,
-240  	       p_execute	    => l_execute_flag,
-241  	       p_log_id 	    => l_log_id,
-242  	       p_parallel_degree    => l_parallel_degree,
-243  	       p_tablespace_name    => l_tablespace_name
-244  	     );
-245  
-246  	     IF r.ARCHIVE_UNIT_TYPE = 'SUBPARTITION' THEN
-247  	       PKG_ARCHIVE_PARTITION.prc_exchange_subpartition
-248  	       (
-249  		 p_target_owner       => r.TARGET_OWNER,
-250  		 p_target_table       => r.TARGET_TABLE_NAME,
-251  		 p_subpartition_name  => r.SUBPARTITION_NAME,
-252  		 p_staging_table_name => l_staging_table,
-253  		 p_execute	      => l_execute_flag,
-254  		 p_log_id	      => l_log_id
-255  	       );
-256  	     ELSE
-257  	       PKG_ARCHIVE_PARTITION.prc_exchange_partition
-258  	       (
-259  		 p_target_owner       => r.TARGET_OWNER,
-260  		 p_target_table       => r.TARGET_TABLE_NAME,
-261  		 p_partition_name     => r.PARTITION_NAME,
-262  		 p_staging_table_name => l_staging_table,
-263  		 p_execute	      => l_execute_flag,
-264  		 p_log_id	      => l_log_id
-265  	       );
-266  	     END IF;
-267  
-268  	     PKG_ARCHIVE_PARTITION.prc_drop_staging
-269  	     (
-270  	       p_staging_owner	    => r.TARGET_OWNER,
-271  	       p_staging_table_name => l_staging_table,
-272  	       p_execute	    => l_execute_flag,
-273  	       p_log_id 	    => l_log_id
-274  	     );
-275  
-276  	     IF l_execute_flag = 'Y' THEN
-277  	       prc_mark_partition(
-278  		 r.SOURCE_DB_LINK,
-279  		 r.SOURCE_OWNER,
-280  		 r.SOURCE_TABLE_NAME,
-281  		 r.PARTITION_HIGH_VALUE,
-282  		 r.SUBPARTITION_HIGH_VALUE,
-283  		 'Y',
-284  		 l_run_id,
-285  		 l_rows_loaded
-286  	       );
-287  
-288  	       l_imported := l_imported + 1;
-289  	       COMMIT;
-290  	     END IF;
-291  
-292  	     DBMS_OUTPUT.PUT_LINE('IMPORT_DONE EXCHANGE ' ||
-293  				  r.SOURCE_DB_LINK || '.' || r.SOURCE_OWNER || '.' ||
-294  				  r.SOURCE_TABLE_NAME || ' ' || r.PARTITION_NAME ||
-295  				  CASE WHEN r.ARCHIVE_UNIT_TYPE = 'SUBPARTITION' THEN '.' || r.SUBPARTITION_NAME END ||
-296  				  ' loaded=' || NVL(TO_CHAR(l_rows_loaded), '<DRY_RUN>') ||
-297  				  ' target_rows=' || NVL(TO_CHAR(l_rows_loaded), '<DRY_RUN>'));
-298  
-299  	     IF l_execute_flag = 'Y' THEN
-300  	       l_summary := l_summary ||
-301  		 PKG_ARCHIVE_LOG.fn_summary_row
-302  		 (
-303  		   p_table_owner	     => r.source_owner,
-304  		   p_table_name 	     => r.source_table_name,
-305  		   p_partition_name	     => r.source_partition_name,
-306  		   p_subpartition_name	     => r.source_subpartition_name,
-307  		   p_partition_high_value    => r.partition_high_value,
-308  		   p_subpartition_high_value => r.subpartition_high_value,
-309  		   p_archive_status	     => 'Y',
-310  		   p_quality_status	     => 'N',
-311  		   p_truncate_status	     => r.truncate_status,
-312  		   p_source_row_count	     => r.source_row_count,
-313  		   p_target_row_count	     => l_rows_loaded,
-314  		   p_note		     => 'target=' || r.target_owner || '.' || r.target_table_name ||
-315  						' ' || r.partition_name ||
-316  						CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END ||
-317  						', execute=' || l_execute_flag
-318  		 );
-319  	     END IF;
-320  	   END LOOP;
-321  	 END LOOP;
-322  
-323  	 IF l_summary IS NOT NULL THEN
-324  	   PKG_ARCHIVE_LOG.prc_log_summary
-325  	   (
-326  	     p_run_id	    => l_run_id,
-327  	     p_process_name => 'ARCHIVE',
-328  	     p_columns	    => l_summary_columns,
-329  	     p_rows	    => l_summary
-330  	   );
-331  	 END IF;
-332  
-333  	 DBMS_OUTPUT.PUT_LINE(
-334  	   'IMPORT tables=' || l_tables ||
-335  	   ' units=' || l_units ||
-336  	   ' found=' || l_rows_available ||
-337  	   ' imported=' || l_imported ||
-338  	   ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
-339  	   ' target_table=' || NVL(l_target_table, '<ALL>') ||
-340  	   ' execute=' || l_execute_flag
-341  	 );
-342  
-343  	 PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
-344    EXCEPTION
-345  	 WHEN OTHERS THEN
-346  	   IF l_run_id IS NOT NULL THEN
-347  	     PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
-348  	     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
-349  	   END IF;
-350  	   RAISE;
-351    END prc_import;
-352  END PKG_ARCHIVE_IMPORT;
-353  /
+ 97  	   p_log_msg => 'Started ARCHIVE with parameters:' || CHR(10) ||
+ 98  			'  p_execute	       => ' || l_execute_flag || CHR(10) ||
+ 99  			'  p_target_owner      => ' || NVL(l_target_owner, '<ALL>') || CHR(10) ||
+100  			'  p_target_table_name => ' || NVL(l_target_table, '<ALL>')
+101  	 );
+102  
+103  	 IF l_execute_flag = 'Y' THEN
+104  	   COMMIT;
+105  	   EXECUTE IMMEDIATE 'ALTER SESSION ENABLE PARALLEL DML';
+106  	 END IF;
+107  
+108  	 l_sql :=
+109  	   'SELECT COUNT(*) ' ||
+110  	   '  FROM TW_ARCHIVE_IMPORT_PARTITIONS_VW ' ||
+111  	   ' WHERE (:1 IS NULL OR target_owner = :1) ' ||
+112  	   '   AND (:2 IS NULL OR target_table_name = :2)';
+113  
+114  	 l_rows_available := PKG_SQL.fn_run_into_sql_in_bind
+115  	 (
+116  	   p_log_id	=> l_log_id,
+117  	   p_sql	=> l_sql,
+118  	   p_array_bind => SYS.ODCIVARCHAR2LIST(l_target_owner, l_target_table),
+119  	   p_execute	=> 'Y'
+120  	 );
+121  
+122  	 FOR t IN (
+123  	   SELECT DISTINCT source_db_link,
+124  		  source_owner,
+125  		  source_table_name,
+126  		  target_owner,
+127  		  target_table_name
+128  	     FROM TW_ARCHIVE_IMPORT_PARTITIONS_VW
+129  	    WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
+130  	      AND (l_target_table IS NULL OR target_table_name = l_target_table)
+131  	    ORDER BY source_db_link, source_owner, source_table_name
+132  	 ) LOOP
+133  	   l_tables := l_tables + 1;
+134  
+135  	   SELECT NVL(PARALLEL_DEGREE, 4),
+136  		  TABLESPACE_NAME
+137  	     INTO l_parallel_degree,
+138  		  l_tablespace_name
+139  	     FROM TW_ARCHIVE_TABLES
+140  	    WHERE SOURCE_DB_LINK = t.source_db_link
+141  	      AND SOURCE_OWNER = t.source_owner
+142  	      AND SOURCE_TABLE_NAME = t.source_table_name;
+143  
+144  	   FOR r IN (
+145  	     SELECT p.*
+146  	       FROM TW_ARCHIVE_IMPORT_PARTITIONS_VW p
+147  	      WHERE p.source_db_link = t.source_db_link
+148  		AND p.source_owner = t.source_owner
+149  		AND p.source_table_name = t.source_table_name
+150  		AND p.target_owner = t.target_owner
+151  		AND p.target_table_name = t.target_table_name
+152  	      ORDER BY p.partition_position, p.subpartition_position
+153  	   ) LOOP
+154  	     l_units := l_units + 1;
+155  	     l_rows_loaded := NULL;
+156  
+157  	     IF l_execute_flag = 'Y' THEN
+158  	       prc_mark_partition(
+159  		 r.SOURCE_DB_LINK,
+160  		 r.SOURCE_OWNER,
+161  		 r.SOURCE_TABLE_NAME,
+162  		 r.PARTITION_HIGH_VALUE,
+163  		 r.SUBPARTITION_HIGH_VALUE,
+164  		 'N',
+165  		 l_run_id
+166  	       );
+167  	     END IF;
+168  
+169  	     PKG_ARCHIVE_PARTITION.prc_create_exchange_staging
+170  	     (
+171  	       p_target_owner	    => r.TARGET_OWNER,
+172  	       p_target_table	    => r.TARGET_TABLE_NAME,
+173  	       p_partition_name     => r.PARTITION_NAME,
+174  	       p_staging_table_name => l_staging_table,
+175  	       p_execute	    => l_execute_flag,
+176  	       p_log_id 	    => l_log_id,
+177  	       p_tablespace_name    => l_tablespace_name
+178  	     );
+179  
+180  	     IF r.ARCHIVE_UNIT_TYPE = 'SUBPARTITION' THEN
+181  	       PKG_ARCHIVE_PARTITION.prc_load_exchange_staging_subpartition
+182  	       (
+183  		 p_source_db_link	      => r.SOURCE_DB_LINK,
+184  		 p_source_owner 	      => r.SOURCE_OWNER,
+185  		 p_source_table 	      => r.SOURCE_TABLE_NAME,
+186  		 p_target_owner 	      => r.TARGET_OWNER,
+187  		 p_target_table 	      => r.TARGET_TABLE_NAME,
+188  		 p_staging_table_name	      => l_staging_table,
+189  		 p_partition_high_value       => r.PARTITION_HIGH_VALUE,
+190  		 p_prev_partition_high_value  => r.PREV_PARTITION_HIGH_VALUE,
+191  		 p_subpartition_high_value    => r.SUBPARTITION_HIGH_VALUE,
+192  		 p_execute		      => l_execute_flag,
+193  		 p_log_id		      => l_log_id,
+194  		 p_parallel_degree	      => l_parallel_degree,
+195  		 p_rows_loaded		      => l_rows_loaded
+196  	       );
+197  	     ELSE
+198  	       PKG_ARCHIVE_PARTITION.prc_load_exchange_staging
+199  	       (
+200  		 p_source_db_link     => r.SOURCE_DB_LINK,
+201  		 p_source_owner       => r.SOURCE_OWNER,
+202  		 p_source_table       => r.SOURCE_TABLE_NAME,
+203  		 p_target_owner       => r.TARGET_OWNER,
+204  		 p_target_table       => r.TARGET_TABLE_NAME,
+205  		 p_staging_table_name => l_staging_table,
+206  		 p_high_value	      => r.PARTITION_HIGH_VALUE,
+207  		 p_prev_high_value    => r.PREV_PARTITION_HIGH_VALUE,
+208  		 p_execute	      => l_execute_flag,
+209  		 p_log_id	      => l_log_id,
+210  		 p_parallel_degree    => l_parallel_degree,
+211  		 p_rows_loaded	      => l_rows_loaded
+212  	       );
+213  	     END IF;
+214  
+215  	     PKG_ARCHIVE_LOG.prc_log_message
+216  	     (
+217  	       p_run_id   => l_run_id,
+218  	       p_log_type => 'ARCHIVE_LOAD',
+219  	       p_log_msg  => 'ARCHIVE_LOAD ' ||
+220  			     'source=' || r.source_db_link || '.' || r.source_owner || '.' || r.source_table_name ||
+221  			     ' ' || r.source_partition_name ||
+222  			     CASE
+223  			       WHEN r.archive_unit_type = 'SUBPARTITION'
+224  				 THEN '.' || r.source_subpartition_name
+225  			     END ||
+226  			     ', target=' || r.target_owner || '.' || r.target_table_name ||
+227  			     ' ' || r.partition_name ||
+228  			     CASE
+229  			       WHEN r.archive_unit_type = 'SUBPARTITION'
+230  				 THEN '.' || r.subpartition_name
+231  			     END ||
+232  			     ', staging=' || r.target_owner || '.' || l_staging_table ||
+233  			     ', rows_loaded=' || NVL(TO_CHAR(l_rows_loaded), '<DRY_RUN>') ||
+234  			     ', execute=' || l_execute_flag
+235  	     );
+236  
+237  	     PKG_ARCHIVE_PARTITION.prc_build_staging_indexes
+238  	     (
+239  	       p_target_owner	    => r.TARGET_OWNER,
+240  	       p_target_table	    => r.TARGET_TABLE_NAME,
+241  	       p_staging_table_name => l_staging_table,
+242  	       p_execute	    => l_execute_flag,
+243  	       p_log_id 	    => l_log_id,
+244  	       p_parallel_degree    => l_parallel_degree,
+245  	       p_tablespace_name    => l_tablespace_name
+246  	     );
+247  
+248  	     IF r.ARCHIVE_UNIT_TYPE = 'SUBPARTITION' THEN
+249  	       PKG_ARCHIVE_PARTITION.prc_exchange_subpartition
+250  	       (
+251  		 p_target_owner       => r.TARGET_OWNER,
+252  		 p_target_table       => r.TARGET_TABLE_NAME,
+253  		 p_subpartition_name  => r.SUBPARTITION_NAME,
+254  		 p_staging_table_name => l_staging_table,
+255  		 p_execute	      => l_execute_flag,
+256  		 p_log_id	      => l_log_id
+257  	       );
+258  	     ELSE
+259  	       PKG_ARCHIVE_PARTITION.prc_exchange_partition
+260  	       (
+261  		 p_target_owner       => r.TARGET_OWNER,
+262  		 p_target_table       => r.TARGET_TABLE_NAME,
+263  		 p_partition_name     => r.PARTITION_NAME,
+264  		 p_staging_table_name => l_staging_table,
+265  		 p_execute	      => l_execute_flag,
+266  		 p_log_id	      => l_log_id
+267  	       );
+268  	     END IF;
+269  
+270  	     PKG_ARCHIVE_PARTITION.prc_drop_staging
+271  	     (
+272  	       p_staging_owner	    => r.TARGET_OWNER,
+273  	       p_staging_table_name => l_staging_table,
+274  	       p_execute	    => l_execute_flag,
+275  	       p_log_id 	    => l_log_id
+276  	     );
+277  
+278  	     IF l_execute_flag = 'Y' THEN
+279  	       prc_mark_partition(
+280  		 r.SOURCE_DB_LINK,
+281  		 r.SOURCE_OWNER,
+282  		 r.SOURCE_TABLE_NAME,
+283  		 r.PARTITION_HIGH_VALUE,
+284  		 r.SUBPARTITION_HIGH_VALUE,
+285  		 'Y',
+286  		 l_run_id,
+287  		 l_rows_loaded
+288  	       );
+289  
+290  	       l_imported := l_imported + 1;
+291  	       COMMIT;
+292  	     END IF;
+293  
+294  	     DBMS_OUTPUT.PUT_LINE('IMPORT_DONE EXCHANGE ' ||
+295  				  r.SOURCE_DB_LINK || '.' || r.SOURCE_OWNER || '.' ||
+296  				  r.SOURCE_TABLE_NAME || ' ' || r.PARTITION_NAME ||
+297  				  CASE WHEN r.ARCHIVE_UNIT_TYPE = 'SUBPARTITION' THEN '.' || r.SUBPARTITION_NAME END ||
+298  				  ' loaded=' || NVL(TO_CHAR(l_rows_loaded), '<DRY_RUN>') ||
+299  				  ' target_rows=' || NVL(TO_CHAR(l_rows_loaded), '<DRY_RUN>'));
+300  
+301  	     IF l_execute_flag = 'Y' THEN
+302  	       l_summary := l_summary ||
+303  		 PKG_ARCHIVE_LOG.fn_summary_row
+304  		 (
+305  		   p_source_db_link	     => r.source_db_link,
+306  		   p_table_owner	     => r.source_owner,
+307  		   p_table_name 	     => r.source_table_name,
+308  		   p_partition_name	     => r.source_partition_name,
+309  		   p_subpartition_name	     => r.source_subpartition_name,
+310  		   p_partition_high_value    => r.partition_high_value,
+311  		   p_subpartition_high_value => r.subpartition_high_value,
+312  		   p_archive_status	     => 'Y',
+313  		   p_quality_status	     => 'N',
+314  		   p_truncate_status	     => r.truncate_status,
+315  		   p_source_row_count	     => r.source_row_count,
+316  		   p_target_row_count	     => l_rows_loaded,
+317  		   p_note		     => 'target=' || r.target_owner || '.' || r.target_table_name ||
+318  						' ' || r.partition_name ||
+319  						CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END ||
+320  						', execute=' || l_execute_flag
+321  		 );
+322  	     END IF;
+323  	   END LOOP;
+324  	 END LOOP;
+325  
+326  	 IF l_summary IS NOT NULL THEN
+327  	   PKG_ARCHIVE_LOG.prc_log_summary
+328  	   (
+329  	     p_run_id	    => l_run_id,
+330  	     p_process_name => 'ARCHIVE',
+331  	     p_columns	    => l_summary_columns,
+332  	     p_rows	    => l_summary
+333  	   );
+334  	 END IF;
+335  
+336  	 DBMS_OUTPUT.PUT_LINE(
+337  	   'IMPORT tables=' || l_tables ||
+338  	   ' units=' || l_units ||
+339  	   ' found=' || l_rows_available ||
+340  	   ' imported=' || l_imported ||
+341  	   ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
+342  	   ' target_table=' || NVL(l_target_table, '<ALL>') ||
+343  	   ' execute=' || l_execute_flag
+344  	 );
+345  
+346  	 PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+347    EXCEPTION
+348  	 WHEN OTHERS THEN
+349  	   IF l_run_id IS NOT NULL THEN
+350  	     PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
+351  	     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
+352  	   END IF;
+353  	   RAISE;
+354    END prc_import;
+355  END PKG_ARCHIVE_IMPORT;
+356  /
 
 Package body created.
 
@@ -4153,7 +4716,7 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_QUALITY
  64  	 l_quality_status  VARCHAR2(1);
  65  	 l_summary	   CLOB := NULL;
  66  	 l_summary_columns VARCHAR2(1000) :=
- 67  	   'TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
+ 67  	   'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
  68    BEGIN
  69  	 l_execute_flag := fn_normalize_execute(p_execute);
  70  	 l_target_owner := fn_normalize_name(p_target_owner);
@@ -4164,156 +4727,159 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_QUALITY
  75  	 PKG_ARCHIVE_LOG.prc_log_message
  76  	 (
  77  	   p_run_id  => l_run_id,
- 78  	   p_log_msg => 'Quality filter: target_owner=' || NVL(l_target_owner, '<ALL>') ||
- 79  			', target_table_name=' || NVL(l_target_table, '<ALL>')
- 80  	 );
- 81  
- 82  	 l_sql :=
- 83  	   'SELECT COUNT(*) ' ||
- 84  	   '  FROM TW_ARCHIVE_QUALITY_PARTITIONS_VW ' ||
- 85  	   ' WHERE (:1 IS NULL OR target_owner = :1) ' ||
- 86  	   '   AND (:2 IS NULL OR target_table_name = :2)';
- 87  
- 88  	 l_rows_available := PKG_SQL.fn_run_into_sql_in_bind
- 89  	 (
- 90  	   p_log_id	=> l_log_id,
- 91  	   p_sql	=> l_sql,
- 92  	   p_array_bind => SYS.ODCIVARCHAR2LIST(l_target_owner, l_target_table),
- 93  	   p_execute	=> 'Y'
- 94  	 );
- 95  
- 96  	 FOR t IN (
- 97  	   SELECT DISTINCT source_db_link,
- 98  		  source_agent_schema,
- 99  		  source_owner,
-100  		  source_table_name,
-101  		  target_owner,
-102  		  target_table_name
-103  	     FROM TW_ARCHIVE_QUALITY_PARTITIONS_VW
-104  	    WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
-105  	      AND (l_target_table IS NULL OR target_table_name = l_target_table)
-106  	    ORDER BY source_db_link, source_owner, source_table_name
-107  	 ) LOOP
-108  	   l_tables := l_tables + 1;
-109  	   l_agent_function := fn_qualified_agent_function(t.source_agent_schema, t.source_db_link);
-110  	   l_sql := 'SELECT ' || l_agent_function || '(:1, :2, :3, :4) FROM dual';
-111  
-112  	   FOR r IN (
-113  	     SELECT p.*
-114  	       FROM TW_ARCHIVE_QUALITY_PARTITIONS_VW p
-115  	      WHERE p.source_db_link = t.source_db_link
-116  		AND p.source_owner = t.source_owner
-117  		AND p.source_table_name = t.source_table_name
-118  		AND p.target_owner = t.target_owner
-119  		AND p.target_table_name = t.target_table_name
-120  	      ORDER BY p.partition_position, p.subpartition_position
-121  	   ) LOOP
-122  	     l_units := l_units + 1;
-123  
-124  	     l_source_rows := PKG_SQL.fn_run_into_sql_in_bind
-125  	     (
-126  	       p_log_id     => l_log_id,
-127  	       p_sql	    => l_sql,
-128  	       p_array_bind => SYS.ODCIVARCHAR2LIST
-129  			       (
-130  				 r.SOURCE_OWNER,
-131  				 r.SOURCE_TABLE_NAME,
-132  				 r.SOURCE_PARTITION_NAME,
-133  				 CASE WHEN r.SOURCE_SUBPARTITION_NAME = '#' THEN NULL ELSE r.SOURCE_SUBPARTITION_NAME END
-134  			       ),
-135  	       p_execute    => 'Y'
-136  	     );
-137  
-138  	     IF l_source_rows = r.TARGET_ROW_COUNT THEN
-139  	       l_quality_status := 'Y';
-140  	       l_ok := l_ok + 1;
-141  	     ELSE
-142  	       l_quality_status := 'N';
-143  	       l_failed := l_failed + 1;
-144  	     END IF;
-145  
-146  	     DBMS_OUTPUT.PUT_LINE('QUALITY ' || r.SOURCE_DB_LINK || '.' || r.SOURCE_OWNER || '.' ||
-147  				  r.SOURCE_TABLE_NAME || ' source_name=' || r.SOURCE_PARTITION_NAME ||
-148  				  CASE WHEN r.SOURCE_SUBPARTITION_NAME <> '#' THEN '.' || r.SOURCE_SUBPARTITION_NAME ELSE NULL END ||
-149  				  ' target_name=' || r.PARTITION_NAME ||
-150  				  CASE WHEN r.SUBPARTITION_NAME <> '#' THEN '.' || r.SUBPARTITION_NAME ELSE NULL END ||
-151  				  ' source_rows=' || NVL(TO_CHAR(l_source_rows), 'NULL') ||
-152  				  ' target_rows=' || NVL(TO_CHAR(r.TARGET_ROW_COUNT), 'NULL') ||
-153  				  ' status=' || l_quality_status || ' execute=' || l_execute_flag);
-154  
-155  	     IF l_execute_flag = 'Y' THEN
-156  	       UPDATE TW_ARCHIVE_PARTITIONS
-157  		  SET SOURCE_ROW_COUNT = l_source_rows,
-158  		      QUALITY_STATUS = l_quality_status,
-159  		      LAST_RUN_ID = l_run_id,
-160  		      ERROR_MESSAGE = CASE
-161  					WHEN l_quality_status = 'Y' THEN NULL
-162  					ELSE 'Source row count does not match target row count'
-163  				      END,
-164  		      UPDATED_AT = SYSTIMESTAMP
-165  		WHERE SOURCE_DB_LINK = r.SOURCE_DB_LINK
-166  		  AND SOURCE_OWNER = r.SOURCE_OWNER
-167  		  AND SOURCE_TABLE_NAME = r.SOURCE_TABLE_NAME
-168  		  AND PARTITION_HIGH_VALUE = r.PARTITION_HIGH_VALUE
-169  		  AND SUBPARTITION_HIGH_VALUE = r.SUBPARTITION_HIGH_VALUE;
-170  
-171  	       COMMIT;
-172  	     END IF;
-173  
-174  	     l_summary := l_summary ||
-175  	       PKG_ARCHIVE_LOG.fn_summary_row
-176  	       (
-177  		 p_table_owner		   => r.source_owner,
-178  		 p_table_name		   => r.source_table_name,
-179  		 p_partition_name	   => r.source_partition_name,
-180  		 p_subpartition_name	   => r.source_subpartition_name,
-181  		 p_partition_high_value    => r.partition_high_value,
-182  		 p_subpartition_high_value => r.subpartition_high_value,
-183  		 p_archive_status	   => r.archive_status,
-184  		 p_quality_status	   => l_quality_status,
-185  		 p_truncate_status	   => r.truncate_status,
-186  		 p_source_row_count	   => l_source_rows,
-187  		 p_target_row_count	   => r.target_row_count,
-188  		 p_note 		   => 'target=' || r.target_owner || '.' || r.target_table_name ||
-189  					      ' ' || r.partition_name ||
-190  					      CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END ||
-191  					      ', execute=' || l_execute_flag
-192  	       );
-193  	   END LOOP;
-194  	 END LOOP;
-195  
-196  	 DBMS_OUTPUT.PUT_LINE(
-197  	   'QUALITY tables=' || l_tables ||
-198  	   ' units=' || l_units ||
-199  	   ' found=' || l_rows_available ||
-200  	   ' ok=' || l_ok ||
-201  	   ' failed=' || l_failed ||
-202  	   ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
-203  	   ' target_table=' || NVL(l_target_table, '<ALL>') ||
-204  	   ' execute=' || l_execute_flag
-205  	 );
-206  
-207  	 IF l_summary IS NOT NULL THEN
-208  	   PKG_ARCHIVE_LOG.prc_log_summary
-209  	   (
-210  	     p_run_id	    => l_run_id,
-211  	     p_process_name => 'QUALITY',
-212  	     p_columns	    => l_summary_columns,
-213  	     p_rows	    => l_summary
-214  	   );
-215  	 END IF;
-216  
-217  	 PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, CASE WHEN l_failed > 0 THEN 'WARNING' ELSE 'SUCCESS' END);
-218    EXCEPTION
-219  	 WHEN OTHERS THEN
-220  	   IF l_run_id IS NOT NULL THEN
-221  	     PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
-222  	     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
-223  	   END IF;
-224  	   RAISE;
-225    END prc_quality;
-226  END PKG_ARCHIVE_QUALITY;
-227  /
+ 78  	   p_log_msg => 'Started QUALITY with parameters:' || CHR(10) ||
+ 79  			'  p_execute	       => ' || l_execute_flag || CHR(10) ||
+ 80  			'  p_target_owner      => ' || NVL(l_target_owner, '<ALL>') || CHR(10) ||
+ 81  			'  p_target_table_name => ' || NVL(l_target_table, '<ALL>')
+ 82  	 );
+ 83  
+ 84  	 l_sql :=
+ 85  	   'SELECT COUNT(*) ' ||
+ 86  	   '  FROM TW_ARCHIVE_QUALITY_PARTITIONS_VW ' ||
+ 87  	   ' WHERE (:1 IS NULL OR target_owner = :1) ' ||
+ 88  	   '   AND (:2 IS NULL OR target_table_name = :2)';
+ 89  
+ 90  	 l_rows_available := PKG_SQL.fn_run_into_sql_in_bind
+ 91  	 (
+ 92  	   p_log_id	=> l_log_id,
+ 93  	   p_sql	=> l_sql,
+ 94  	   p_array_bind => SYS.ODCIVARCHAR2LIST(l_target_owner, l_target_table),
+ 95  	   p_execute	=> 'Y'
+ 96  	 );
+ 97  
+ 98  	 FOR t IN (
+ 99  	   SELECT DISTINCT source_db_link,
+100  		  source_agent_schema,
+101  		  source_owner,
+102  		  source_table_name,
+103  		  target_owner,
+104  		  target_table_name
+105  	     FROM TW_ARCHIVE_QUALITY_PARTITIONS_VW
+106  	    WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
+107  	      AND (l_target_table IS NULL OR target_table_name = l_target_table)
+108  	    ORDER BY source_db_link, source_owner, source_table_name
+109  	 ) LOOP
+110  	   l_tables := l_tables + 1;
+111  	   l_agent_function := fn_qualified_agent_function(t.source_agent_schema, t.source_db_link);
+112  	   l_sql := 'SELECT ' || l_agent_function || '(:1, :2, :3, :4) FROM dual';
+113  
+114  	   FOR r IN (
+115  	     SELECT p.*
+116  	       FROM TW_ARCHIVE_QUALITY_PARTITIONS_VW p
+117  	      WHERE p.source_db_link = t.source_db_link
+118  		AND p.source_owner = t.source_owner
+119  		AND p.source_table_name = t.source_table_name
+120  		AND p.target_owner = t.target_owner
+121  		AND p.target_table_name = t.target_table_name
+122  	      ORDER BY p.partition_position, p.subpartition_position
+123  	   ) LOOP
+124  	     l_units := l_units + 1;
+125  
+126  	     l_source_rows := PKG_SQL.fn_run_into_sql_in_bind
+127  	     (
+128  	       p_log_id     => l_log_id,
+129  	       p_sql	    => l_sql,
+130  	       p_array_bind => SYS.ODCIVARCHAR2LIST
+131  			       (
+132  				 r.SOURCE_OWNER,
+133  				 r.SOURCE_TABLE_NAME,
+134  				 r.SOURCE_PARTITION_NAME,
+135  				 CASE WHEN r.SOURCE_SUBPARTITION_NAME = '#' THEN NULL ELSE r.SOURCE_SUBPARTITION_NAME END
+136  			       ),
+137  	       p_execute    => 'Y'
+138  	     );
+139  
+140  	     IF l_source_rows = r.TARGET_ROW_COUNT THEN
+141  	       l_quality_status := 'Y';
+142  	       l_ok := l_ok + 1;
+143  	     ELSE
+144  	       l_quality_status := 'N';
+145  	       l_failed := l_failed + 1;
+146  	     END IF;
+147  
+148  	     DBMS_OUTPUT.PUT_LINE('QUALITY ' || r.SOURCE_DB_LINK || '.' || r.SOURCE_OWNER || '.' ||
+149  				  r.SOURCE_TABLE_NAME || ' source_name=' || r.SOURCE_PARTITION_NAME ||
+150  				  CASE WHEN r.SOURCE_SUBPARTITION_NAME <> '#' THEN '.' || r.SOURCE_SUBPARTITION_NAME ELSE NULL END ||
+151  				  ' target_name=' || r.PARTITION_NAME ||
+152  				  CASE WHEN r.SUBPARTITION_NAME <> '#' THEN '.' || r.SUBPARTITION_NAME ELSE NULL END ||
+153  				  ' source_rows=' || NVL(TO_CHAR(l_source_rows), 'NULL') ||
+154  				  ' target_rows=' || NVL(TO_CHAR(r.TARGET_ROW_COUNT), 'NULL') ||
+155  				  ' status=' || l_quality_status || ' execute=' || l_execute_flag);
+156  
+157  	     IF l_execute_flag = 'Y' THEN
+158  	       UPDATE TW_ARCHIVE_PARTITIONS
+159  		  SET SOURCE_ROW_COUNT = l_source_rows,
+160  		      QUALITY_STATUS = l_quality_status,
+161  		      LAST_RUN_ID = l_run_id,
+162  		      ERROR_MESSAGE = CASE
+163  					WHEN l_quality_status = 'Y' THEN NULL
+164  					ELSE 'Source row count does not match target row count'
+165  				      END,
+166  		      UPDATED_AT = SYSTIMESTAMP
+167  		WHERE SOURCE_DB_LINK = r.SOURCE_DB_LINK
+168  		  AND SOURCE_OWNER = r.SOURCE_OWNER
+169  		  AND SOURCE_TABLE_NAME = r.SOURCE_TABLE_NAME
+170  		  AND PARTITION_HIGH_VALUE = r.PARTITION_HIGH_VALUE
+171  		  AND SUBPARTITION_HIGH_VALUE = r.SUBPARTITION_HIGH_VALUE;
+172  
+173  	       COMMIT;
+174  	     END IF;
+175  
+176  	     l_summary := l_summary ||
+177  	       PKG_ARCHIVE_LOG.fn_summary_row
+178  	       (
+179  		 p_source_db_link	   => r.source_db_link,
+180  		 p_table_owner		   => r.source_owner,
+181  		 p_table_name		   => r.source_table_name,
+182  		 p_partition_name	   => r.source_partition_name,
+183  		 p_subpartition_name	   => r.source_subpartition_name,
+184  		 p_partition_high_value    => r.partition_high_value,
+185  		 p_subpartition_high_value => r.subpartition_high_value,
+186  		 p_archive_status	   => r.archive_status,
+187  		 p_quality_status	   => l_quality_status,
+188  		 p_truncate_status	   => r.truncate_status,
+189  		 p_source_row_count	   => l_source_rows,
+190  		 p_target_row_count	   => r.target_row_count,
+191  		 p_note 		   => 'target=' || r.target_owner || '.' || r.target_table_name ||
+192  					      ' ' || r.partition_name ||
+193  					      CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END ||
+194  					      ', execute=' || l_execute_flag
+195  	       );
+196  	   END LOOP;
+197  	 END LOOP;
+198  
+199  	 DBMS_OUTPUT.PUT_LINE(
+200  	   'QUALITY tables=' || l_tables ||
+201  	   ' units=' || l_units ||
+202  	   ' found=' || l_rows_available ||
+203  	   ' ok=' || l_ok ||
+204  	   ' failed=' || l_failed ||
+205  	   ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
+206  	   ' target_table=' || NVL(l_target_table, '<ALL>') ||
+207  	   ' execute=' || l_execute_flag
+208  	 );
+209  
+210  	 IF l_summary IS NOT NULL THEN
+211  	   PKG_ARCHIVE_LOG.prc_log_summary
+212  	   (
+213  	     p_run_id	    => l_run_id,
+214  	     p_process_name => 'QUALITY',
+215  	     p_columns	    => l_summary_columns,
+216  	     p_rows	    => l_summary
+217  	   );
+218  	 END IF;
+219  
+220  	 PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, CASE WHEN l_failed > 0 THEN 'WARNING' ELSE 'SUCCESS' END);
+221    EXCEPTION
+222  	 WHEN OTHERS THEN
+223  	   IF l_run_id IS NOT NULL THEN
+224  	     PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
+225  	     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
+226  	   END IF;
+227  	   RAISE;
+228    END prc_quality;
+229  END PKG_ARCHIVE_QUALITY;
+230  /
 
 Package body created.
 
@@ -4412,7 +4978,7 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_TRUNCATE
  62  	 l_sql_rows	   NUMBER;
  63  	 l_summary	   CLOB := NULL;
  64  	 l_summary_columns VARCHAR2(1000) :=
- 65  	   'TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
+ 65  	   'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
  66    BEGIN
  67  	 l_execute_flag := fn_normalize_execute(p_execute);
  68  	 l_target_owner := fn_normalize_name(p_target_owner);
@@ -4423,145 +4989,148 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_TRUNCATE
  73  	 PKG_ARCHIVE_LOG.prc_log_message
  74  	 (
  75  	   p_run_id  => l_run_id,
- 76  	   p_log_msg => 'Truncate filter: target_owner=' || NVL(l_target_owner, '<ALL>') ||
- 77  			', target_table_name=' || NVL(l_target_table, '<ALL>')
- 78  	 );
- 79  
- 80  	 l_sql :=
- 81  	   'SELECT COUNT(*) ' ||
- 82  	   '  FROM TW_ARCHIVE_TRUNCATE_PARTITIONS_VW ' ||
- 83  	   ' WHERE (:1 IS NULL OR target_owner = :1) ' ||
- 84  	   '   AND (:2 IS NULL OR target_table_name = :2)';
- 85  
- 86  	 l_rows_available := PKG_SQL.fn_run_into_sql_in_bind
- 87  	 (
- 88  	   p_log_id	=> l_log_id,
- 89  	   p_sql	=> l_sql,
- 90  	   p_array_bind => SYS.ODCIVARCHAR2LIST(l_target_owner, l_target_table),
- 91  	   p_execute	=> 'Y'
- 92  	 );
- 93  
- 94  	 FOR t IN (
- 95  	   SELECT DISTINCT source_db_link,
- 96  		  source_agent_schema,
- 97  		  source_owner,
- 98  		  source_table_name,
- 99  		  target_owner,
-100  		  target_table_name
-101  	     FROM TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
-102  	    WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
-103  	      AND (l_target_table IS NULL OR target_table_name = l_target_table)
-104  	    ORDER BY source_db_link, source_owner, source_table_name
-105  	 ) LOOP
-106  	   l_tables := l_tables + 1;
-107  	   l_agent_procedure := fn_qualified_agent_procedure(t.source_agent_schema, t.source_db_link);
-108  	   l_sql := 'BEGIN ' || l_agent_procedure || '(:1, :2, :3, :4, :5, :6); END;';
-109  
-110  	   FOR r IN (
-111  	     SELECT p.*
-112  	       FROM TW_ARCHIVE_TRUNCATE_PARTITIONS_VW p
-113  	      WHERE p.source_db_link = t.source_db_link
-114  		AND p.source_owner = t.source_owner
-115  		AND p.source_table_name = t.source_table_name
-116  		AND p.target_owner = t.target_owner
-117  		AND p.target_table_name = t.target_table_name
-118  	      ORDER BY p.partition_position, p.subpartition_position
-119  	   ) LOOP
-120  	     l_units := l_units + 1;
-121  	     DBMS_OUTPUT.PUT_LINE('TRUNCATE ' || r.SOURCE_DB_LINK || '.' || r.SOURCE_OWNER || '.' ||
-122  				  r.SOURCE_TABLE_NAME || ' source=' || r.SOURCE_PARTITION_NAME ||
-123  				  CASE WHEN r.SOURCE_SUBPARTITION_NAME <> '#' THEN '.' || r.SOURCE_SUBPARTITION_NAME ELSE NULL END ||
-124  				  ' target=' || r.PARTITION_NAME ||
-125  				  CASE WHEN r.SUBPARTITION_NAME <> '#' THEN '.' || r.SUBPARTITION_NAME ELSE NULL END ||
-126  				  ' cutoff=' || TO_CHAR(r.CUTOFF_DATE, 'YYYY-MM-DD') ||
-127  				  ' execute=' || l_execute_flag);
-128  
-129  	     l_sql_rows := PKG_SQL.fn_run_sql_in_bind
-130  	     (
-131  	       p_log_id     => l_log_id,
-132  	       p_sql	    => l_sql,
-133  	       p_array_bind => SYS.ODCIVARCHAR2LIST
-134  			       (
-135  				 r.SOURCE_OWNER,
-136  				 r.SOURCE_TABLE_NAME,
-137  				 r.SOURCE_PARTITION_NAME,
-138  				 CASE WHEN r.SOURCE_SUBPARTITION_NAME = '#' THEN NULL ELSE r.SOURCE_SUBPARTITION_NAME END,
-139  				 'TRUNCATE',
-140  				 l_execute_flag
-141  			       ),
-142  	       p_execute    => l_execute_flag
-143  	     );
-144  
-145  	     IF l_execute_flag = 'Y' THEN
-146  	       UPDATE TW_ARCHIVE_PARTITIONS
-147  		  SET TRUNCATE_STATUS = 'Y',
-148  		      LAST_RUN_ID = l_run_id,
-149  		      ERROR_MESSAGE = NULL,
-150  		      UPDATED_AT = SYSTIMESTAMP
-151  		WHERE SOURCE_DB_LINK = r.SOURCE_DB_LINK
-152  		  AND SOURCE_OWNER = r.SOURCE_OWNER
-153  		  AND SOURCE_TABLE_NAME = r.SOURCE_TABLE_NAME
-154  		  AND PARTITION_HIGH_VALUE = r.PARTITION_HIGH_VALUE
-155  		  AND SUBPARTITION_HIGH_VALUE = r.SUBPARTITION_HIGH_VALUE;
-156  
-157  	       l_truncated := l_truncated + SQL%ROWCOUNT;
-158  	       COMMIT;
-159  	     END IF;
-160  
-161  	     l_summary := l_summary ||
-162  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.source_owner) || '|' ||
-163  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.source_table_name) || '|' ||
-164  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
-165  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
-166  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_name) || '|' ||
-167  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_name) || '|' ||
-168  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_high_value) || '|' ||
-169  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_high_value) || '|' ||
-170  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.archive_status) || '|' ||
-171  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.quality_status) || '|' ||
-172  	       PKG_ARCHIVE_LOG.fn_summary_cell(CASE WHEN l_execute_flag = 'Y' THEN 'Y' ELSE 'N' END) || '|' ||
-173  	       PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.source_row_count)) || '|' ||
-174  	       PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.target_row_count)) || '|' ||
-175  	       PKG_ARCHIVE_LOG.fn_summary_cell('source=' || r.source_owner || '.' || r.source_table_name ||
-176  					       ' ' || r.source_partition_name ||
-177  					       CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.source_subpartition_name END ||
-178  					       ', mode=TRUNCATE, execute=' || l_execute_flag ||
-179  					       ', cutoff=' || TO_CHAR(r.cutoff_date, 'YYYY-MM-DD')) ||
-180  	       CHR(10);
-181  	   END LOOP;
-182  	 END LOOP;
-183  
-184  	 DBMS_OUTPUT.PUT_LINE(
-185  	   'TRUNCATE tables=' || l_tables ||
-186  	   ' units=' || l_units ||
-187  	   ' found=' || l_rows_available ||
-188  	   ' truncated=' || l_truncated ||
-189  	   ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
-190  	   ' target_table=' || NVL(l_target_table, '<ALL>') ||
-191  	   ' execute=' || l_execute_flag
-192  	 );
-193  
-194  	 IF l_summary IS NOT NULL THEN
-195  	   PKG_ARCHIVE_LOG.prc_log_summary
-196  	   (
-197  	     p_run_id	    => l_run_id,
-198  	     p_process_name => 'TRUNCATE',
-199  	     p_columns	    => l_summary_columns,
-200  	     p_rows	    => l_summary
-201  	   );
-202  	 END IF;
-203  
-204  	 PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
-205    EXCEPTION
-206  	 WHEN OTHERS THEN
-207  	   IF l_run_id IS NOT NULL THEN
-208  	     PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
-209  	     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
-210  	   END IF;
-211  	   RAISE;
-212    END prc_truncate;
-213  END PKG_ARCHIVE_TRUNCATE;
-214  /
+ 76  	   p_log_msg => 'Started TRUNCATE with parameters:' || CHR(10) ||
+ 77  			'  p_execute	       => ' || l_execute_flag || CHR(10) ||
+ 78  			'  p_target_owner      => ' || NVL(l_target_owner, '<ALL>') || CHR(10) ||
+ 79  			'  p_target_table_name => ' || NVL(l_target_table, '<ALL>')
+ 80  	 );
+ 81  
+ 82  	 l_sql :=
+ 83  	   'SELECT COUNT(*) ' ||
+ 84  	   '  FROM TW_ARCHIVE_TRUNCATE_PARTITIONS_VW ' ||
+ 85  	   ' WHERE (:1 IS NULL OR target_owner = :1) ' ||
+ 86  	   '   AND (:2 IS NULL OR target_table_name = :2)';
+ 87  
+ 88  	 l_rows_available := PKG_SQL.fn_run_into_sql_in_bind
+ 89  	 (
+ 90  	   p_log_id	=> l_log_id,
+ 91  	   p_sql	=> l_sql,
+ 92  	   p_array_bind => SYS.ODCIVARCHAR2LIST(l_target_owner, l_target_table),
+ 93  	   p_execute	=> 'Y'
+ 94  	 );
+ 95  
+ 96  	 FOR t IN (
+ 97  	   SELECT DISTINCT source_db_link,
+ 98  		  source_agent_schema,
+ 99  		  source_owner,
+100  		  source_table_name,
+101  		  target_owner,
+102  		  target_table_name
+103  	     FROM TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
+104  	    WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
+105  	      AND (l_target_table IS NULL OR target_table_name = l_target_table)
+106  	    ORDER BY source_db_link, source_owner, source_table_name
+107  	 ) LOOP
+108  	   l_tables := l_tables + 1;
+109  	   l_agent_procedure := fn_qualified_agent_procedure(t.source_agent_schema, t.source_db_link);
+110  	   l_sql := 'BEGIN ' || l_agent_procedure || '(:1, :2, :3, :4, :5, :6); END;';
+111  
+112  	   FOR r IN (
+113  	     SELECT p.*
+114  	       FROM TW_ARCHIVE_TRUNCATE_PARTITIONS_VW p
+115  	      WHERE p.source_db_link = t.source_db_link
+116  		AND p.source_owner = t.source_owner
+117  		AND p.source_table_name = t.source_table_name
+118  		AND p.target_owner = t.target_owner
+119  		AND p.target_table_name = t.target_table_name
+120  	      ORDER BY p.partition_position, p.subpartition_position
+121  	   ) LOOP
+122  	     l_units := l_units + 1;
+123  	     DBMS_OUTPUT.PUT_LINE('TRUNCATE ' || r.SOURCE_DB_LINK || '.' || r.SOURCE_OWNER || '.' ||
+124  				  r.SOURCE_TABLE_NAME || ' source=' || r.SOURCE_PARTITION_NAME ||
+125  				  CASE WHEN r.SOURCE_SUBPARTITION_NAME <> '#' THEN '.' || r.SOURCE_SUBPARTITION_NAME ELSE NULL END ||
+126  				  ' target=' || r.PARTITION_NAME ||
+127  				  CASE WHEN r.SUBPARTITION_NAME <> '#' THEN '.' || r.SUBPARTITION_NAME ELSE NULL END ||
+128  				  ' cutoff=' || TO_CHAR(r.CUTOFF_DATE, 'YYYY-MM-DD') ||
+129  				  ' execute=' || l_execute_flag);
+130  
+131  	     l_sql_rows := PKG_SQL.fn_run_sql_in_bind
+132  	     (
+133  	       p_log_id     => l_log_id,
+134  	       p_sql	    => l_sql,
+135  	       p_array_bind => SYS.ODCIVARCHAR2LIST
+136  			       (
+137  				 r.SOURCE_OWNER,
+138  				 r.SOURCE_TABLE_NAME,
+139  				 r.SOURCE_PARTITION_NAME,
+140  				 CASE WHEN r.SOURCE_SUBPARTITION_NAME = '#' THEN NULL ELSE r.SOURCE_SUBPARTITION_NAME END,
+141  				 'TRUNCATE',
+142  				 l_execute_flag
+143  			       ),
+144  	       p_execute    => l_execute_flag
+145  	     );
+146  
+147  	     IF l_execute_flag = 'Y' THEN
+148  	       UPDATE TW_ARCHIVE_PARTITIONS
+149  		  SET TRUNCATE_STATUS = 'Y',
+150  		      LAST_RUN_ID = l_run_id,
+151  		      ERROR_MESSAGE = NULL,
+152  		      UPDATED_AT = SYSTIMESTAMP
+153  		WHERE SOURCE_DB_LINK = r.SOURCE_DB_LINK
+154  		  AND SOURCE_OWNER = r.SOURCE_OWNER
+155  		  AND SOURCE_TABLE_NAME = r.SOURCE_TABLE_NAME
+156  		  AND PARTITION_HIGH_VALUE = r.PARTITION_HIGH_VALUE
+157  		  AND SUBPARTITION_HIGH_VALUE = r.SUBPARTITION_HIGH_VALUE;
+158  
+159  	       l_truncated := l_truncated + SQL%ROWCOUNT;
+160  	       COMMIT;
+161  	     END IF;
+162  
+163  	     l_summary := l_summary ||
+164  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.source_db_link) || '|' ||
+165  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.source_owner) || '|' ||
+166  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.source_table_name) || '|' ||
+167  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
+168  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
+169  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_name) || '|' ||
+170  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_name) || '|' ||
+171  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_high_value) || '|' ||
+172  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_high_value) || '|' ||
+173  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.archive_status) || '|' ||
+174  	       PKG_ARCHIVE_LOG.fn_summary_cell(r.quality_status) || '|' ||
+175  	       PKG_ARCHIVE_LOG.fn_summary_cell(CASE WHEN l_execute_flag = 'Y' THEN 'Y' ELSE 'N' END) || '|' ||
+176  	       PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.source_row_count)) || '|' ||
+177  	       PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.target_row_count)) || '|' ||
+178  	       PKG_ARCHIVE_LOG.fn_summary_cell('source=' || r.source_owner || '.' || r.source_table_name ||
+179  					       ' ' || r.source_partition_name ||
+180  					       CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.source_subpartition_name END ||
+181  					       ', mode=TRUNCATE, execute=' || l_execute_flag ||
+182  					       ', cutoff=' || TO_CHAR(r.cutoff_date, 'YYYY-MM-DD')) ||
+183  	       CHR(10);
+184  	   END LOOP;
+185  	 END LOOP;
+186  
+187  	 DBMS_OUTPUT.PUT_LINE(
+188  	   'TRUNCATE tables=' || l_tables ||
+189  	   ' units=' || l_units ||
+190  	   ' found=' || l_rows_available ||
+191  	   ' truncated=' || l_truncated ||
+192  	   ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
+193  	   ' target_table=' || NVL(l_target_table, '<ALL>') ||
+194  	   ' execute=' || l_execute_flag
+195  	 );
+196  
+197  	 IF l_summary IS NOT NULL THEN
+198  	   PKG_ARCHIVE_LOG.prc_log_summary
+199  	   (
+200  	     p_run_id	    => l_run_id,
+201  	     p_process_name => 'TRUNCATE',
+202  	     p_columns	    => l_summary_columns,
+203  	     p_rows	    => l_summary
+204  	   );
+205  	 END IF;
+206  
+207  	 PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+208    EXCEPTION
+209  	 WHEN OTHERS THEN
+210  	   IF l_run_id IS NOT NULL THEN
+211  	     PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
+212  	     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
+213  	   END IF;
+214  	   RAISE;
+215    END prc_truncate;
+216  END PKG_ARCHIVE_TRUNCATE;
+217  /
 
 Package body created.
 
@@ -4639,116 +5208,205 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_RUNNER
  31  	 RETURN l_step;
  32    END;
  33  
- 34    PROCEDURE prc_run_table
- 35    (
- 36  	 p_source_db_link   IN VARCHAR2,
- 37  	 p_owner	    IN VARCHAR2,
- 38  	 p_table_name	    IN VARCHAR2,
- 39  	 p_execute	    IN VARCHAR2 DEFAULT 'N',
- 40  	 p_stop_after_step  IN VARCHAR2 DEFAULT 'QUALITY',
- 41  	 p_truncate_execute IN VARCHAR2 DEFAULT 'N'
- 42    )
- 43    IS
- 44  	 l_run_id	    NUMBER;
- 45  	 l_execute_flag     VARCHAR2(1);
- 46  	 l_truncate_execute VARCHAR2(1);
- 47  	 l_stop_step	    VARCHAR2(30);
- 48  	 l_target_owner     VARCHAR2(128);
- 49  	 l_target_table     VARCHAR2(128);
- 50    BEGIN
- 51  	 l_execute_flag := fn_normalize_execute(p_execute);
- 52  	 l_truncate_execute := fn_normalize_execute(p_truncate_execute);
- 53  	 l_stop_step := fn_normalize_stop_step(p_stop_after_step);
- 54  	 l_run_id := PKG_ARCHIVE_LOG.fn_create_run('RUNNER', p_source_db_link, p_owner, p_table_name, p_execute);
- 55  
- 56  	 SELECT target_owner, target_table_name
- 57  	   INTO l_target_owner, l_target_table
- 58  	   FROM TW_ARCHIVE_TABLES
- 59  	  WHERE enabled_flag = 'Y'
- 60  	    AND source_db_link = UPPER(p_source_db_link)
- 61  	    AND source_owner = UPPER(p_owner)
- 62  	    AND source_table_name = UPPER(p_table_name);
- 63  
- 64  	 DBMS_OUTPUT.PUT_LINE('RUNNER ' || UPPER(p_source_db_link) || '.' || UPPER(p_owner) || '.' || UPPER(p_table_name) ||
- 65  			      ' execute=' || l_execute_flag || ' stop_after=' || l_stop_step ||
- 66  			      ' truncate_execute=' || l_truncate_execute);
- 67  	 PKG_ARCHIVE_LOG.prc_log_message
- 68  	 (
- 69  	   p_run_id  => l_run_id,
- 70  	   p_log_msg => 'Runner options: execute=' || l_execute_flag ||
- 71  			', stop_after=' || l_stop_step ||
- 72  			', truncate_execute=' || l_truncate_execute
- 73  	 );
- 74  
- 75  	 PKG_ARCHIVE_DISCOVERY.prc_discover(l_execute_flag, l_target_owner, l_target_table);
- 76  	 IF l_stop_step = 'DISCOVER' THEN PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS'); RETURN; END IF;
- 77  
- 78  	 PKG_ARCHIVE_IMPORT.prc_import(l_execute_flag, l_target_owner, l_target_table);
- 79  	 IF l_stop_step = 'ARCHIVE' THEN PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS'); RETURN; END IF;
- 80  
- 81  	 PKG_ARCHIVE_QUALITY.prc_quality(l_execute_flag, l_target_owner, l_target_table);
- 82  	 IF l_stop_step = 'QUALITY' THEN PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS'); RETURN; END IF;
- 83  
- 84  	 PKG_ARCHIVE_TRUNCATE.prc_truncate(l_truncate_execute, l_target_owner, l_target_table);
- 85  	 PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
- 86    EXCEPTION
- 87  	 WHEN OTHERS THEN
- 88  	   IF l_run_id IS NOT NULL THEN
- 89  	     PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
- 90  	     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
- 91  	   END IF;
- 92  	   RAISE;
- 93    END;
- 94  
- 95    PROCEDURE prc_run_all
- 96    (
- 97  	 p_execute	    IN VARCHAR2 DEFAULT 'N',
- 98  	 p_stop_after_step  IN VARCHAR2 DEFAULT 'QUALITY',
- 99  	 p_truncate_execute IN VARCHAR2 DEFAULT 'N'
-100    )
-101    IS
-102  	 l_run_id	    NUMBER;
-103  	 l_execute_flag     VARCHAR2(1);
-104  	 l_truncate_execute VARCHAR2(1);
-105  	 l_stop_step	    VARCHAR2(30);
-106    BEGIN
-107  	 l_execute_flag := fn_normalize_execute(p_execute);
-108  	 l_truncate_execute := fn_normalize_execute(p_truncate_execute);
-109  	 l_stop_step := fn_normalize_stop_step(p_stop_after_step);
-110  	 l_run_id := PKG_ARCHIVE_LOG.fn_create_run('RUNNER', NULL, NULL, NULL, l_execute_flag);
-111  
-112  	 DBMS_OUTPUT.PUT_LINE('RUNNER ALL execute=' || l_execute_flag || ' stop_after=' || l_stop_step ||
-113  			      ' truncate_execute=' || l_truncate_execute);
-114  	 PKG_ARCHIVE_LOG.prc_log_message
-115  	 (
-116  	   p_run_id  => l_run_id,
-117  	   p_log_msg => 'Runner all options: execute=' || l_execute_flag ||
-118  			', stop_after=' || l_stop_step ||
-119  			', truncate_execute=' || l_truncate_execute
+ 34    FUNCTION fn_total_steps(p_stop_step IN VARCHAR2) RETURN PLS_INTEGER IS
+ 35    BEGIN
+ 36  	 CASE p_stop_step
+ 37  	   WHEN 'DISCOVER' THEN RETURN 1;
+ 38  	   WHEN 'ARCHIVE'  THEN RETURN 2;
+ 39  	   WHEN 'QUALITY'  THEN RETURN 3;
+ 40  	   WHEN 'TRUNCATE' THEN RETURN 4;
+ 41  	 END CASE;
+ 42    END;
+ 43  
+ 44    PROCEDURE prc_run_table
+ 45    (
+ 46  	 p_source_db_link   IN VARCHAR2,
+ 47  	 p_owner	    IN VARCHAR2,
+ 48  	 p_table_name	    IN VARCHAR2,
+ 49  	 p_execute	    IN VARCHAR2 DEFAULT 'N',
+ 50  	 p_stop_after_step  IN VARCHAR2 DEFAULT 'QUALITY',
+ 51  	 p_truncate_execute IN VARCHAR2 DEFAULT 'N'
+ 52    )
+ 53    IS
+ 54  	 l_run_id	    NUMBER;
+ 55  	 l_execute_flag     VARCHAR2(1);
+ 56  	 l_truncate_execute VARCHAR2(1);
+ 57  	 l_stop_step	    VARCHAR2(30);
+ 58  	 l_total_steps	    PLS_INTEGER;
+ 59  	 l_target_owner     VARCHAR2(128);
+ 60  	 l_target_table     VARCHAR2(128);
+ 61    BEGIN
+ 62  	 l_execute_flag := fn_normalize_execute(p_execute);
+ 63  	 l_truncate_execute := fn_normalize_execute(p_truncate_execute);
+ 64  	 l_stop_step := fn_normalize_stop_step(p_stop_after_step);
+ 65  	 l_total_steps := fn_total_steps(l_stop_step);
+ 66  	 l_run_id := PKG_ARCHIVE_LOG.fn_create_run('RUNNER', p_source_db_link, p_owner, p_table_name, p_execute);
+ 67  
+ 68  	 SELECT target_owner, target_table_name
+ 69  	   INTO l_target_owner, l_target_table
+ 70  	   FROM TW_ARCHIVE_TABLES
+ 71  	  WHERE enabled_flag = 'Y'
+ 72  	    AND source_db_link = UPPER(p_source_db_link)
+ 73  	    AND source_owner = UPPER(p_owner)
+ 74  	    AND source_table_name = UPPER(p_table_name);
+ 75  
+ 76  	 DBMS_OUTPUT.PUT_LINE('RUNNER ' || UPPER(p_source_db_link) || '.' || UPPER(p_owner) || '.' || UPPER(p_table_name) ||
+ 77  			      ' execute=' || l_execute_flag || ' stop_after=' || l_stop_step ||
+ 78  			      ' truncate_execute=' || l_truncate_execute);
+ 79  	 PKG_ARCHIVE_LOG.prc_log_message
+ 80  	 (
+ 81  	   p_run_id  => l_run_id,
+ 82  	   p_log_msg => 'Started RUNNER with parameters:' || CHR(10) ||
+ 83  			'  p_source_db_link    => ' || UPPER(p_source_db_link) || CHR(10) ||
+ 84  			'  p_owner	       => ' || UPPER(p_owner) || CHR(10) ||
+ 85  			'  p_table_name        => ' || UPPER(p_table_name) || CHR(10) ||
+ 86  			'  p_execute	       => ' || l_execute_flag || CHR(10) ||
+ 87  			'  p_stop_after_step   => ' || l_stop_step || CHR(10) ||
+ 88  			'  p_truncate_execute  => ' || l_truncate_execute || CHR(10) ||
+ 89  			'  total_steps	       => ' || l_total_steps
+ 90  	 );
+ 91  
+ 92  	 PKG_ARCHIVE_LOG.prc_log_message
+ 93  	 (
+ 94  	   p_run_id  => l_run_id,
+ 95  	   p_log_msg => 'Step 1/' || l_total_steps || ': DISCOVER - discovering new source partitions'
+ 96  	 );
+ 97  	 PKG_ARCHIVE_DISCOVERY.prc_discover(l_execute_flag, l_target_owner, l_target_table);
+ 98  	 IF l_stop_step = 'DISCOVER' THEN
+ 99  	   PKG_ARCHIVE_LOG.prc_log_message(p_run_id => l_run_id, p_log_msg => 'Runner finished at stop step DISCOVER');
+100  	   PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+101  	   RETURN;
+102  	 END IF;
+103  
+104  	 PKG_ARCHIVE_LOG.prc_log_message
+105  	 (
+106  	   p_run_id  => l_run_id,
+107  	   p_log_msg => 'Step 2/' || l_total_steps || ': ARCHIVE - importing source data via exchange staging'
+108  	 );
+109  	 PKG_ARCHIVE_IMPORT.prc_import(l_execute_flag, l_target_owner, l_target_table);
+110  	 IF l_stop_step = 'ARCHIVE' THEN
+111  	   PKG_ARCHIVE_LOG.prc_log_message(p_run_id => l_run_id, p_log_msg => 'Runner finished at stop step ARCHIVE');
+112  	   PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+113  	   RETURN;
+114  	 END IF;
+115  
+116  	 PKG_ARCHIVE_LOG.prc_log_message
+117  	 (
+118  	   p_run_id  => l_run_id,
+119  	   p_log_msg => 'Step 3/' || l_total_steps || ': QUALITY - comparing source vs target row counts'
 120  	 );
-121  
-122  	 PKG_ARCHIVE_DISCOVERY.prc_discover(l_execute_flag);
-123  	 IF l_stop_step = 'DISCOVER' THEN PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS'); RETURN; END IF;
-124  
-125  	 PKG_ARCHIVE_IMPORT.prc_import(l_execute_flag);
-126  	 IF l_stop_step = 'ARCHIVE' THEN PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS'); RETURN; END IF;
+121  	 PKG_ARCHIVE_QUALITY.prc_quality(l_execute_flag, l_target_owner, l_target_table);
+122  	 IF l_stop_step = 'QUALITY' THEN
+123  	   PKG_ARCHIVE_LOG.prc_log_message(p_run_id => l_run_id, p_log_msg => 'Runner finished at stop step QUALITY (TRUNCATE skipped)');
+124  	   PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+125  	   RETURN;
+126  	 END IF;
 127  
-128  	 PKG_ARCHIVE_QUALITY.prc_quality(l_execute_flag);
-129  	 IF l_stop_step = 'QUALITY' THEN PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS'); RETURN; END IF;
-130  
-131  	 PKG_ARCHIVE_TRUNCATE.prc_truncate(l_truncate_execute);
-132  
-133  	 PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
-134    EXCEPTION
-135  	 WHEN OTHERS THEN
-136  	   IF l_run_id IS NOT NULL THEN
-137  	     PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
-138  	     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
-139  	   END IF;
-140  	   RAISE;
-141    END;
-142  END PKG_ARCHIVE_RUNNER;
-143  /
+128  	 PKG_ARCHIVE_LOG.prc_log_message
+129  	 (
+130  	   p_run_id  => l_run_id,
+131  	   p_log_msg => 'Step 4/' || l_total_steps || ': TRUNCATE - requesting source truncate through agent' ||
+132  			CASE WHEN l_truncate_execute = 'Y' THEN '' ELSE ' (preview mode)' END
+133  	 );
+134  	 PKG_ARCHIVE_TRUNCATE.prc_truncate(l_truncate_execute, l_target_owner, l_target_table);
+135  	 PKG_ARCHIVE_LOG.prc_log_message(p_run_id => l_run_id, p_log_msg => 'Runner finished all steps');
+136  	 PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+137    EXCEPTION
+138  	 WHEN OTHERS THEN
+139  	   IF l_run_id IS NOT NULL THEN
+140  	     PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
+141  	     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
+142  	   END IF;
+143  	   RAISE;
+144    END;
+145  
+146    PROCEDURE prc_run_all
+147    (
+148  	 p_execute	    IN VARCHAR2 DEFAULT 'N',
+149  	 p_stop_after_step  IN VARCHAR2 DEFAULT 'QUALITY',
+150  	 p_truncate_execute IN VARCHAR2 DEFAULT 'N'
+151    )
+152    IS
+153  	 l_run_id	    NUMBER;
+154  	 l_execute_flag     VARCHAR2(1);
+155  	 l_truncate_execute VARCHAR2(1);
+156  	 l_stop_step	    VARCHAR2(30);
+157  	 l_total_steps	    PLS_INTEGER;
+158    BEGIN
+159  	 l_execute_flag := fn_normalize_execute(p_execute);
+160  	 l_truncate_execute := fn_normalize_execute(p_truncate_execute);
+161  	 l_stop_step := fn_normalize_stop_step(p_stop_after_step);
+162  	 l_total_steps := fn_total_steps(l_stop_step);
+163  	 l_run_id := PKG_ARCHIVE_LOG.fn_create_run('RUNNER', NULL, NULL, NULL, l_execute_flag);
+164  
+165  	 DBMS_OUTPUT.PUT_LINE('RUNNER ALL execute=' || l_execute_flag || ' stop_after=' || l_stop_step ||
+166  			      ' truncate_execute=' || l_truncate_execute);
+167  	 PKG_ARCHIVE_LOG.prc_log_message
+168  	 (
+169  	   p_run_id  => l_run_id,
+170  	   p_log_msg => 'Started RUNNER ALL with parameters:' || CHR(10) ||
+171  			'  p_execute	      => ' || l_execute_flag || CHR(10) ||
+172  			'  p_stop_after_step  => ' || l_stop_step || CHR(10) ||
+173  			'  p_truncate_execute => ' || l_truncate_execute || CHR(10) ||
+174  			'  total_steps	      => ' || l_total_steps
+175  	 );
+176  
+177  	 PKG_ARCHIVE_LOG.prc_log_message
+178  	 (
+179  	   p_run_id  => l_run_id,
+180  	   p_log_msg => 'Step 1/' || l_total_steps || ': DISCOVER - discovering new source partitions'
+181  	 );
+182  	 PKG_ARCHIVE_DISCOVERY.prc_discover(l_execute_flag);
+183  	 IF l_stop_step = 'DISCOVER' THEN
+184  	   PKG_ARCHIVE_LOG.prc_log_message(p_run_id => l_run_id, p_log_msg => 'Runner finished at stop step DISCOVER');
+185  	   PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+186  	   RETURN;
+187  	 END IF;
+188  
+189  	 PKG_ARCHIVE_LOG.prc_log_message
+190  	 (
+191  	   p_run_id  => l_run_id,
+192  	   p_log_msg => 'Step 2/' || l_total_steps || ': ARCHIVE - importing source data via exchange staging'
+193  	 );
+194  	 PKG_ARCHIVE_IMPORT.prc_import(l_execute_flag);
+195  	 IF l_stop_step = 'ARCHIVE' THEN
+196  	   PKG_ARCHIVE_LOG.prc_log_message(p_run_id => l_run_id, p_log_msg => 'Runner finished at stop step ARCHIVE');
+197  	   PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+198  	   RETURN;
+199  	 END IF;
+200  
+201  	 PKG_ARCHIVE_LOG.prc_log_message
+202  	 (
+203  	   p_run_id  => l_run_id,
+204  	   p_log_msg => 'Step 3/' || l_total_steps || ': QUALITY - comparing source vs target row counts'
+205  	 );
+206  	 PKG_ARCHIVE_QUALITY.prc_quality(l_execute_flag);
+207  	 IF l_stop_step = 'QUALITY' THEN
+208  	   PKG_ARCHIVE_LOG.prc_log_message(p_run_id => l_run_id, p_log_msg => 'Runner finished at stop step QUALITY (TRUNCATE skipped)');
+209  	   PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+210  	   RETURN;
+211  	 END IF;
+212  
+213  	 PKG_ARCHIVE_LOG.prc_log_message
+214  	 (
+215  	   p_run_id  => l_run_id,
+216  	   p_log_msg => 'Step 4/' || l_total_steps || ': TRUNCATE - requesting source truncate through agent' ||
+217  			CASE WHEN l_truncate_execute = 'Y' THEN '' ELSE ' (preview mode)' END
+218  	 );
+219  	 PKG_ARCHIVE_TRUNCATE.prc_truncate(l_truncate_execute);
+220  
+221  	 PKG_ARCHIVE_LOG.prc_log_message(p_run_id => l_run_id, p_log_msg => 'Runner finished all steps');
+222  	 PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+223    EXCEPTION
+224  	 WHEN OTHERS THEN
+225  	   IF l_run_id IS NOT NULL THEN
+226  	     PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
+227  	     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
+228  	   END IF;
+229  	   RAISE;
+230    END;
+231  END PKG_ARCHIVE_RUNNER;
+232  /
 
 Package body created.
 
@@ -4782,7 +5440,18 @@ No errors.
 SQL> SHOW ERRORS PACKAGE PKG_ARCHIVE_PARTITION
 No errors.
 SQL> SHOW ERRORS PACKAGE BODY PKG_ARCHIVE_PARTITION
-No errors.
+Errors for PACKAGE BODY PKG_ARCHIVE_PARTITION:
+
+LINE/COL ERROR                                                                  
+-------- -----------------------------------------------------------------      
+372/7    PL/SQL: SQL Statement ignored                                          
+376/14   PL/SQL: ORA-00904: "CREATED": invalid identifier                       
+379/7    PL/SQL: Statement ignored                                              
+379/55   PLS-00364: loop index variable 'R' use is invalid                      
+383/9    PL/SQL: Statement ignored                                              
+385/35   PLS-00364: loop index variable 'R' use is invalid                      
+389/9    PL/SQL: Statement ignored                                              
+389/55   PLS-00364: loop index variable 'R' use is invalid                      
 SQL> SHOW ERRORS PACKAGE PKG_ARCHIVE_DISCOVERY
 No errors.
 SQL> SHOW ERRORS PACKAGE BODY PKG_ARCHIVE_DISCOVERY
@@ -5101,6 +5770,214 @@ Index created.
 SQL> 
 SQL> PROMPT CARCH.ORDERS_DAILY_INT_SRC target table install completed
 CARCH.ORDERS_DAILY_INT_SRC target table install completed
+SQL> @deploy/layer2/install_orders_archive_target2.sql
+SQL> SET DEFINE OFF
+SQL> SET SERVEROUTPUT ON
+SQL> SET FEEDBACK ON
+SQL> SET ECHO ON
+SQL> 
+SQL> PROMPT Installing CARCH.ORDERS_ARCH_SRC_2 target table
+Installing CARCH.ORDERS_ARCH_SRC_2 target table
+SQL> 
+SQL> BEGIN
+  2    EXECUTE IMMEDIATE 'DROP TABLE ORDERS_ARCH_SRC_2 PURGE';
+  3  EXCEPTION
+  4    WHEN OTHERS THEN
+  5  	 IF SQLCODE != -942 THEN
+  6  	   RAISE;
+  7  	 END IF;
+  8  END;
+  9  /
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> BEGIN
+  2    EXECUTE IMMEDIATE 'DROP TABLE ORDERS_ARCHIVE_2 PURGE';
+  3  EXCEPTION
+  4    WHEN OTHERS THEN
+  5  	 IF SQLCODE != -942 THEN
+  6  	   RAISE;
+  7  	 END IF;
+  8  END;
+  9  /
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> CREATE TABLE ORDERS_ARCH_SRC_2
+  2  (
+  3    ORDER_ID     NUMBER NOT NULL,
+  4    CUSTOMER_ID  NUMBER NOT NULL,
+  5    ORDER_DATE   DATE NOT NULL,
+  6    STATUS_CODE  VARCHAR2(20) NOT NULL,
+  7    AMOUNT	    NUMBER(12,2) NOT NULL,
+  8    CREATED_AT   TIMESTAMP NOT NULL
+  9  )
+ 10  PARTITION BY RANGE (ORDER_DATE)
+ 11  (
+ 12    PARTITION P_ERROR VALUES LESS THAN
+ 13  	 (TO_DATE(' 1800-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN'))
+ 14  );
+
+Table created.
+
+SQL> 
+SQL> CREATE INDEX ORDERS_ARCH_SRC_2_LIX1
+  2    ON ORDERS_ARCH_SRC_2 (CUSTOMER_ID, ORDER_DATE)
+  3    LOCAL;
+
+Index created.
+
+SQL> 
+SQL> CREATE INDEX ORDERS_ARCH_SRC_2_LIX2
+  2    ON ORDERS_ARCH_SRC_2 (STATUS_CODE, ORDER_DATE)
+  3    LOCAL;
+
+Index created.
+
+SQL> 
+SQL> PROMPT CARCH.ORDERS_ARCH_SRC_2 target table install completed
+CARCH.ORDERS_ARCH_SRC_2 target table install completed
+SQL> @deploy/layer2/install_orders_subpart_archive_target2.sql
+SQL> SET DEFINE OFF
+SQL> SET SERVEROUTPUT ON
+SQL> SET FEEDBACK ON
+SQL> SET ECHO ON
+SQL> 
+SQL> PROMPT Installing CARCH.ORDERS_SUBPART_SRC_2 target table
+Installing CARCH.ORDERS_SUBPART_SRC_2 target table
+SQL> 
+SQL> BEGIN
+  2    EXECUTE IMMEDIATE 'DROP TABLE ORDERS_SUBPART_SRC_2 PURGE';
+  3  EXCEPTION
+  4    WHEN OTHERS THEN
+  5  	 IF SQLCODE != -942 THEN
+  6  	   RAISE;
+  7  	 END IF;
+  8  END;
+  9  /
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> BEGIN
+  2    EXECUTE IMMEDIATE 'DROP TABLE ORDERS_SUBPART_ARCHIVE_2 PURGE';
+  3  EXCEPTION
+  4    WHEN OTHERS THEN
+  5  	 IF SQLCODE != -942 THEN
+  6  	   RAISE;
+  7  	 END IF;
+  8  END;
+  9  /
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> CREATE TABLE ORDERS_SUBPART_SRC_2
+  2  (
+  3    ORDER_ID     NUMBER NOT NULL,
+  4    CUSTOMER_ID  NUMBER NOT NULL,
+  5    ORDER_DATE   DATE NOT NULL,
+  6    STATUS_CODE  VARCHAR2(20) NOT NULL,
+  7    REGION_CODE  VARCHAR2(10) NOT NULL,
+  8    AMOUNT	    NUMBER(12,2) NOT NULL,
+  9    CREATED_AT   TIMESTAMP NOT NULL
+ 10  )
+ 11  PARTITION BY RANGE (ORDER_DATE)
+ 12  SUBPARTITION BY LIST (STATUS_CODE)
+ 13  SUBPARTITION TEMPLATE
+ 14  (
+ 15    SUBPARTITION SP_OPEN VALUES ('NEW', 'PAID'),
+ 16    SUBPARTITION SP_DONE VALUES ('SHIPPED', 'CLOSED')
+ 17  )
+ 18  (
+ 19    PARTITION P_ERROR VALUES LESS THAN
+ 20  	 (TO_DATE(' 1800-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN'))
+ 21  );
+
+Table created.
+
+SQL> 
+SQL> CREATE INDEX ORDERS_SUBPART_SRC_2_LIX1
+  2    ON ORDERS_SUBPART_SRC_2 (CUSTOMER_ID, ORDER_DATE)
+  3    LOCAL;
+
+Index created.
+
+SQL> 
+SQL> CREATE INDEX ORDERS_SUBPART_SRC_2_LIX2
+  2    ON ORDERS_SUBPART_SRC_2 (REGION_CODE, ORDER_DATE)
+  3    LOCAL;
+
+Index created.
+
+SQL> 
+SQL> PROMPT CARCH.ORDERS_SUBPART_SRC_2 target table install completed
+CARCH.ORDERS_SUBPART_SRC_2 target table install completed
+SQL> @deploy/layer2/install_orders_daily_interval_archive_target2.sql
+SQL> SET DEFINE OFF
+SQL> SET SERVEROUTPUT ON
+SQL> SET FEEDBACK ON
+SQL> SET ECHO ON
+SQL> 
+SQL> PROMPT Installing CARCH.ORDERS_DAILY_INT_SRC_2 target table
+Installing CARCH.ORDERS_DAILY_INT_SRC_2 target table
+SQL> 
+SQL> BEGIN
+  2    EXECUTE IMMEDIATE 'DROP TABLE ORDERS_DAILY_INT_SRC_2 PURGE';
+  3  EXCEPTION
+  4    WHEN OTHERS THEN
+  5  	 IF SQLCODE != -942 THEN
+  6  	   RAISE;
+  7  	 END IF;
+  8  END;
+  9  /
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> CREATE TABLE ORDERS_DAILY_INT_SRC_2
+  2  (
+  3    ORDER_ID     NUMBER NOT NULL,
+  4    CUSTOMER_ID  NUMBER NOT NULL,
+  5    ORDER_DATE   DATE NOT NULL,
+  6    STATUS_CODE  VARCHAR2(20) NOT NULL,
+  7    REGION_CODE  VARCHAR2(10) NOT NULL,
+  8    AMOUNT	    NUMBER(12,2) NOT NULL,
+  9    CREATED_AT   TIMESTAMP NOT NULL
+ 10  )
+ 11  PARTITION BY RANGE (ORDER_DATE)
+ 12  SUBPARTITION BY LIST (STATUS_CODE)
+ 13  SUBPARTITION TEMPLATE
+ 14  (
+ 15    SUBPARTITION SP_OPEN VALUES ('NEW', 'PAID'),
+ 16    SUBPARTITION SP_DONE VALUES ('SHIPPED', 'CLOSED')
+ 17  )
+ 18  (
+ 19    PARTITION P_ERROR VALUES LESS THAN
+ 20  	 (TO_DATE(' 1800-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS', 'NLS_CALENDAR=GREGORIAN'))
+ 21  );
+
+Table created.
+
+SQL> 
+SQL> CREATE INDEX ORDERS_DAILY_INT_SRC_2_LIX1
+  2    ON ORDERS_DAILY_INT_SRC_2 (CUSTOMER_ID, ORDER_DATE)
+  3    LOCAL;
+
+Index created.
+
+SQL> 
+SQL> CREATE INDEX ORDERS_DAILY_INT_SRC_2_LIX2
+  2    ON ORDERS_DAILY_INT_SRC_2 (REGION_CODE, ORDER_DATE)
+  3    LOCAL;
+
+Index created.
+
+SQL> 
+SQL> PROMPT CARCH.ORDERS_DAILY_INT_SRC_2 target table install completed
+CARCH.ORDERS_DAILY_INT_SRC_2 target table install completed
 SQL> 
 SQL> PROMPT
 
@@ -5516,6 +6393,406 @@ Commit complete.
 SQL> 
 SQL> PROMPT CLIENT1_LOOPBACK_LINK daily interval-list archive table configuration seeded
 CLIENT1_LOOPBACK_LINK daily interval-list archive table configuration seeded
+SQL> @deploy/layer2/seed_client2_loopback.sql
+SQL> SET DEFINE OFF
+SQL> SET SERVEROUTPUT ON
+SQL> SET FEEDBACK ON
+SQL> SET ECHO ON
+SQL> 
+SQL> PROMPT Seeding CLIENT2 loopback archive table configuration
+Seeding CLIENT2 loopback archive table configuration
+SQL> 
+SQL> MERGE INTO TW_ARCHIVE_TABLES dst
+  2  USING (
+  3    SELECT 'CLIENT1_LOOPBACK_LINK' AS source_db_link,
+  4  	      'CLIENT2' AS source_owner,
+  5  	      'ORDERS_ARCH_SRC' AS source_table_name,
+  6  	      'CAGENT1' AS source_agent_schema,
+  7  	      'CARCH' AS target_owner,
+  8  	      'ORDERS_ARCH_SRC_2' AS target_table_name,
+  9  	      'TRUNCATE' AS truncate_mode,
+ 10  	      4 AS parallel_degree,
+ 11  	      'USERS' AS tablespace_name,
+ 12  	      90 AS retention_days,
+ 13  	      'Y' AS enabled_flag
+ 14  	 FROM dual
+ 15  ) src
+ 16  ON (
+ 17    dst.source_db_link = src.source_db_link
+ 18    AND dst.source_owner = src.source_owner
+ 19    AND dst.source_table_name = src.source_table_name
+ 20  )
+ 21  WHEN MATCHED THEN UPDATE SET
+ 22    dst.source_agent_schema = src.source_agent_schema,
+ 23    dst.target_owner = src.target_owner,
+ 24    dst.target_table_name = src.target_table_name,
+ 25    dst.truncate_mode = src.truncate_mode,
+ 26    dst.parallel_degree = src.parallel_degree,
+ 27    dst.tablespace_name = src.tablespace_name,
+ 28    dst.retention_days = src.retention_days,
+ 29    dst.enabled_flag = src.enabled_flag,
+ 30    dst.updated_at = SYSTIMESTAMP
+ 31  WHEN NOT MATCHED THEN INSERT
+ 32    (source_db_link, source_owner, source_table_name, source_agent_schema,
+ 33  	target_owner, target_table_name, truncate_mode, parallel_degree, tablespace_name,
+ 34  	retention_days, enabled_flag)
+ 35  VALUES
+ 36    (src.source_db_link, src.source_owner, src.source_table_name, src.source_agent_schema,
+ 37  	src.target_owner, src.target_table_name, src.truncate_mode, src.parallel_degree, src.tablespace_name,
+ 38  	src.retention_days, src.enabled_flag);
+
+1 row merged.
+
+SQL> 
+SQL> MERGE INTO TW_ARCHIVE_PARTITIONS dst
+  2  USING (
+  3    SELECT 'CLIENT1_LOOPBACK_LINK' AS source_db_link,
+  4  	      'CLIENT2' AS source_owner,
+  5  	      'ORDERS_ARCH_SRC' AS source_table_name,
+  6  	      'CARCH' AS target_owner,
+  7  	      'ORDERS_ARCH_SRC_2' AS target_table_name,
+  8  	      'PARTITION' AS archive_unit_type,
+  9  	      'P_ERROR' AS source_partition_name,
+ 10  	      '#' AS source_subpartition_name,
+ 11  	      'P_ERROR' AS partition_name,
+ 12  	      '#' AS subpartition_name,
+ 13  	      'TO_DATE('' 1800-01-01 00:00:00'', ''SYYYY-MM-DD HH24:MI:SS'', ''NLS_CALENDAR=GREGORIAN'')' AS partition_high_value,
+ 14  	      '#' AS subpartition_high_value,
+ 15  	      1 AS partition_position,
+ 16  	      NULL AS subpartition_position
+ 17  	 FROM dual
+ 18  ) src
+ 19  ON (
+ 20    dst.source_db_link = src.source_db_link
+ 21    AND dst.source_owner = src.source_owner
+ 22    AND dst.source_table_name = src.source_table_name
+ 23    AND dst.partition_high_value = src.partition_high_value
+ 24    AND dst.subpartition_high_value = src.subpartition_high_value
+ 25  )
+ 26  WHEN MATCHED THEN UPDATE SET
+ 27    dst.target_owner = src.target_owner,
+ 28    dst.target_table_name = src.target_table_name,
+ 29    dst.archive_unit_type = src.archive_unit_type,
+ 30    dst.source_partition_name = src.source_partition_name,
+ 31    dst.source_subpartition_name = src.source_subpartition_name,
+ 32    dst.partition_position = src.partition_position,
+ 33    dst.subpartition_position = src.subpartition_position,
+ 34    dst.archive_status = 'Y',
+ 35    dst.quality_status = 'Y',
+ 36    dst.truncate_status = 'Y',
+ 37    dst.source_row_count = 0,
+ 38    dst.target_row_count = 0,
+ 39    dst.error_message = NULL,
+ 40    dst.updated_at = SYSTIMESTAMP
+ 41  WHEN NOT MATCHED THEN INSERT
+ 42    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
+ 43  	archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
+ 44  	partition_high_value, subpartition_high_value,
+ 45  	partition_position, subpartition_position, archive_status, quality_status,
+ 46  	truncate_status, source_row_count, target_row_count)
+ 47  VALUES
+ 48    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
+ 49  	src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
+ 50  	src.partition_high_value, src.subpartition_high_value,
+ 51  	src.partition_position, src.subpartition_position, 'Y', 'Y',
+ 52  	'Y', 0, 0);
+
+1 row merged.
+
+SQL> 
+SQL> COMMIT;
+
+Commit complete.
+
+SQL> 
+SQL> PROMPT CLIENT2 loopback archive table configuration seeded
+CLIENT2 loopback archive table configuration seeded
+SQL> @deploy/layer2/seed_client2_loopback_subpart.sql
+SQL> SET DEFINE OFF
+SQL> SET SERVEROUTPUT ON
+SQL> SET FEEDBACK ON
+SQL> SET ECHO ON
+SQL> 
+SQL> PROMPT Seeding CLIENT2 loopback subpartitioned archive table configuration
+Seeding CLIENT2 loopback subpartitioned archive table configuration
+SQL> 
+SQL> MERGE INTO TW_ARCHIVE_TABLES dst
+  2  USING (
+  3    SELECT 'CLIENT1_LOOPBACK_LINK' AS source_db_link,
+  4  	      'CLIENT2' AS source_owner,
+  5  	      'ORDERS_SUBPART_SRC' AS source_table_name,
+  6  	      'CAGENT1' AS source_agent_schema,
+  7  	      'CARCH' AS target_owner,
+  8  	      'ORDERS_SUBPART_SRC_2' AS target_table_name,
+  9  	      'TRUNCATE' AS truncate_mode,
+ 10  	      4 AS parallel_degree,
+ 11  	      'USERS' AS tablespace_name,
+ 12  	      90 AS retention_days,
+ 13  	      'Y' AS enabled_flag
+ 14  	 FROM dual
+ 15  ) src
+ 16  ON (
+ 17    dst.source_db_link = src.source_db_link
+ 18    AND dst.source_owner = src.source_owner
+ 19    AND dst.source_table_name = src.source_table_name
+ 20  )
+ 21  WHEN MATCHED THEN UPDATE SET
+ 22    dst.source_agent_schema = src.source_agent_schema,
+ 23    dst.target_owner = src.target_owner,
+ 24    dst.target_table_name = src.target_table_name,
+ 25    dst.truncate_mode = src.truncate_mode,
+ 26    dst.parallel_degree = src.parallel_degree,
+ 27    dst.tablespace_name = src.tablespace_name,
+ 28    dst.retention_days = src.retention_days,
+ 29    dst.enabled_flag = src.enabled_flag,
+ 30    dst.updated_at = SYSTIMESTAMP
+ 31  WHEN NOT MATCHED THEN INSERT
+ 32    (source_db_link, source_owner, source_table_name, source_agent_schema,
+ 33  	target_owner, target_table_name, truncate_mode, parallel_degree, tablespace_name,
+ 34  	retention_days, enabled_flag)
+ 35  VALUES
+ 36    (src.source_db_link, src.source_owner, src.source_table_name, src.source_agent_schema,
+ 37  	src.target_owner, src.target_table_name, src.truncate_mode, src.parallel_degree, src.tablespace_name,
+ 38  	src.retention_days, src.enabled_flag);
+
+1 row merged.
+
+SQL> 
+SQL> MERGE INTO TW_ARCHIVE_PARTITIONS dst
+  2  USING (
+  3    SELECT 'CLIENT1_LOOPBACK_LINK' AS source_db_link,
+  4  	      'CLIENT2' AS source_owner,
+  5  	      'ORDERS_SUBPART_SRC' AS source_table_name,
+  6  	      'CARCH' AS target_owner,
+  7  	      'ORDERS_SUBPART_SRC_2' AS target_table_name,
+  8  	      'SUBPARTITION' AS archive_unit_type,
+  9  	      p.partition_name AS source_partition_name,
+ 10  	      s.subpartition_name AS source_subpartition_name,
+ 11  	      p.partition_name,
+ 12  	      s.subpartition_name,
+ 13  	      p.partition_high_value,
+ 14  	      s.subpartition_high_value,
+ 15  	      p.partition_position,
+ 16  	      s.subpartition_position
+ 17  	 FROM XMLTABLE(
+ 18  		'/ROWSET/ROW'
+ 19  		PASSING DBMS_XMLGEN.GETXMLTYPE(
+ 20  		   'SELECT table_name, partition_name, high_value, partition_position ' ||
+ 21  		   'FROM all_tab_partitions ' ||
+ 22  		   'WHERE table_owner = ''CARCH'' ' ||
+ 23  		   'AND table_name = ''ORDERS_SUBPART_SRC_2'' ' ||
+ 24  		   'AND partition_name = ''P_ERROR'''
+ 25  		)
+ 26  		COLUMNS
+ 27  		  partition_name       VARCHAR2(128)  PATH 'PARTITION_NAME',
+ 28  		  partition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE',
+ 29  		  partition_position   NUMBER	      PATH 'PARTITION_POSITION'
+ 30  	      ) p
+ 31  	 JOIN XMLTABLE(
+ 32  		'/ROWSET/ROW'
+ 33  		PASSING DBMS_XMLGEN.GETXMLTYPE(
+ 34  		   'SELECT table_name, partition_name, subpartition_name, high_value, subpartition_position ' ||
+ 35  		   'FROM all_tab_subpartitions ' ||
+ 36  		   'WHERE table_owner = ''CARCH'' ' ||
+ 37  		   'AND table_name = ''ORDERS_SUBPART_SRC_2'' ' ||
+ 38  		   'AND partition_name = ''P_ERROR'''
+ 39  		)
+ 40  		COLUMNS
+ 41  		  partition_name	  VARCHAR2(128)  PATH 'PARTITION_NAME',
+ 42  		  subpartition_name	  VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
+ 43  		  subpartition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE',
+ 44  		  subpartition_position   NUMBER	 PATH 'SUBPARTITION_POSITION'
+ 45  	      ) s
+ 46  	   ON s.partition_name = p.partition_name
+ 47  ) src
+ 48  ON (
+ 49    dst.source_db_link = src.source_db_link
+ 50    AND dst.source_owner = src.source_owner
+ 51    AND dst.source_table_name = src.source_table_name
+ 52    AND dst.partition_high_value = src.partition_high_value
+ 53    AND dst.subpartition_high_value = src.subpartition_high_value
+ 54  )
+ 55  WHEN MATCHED THEN UPDATE SET
+ 56    dst.target_owner = src.target_owner,
+ 57    dst.target_table_name = src.target_table_name,
+ 58    dst.archive_unit_type = src.archive_unit_type,
+ 59    dst.source_partition_name = src.source_partition_name,
+ 60    dst.source_subpartition_name = src.source_subpartition_name,
+ 61    dst.partition_position = src.partition_position,
+ 62    dst.subpartition_position = src.subpartition_position,
+ 63    dst.archive_status = 'Y',
+ 64    dst.quality_status = 'Y',
+ 65    dst.truncate_status = 'Y',
+ 66    dst.source_row_count = 0,
+ 67    dst.target_row_count = 0,
+ 68    dst.error_message = NULL,
+ 69    dst.updated_at = SYSTIMESTAMP
+ 70  WHEN NOT MATCHED THEN INSERT
+ 71    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
+ 72  	archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
+ 73  	partition_high_value, subpartition_high_value,
+ 74  	partition_position, subpartition_position, archive_status, quality_status,
+ 75  	truncate_status, source_row_count, target_row_count)
+ 76  VALUES
+ 77    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
+ 78  	src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
+ 79  	src.partition_high_value, src.subpartition_high_value,
+ 80  	src.partition_position, src.subpartition_position, 'Y', 'Y',
+ 81  	'Y', 0, 0);
+
+2 rows merged.
+
+SQL> 
+SQL> COMMIT;
+
+Commit complete.
+
+SQL> 
+SQL> PROMPT CLIENT2 loopback subpartitioned archive table configuration seeded
+CLIENT2 loopback subpartitioned archive table configuration seeded
+SQL> @deploy/layer2/seed_client2_loopback_daily_interval.sql
+SQL> SET DEFINE OFF
+SQL> SET SERVEROUTPUT ON
+SQL> SET FEEDBACK ON
+SQL> SET ECHO ON
+SQL> 
+SQL> PROMPT Seeding CLIENT2 loopback daily interval-list archive table configuration
+Seeding CLIENT2 loopback daily interval-list archive table configuration
+SQL> 
+SQL> MERGE INTO TW_ARCHIVE_TABLES dst
+  2  USING (
+  3    SELECT 'CLIENT1_LOOPBACK_LINK' AS source_db_link,
+  4  	      'CLIENT2' AS source_owner,
+  5  	      'ORDERS_DAILY_INT_SRC' AS source_table_name,
+  6  	      'CAGENT1' AS source_agent_schema,
+  7  	      'CARCH' AS target_owner,
+  8  	      'ORDERS_DAILY_INT_SRC_2' AS target_table_name,
+  9  	      'TRUNCATE' AS truncate_mode,
+ 10  	      4 AS parallel_degree,
+ 11  	      'USERS' AS tablespace_name,
+ 12  	      90 AS retention_days,
+ 13  	      'Y' AS enabled_flag
+ 14  	 FROM dual
+ 15  ) src
+ 16  ON (
+ 17    dst.source_db_link = src.source_db_link
+ 18    AND dst.source_owner = src.source_owner
+ 19    AND dst.source_table_name = src.source_table_name
+ 20  )
+ 21  WHEN MATCHED THEN UPDATE SET
+ 22    dst.source_agent_schema = src.source_agent_schema,
+ 23    dst.target_owner = src.target_owner,
+ 24    dst.target_table_name = src.target_table_name,
+ 25    dst.truncate_mode = src.truncate_mode,
+ 26    dst.parallel_degree = src.parallel_degree,
+ 27    dst.tablespace_name = src.tablespace_name,
+ 28    dst.retention_days = src.retention_days,
+ 29    dst.enabled_flag = src.enabled_flag,
+ 30    dst.updated_at = SYSTIMESTAMP
+ 31  WHEN NOT MATCHED THEN INSERT
+ 32    (source_db_link, source_owner, source_table_name, source_agent_schema,
+ 33  	target_owner, target_table_name, truncate_mode, parallel_degree, tablespace_name,
+ 34  	retention_days, enabled_flag)
+ 35  VALUES
+ 36    (src.source_db_link, src.source_owner, src.source_table_name, src.source_agent_schema,
+ 37  	src.target_owner, src.target_table_name, src.truncate_mode, src.parallel_degree, src.tablespace_name,
+ 38  	src.retention_days, src.enabled_flag);
+
+1 row merged.
+
+SQL> 
+SQL> MERGE INTO TW_ARCHIVE_PARTITIONS dst
+  2  USING (
+  3    SELECT 'CLIENT1_LOOPBACK_LINK' AS source_db_link,
+  4  	      'CLIENT2' AS source_owner,
+  5  	      'ORDERS_DAILY_INT_SRC' AS source_table_name,
+  6  	      'CARCH' AS target_owner,
+  7  	      'ORDERS_DAILY_INT_SRC_2' AS target_table_name,
+  8  	      'SUBPARTITION' AS archive_unit_type,
+  9  	      p.partition_name AS source_partition_name,
+ 10  	      s.subpartition_name AS source_subpartition_name,
+ 11  	      p.partition_name,
+ 12  	      s.subpartition_name,
+ 13  	      p.partition_high_value,
+ 14  	      s.subpartition_high_value,
+ 15  	      p.partition_position,
+ 16  	      s.subpartition_position
+ 17  	 FROM XMLTABLE(
+ 18  		'/ROWSET/ROW'
+ 19  		PASSING DBMS_XMLGEN.GETXMLTYPE(
+ 20  		   'SELECT table_name, partition_name, high_value, partition_position ' ||
+ 21  		   'FROM all_tab_partitions ' ||
+ 22  		   'WHERE table_owner = ''CARCH'' ' ||
+ 23  		   'AND table_name = ''ORDERS_DAILY_INT_SRC_2'' ' ||
+ 24  		   'AND partition_name = ''P_ERROR'''
+ 25  		)
+ 26  		COLUMNS
+ 27  		  partition_name       VARCHAR2(128)  PATH 'PARTITION_NAME',
+ 28  		  partition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE',
+ 29  		  partition_position   NUMBER	      PATH 'PARTITION_POSITION'
+ 30  	      ) p
+ 31  	 JOIN XMLTABLE(
+ 32  		'/ROWSET/ROW'
+ 33  		PASSING DBMS_XMLGEN.GETXMLTYPE(
+ 34  		   'SELECT table_name, partition_name, subpartition_name, high_value, subpartition_position ' ||
+ 35  		   'FROM all_tab_subpartitions ' ||
+ 36  		   'WHERE table_owner = ''CARCH'' ' ||
+ 37  		   'AND table_name = ''ORDERS_DAILY_INT_SRC_2'' ' ||
+ 38  		   'AND partition_name = ''P_ERROR'''
+ 39  		)
+ 40  		COLUMNS
+ 41  		  partition_name	  VARCHAR2(128)  PATH 'PARTITION_NAME',
+ 42  		  subpartition_name	  VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
+ 43  		  subpartition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE',
+ 44  		  subpartition_position   NUMBER	 PATH 'SUBPARTITION_POSITION'
+ 45  	      ) s
+ 46  	   ON s.partition_name = p.partition_name
+ 47  ) src
+ 48  ON (
+ 49    dst.source_db_link = src.source_db_link
+ 50    AND dst.source_owner = src.source_owner
+ 51    AND dst.source_table_name = src.source_table_name
+ 52    AND dst.partition_high_value = src.partition_high_value
+ 53    AND dst.subpartition_high_value = src.subpartition_high_value
+ 54  )
+ 55  WHEN MATCHED THEN UPDATE SET
+ 56    dst.target_owner = src.target_owner,
+ 57    dst.target_table_name = src.target_table_name,
+ 58    dst.archive_unit_type = src.archive_unit_type,
+ 59    dst.source_partition_name = src.source_partition_name,
+ 60    dst.source_subpartition_name = src.source_subpartition_name,
+ 61    dst.partition_position = src.partition_position,
+ 62    dst.subpartition_position = src.subpartition_position,
+ 63    dst.archive_status = 'Y',
+ 64    dst.quality_status = 'Y',
+ 65    dst.truncate_status = 'Y',
+ 66    dst.source_row_count = 0,
+ 67    dst.target_row_count = 0,
+ 68    dst.error_message = NULL,
+ 69    dst.updated_at = SYSTIMESTAMP
+ 70  WHEN NOT MATCHED THEN INSERT
+ 71    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
+ 72  	archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
+ 73  	partition_high_value, subpartition_high_value,
+ 74  	partition_position, subpartition_position, archive_status, quality_status,
+ 75  	truncate_status, source_row_count, target_row_count)
+ 76  VALUES
+ 77    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
+ 78  	src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
+ 79  	src.partition_high_value, src.subpartition_high_value,
+ 80  	src.partition_position, src.subpartition_position, 'Y', 'Y',
+ 81  	'Y', 0, 0);
+
+2 rows merged.
+
+SQL> 
+SQL> COMMIT;
+
+Commit complete.
+
+SQL> 
+SQL> PROMPT CLIENT2 loopback daily interval-list archive table configuration seeded
+CLIENT2 loopback daily interval-list archive table configuration seeded
 SQL> 
 SQL> PROMPT
 
