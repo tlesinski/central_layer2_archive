@@ -16,7 +16,7 @@ USING (
          'TRUNCATE' AS truncate_mode,
          4 AS parallel_degree,
          'USERS' AS tablespace_name,
-         'dat.fn_eod-90' AS retention_rule,
+         'SELECT dat.fn_eod-90 FROM DUAL' AS retention_rule,
          'Y' AS enabled_flag
     FROM dual
 ) src
