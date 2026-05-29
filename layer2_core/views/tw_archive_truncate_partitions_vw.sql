@@ -20,8 +20,9 @@ SELECT p.source_db_link,
        p.truncate_status,
        p.source_row_count,
        p.target_row_count,
-       t.retention_rule,
-       (select column_value from table(fn_calculate_retention_rule(t.retention_rule))) AS cutoff_date,
+       FN_ARCHIVE_HIGH_VALUE_DATE(t.LAST_BUSINESS_DATE) LAST_BUSINESS_DATE_calc,
+       DAYS_ONLINE,
+       FN_ARCHIVE_HIGH_VALUE_DATE(t.LAST_BUSINESS_DATE)- DAYS_ONLINE AS cutoff_date,
        FN_ARCHIVE_HIGH_VALUE_DATE(p.partition_high_value) AS partition_high_value_date
   FROM tw_archive_partitions p
   JOIN tw_archive_tables t
@@ -53,7 +54,8 @@ SELECT source_db_link,
        truncate_status,
        source_row_count,
        target_row_count,
-       retention_rule,
+       LAST_BUSINESS_DATE_calc,
+       DAYS_ONLINE,
        cutoff_date,
        partition_high_value_date
   FROM candidate_partitions

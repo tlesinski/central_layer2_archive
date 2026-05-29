@@ -2,6 +2,7 @@ SET DEFINE OFF
 SET SERVEROUTPUT ON
 SET FEEDBACK ON
 SET ECHO ON
+WHENEVER SQLERROR EXIT
 
 PROMPT ============================================================
 PROMPT Full reinstall of Central Layer 2 Archive

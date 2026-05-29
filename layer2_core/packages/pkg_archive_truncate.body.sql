@@ -65,7 +65,7 @@ AS
     l_summary         CLOB := NULL;
     l_bad_tables      NUMBER := 0;
     l_summary_columns VARCHAR2(1000) :=
-      'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
+      'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|LAST_BUSINESS_DATE|DAYS_ONLINE|CUTOFF_DATE|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
   BEGIN
     l_execute_flag := fn_normalize_execute(p_execute);
     l_target_owner := fn_normalize_name(p_target_owner);
@@ -98,21 +98,21 @@ AS
       l_bad_tables := l_bad_tables + 1;
     END LOOP;
 
-    FOR bad IN (
-      SELECT source_db_link, source_owner, source_table_name, preserve_rule, preserve_calc
-        FROM tw_archive_tables
-       WHERE preserve_calc LIKE 'ERROR:%'
-         AND (l_target_owner IS NULL OR target_owner = l_target_owner)
-         AND (l_target_table IS NULL OR target_table_name = l_target_table)
-    ) LOOP
-      PKG_ARCHIVE_LOG.prc_log_message
-      (
-        p_run_id  => l_run_id,
-        p_log_msg => 'ERROR: table ' || bad.source_owner || '.' || bad.source_table_name ||
-                     ' preserve_rule "' || bad.preserve_rule || '" - ' || bad.preserve_calc
-      );
-      l_bad_tables := l_bad_tables + 1;
-    END LOOP;
+    -- FOR bad IN (
+    --   SELECT source_db_link, source_owner, source_table_name, preserve_rule, preserve_calc
+    --     FROM tw_archive_tables
+    --    WHERE preserve_calc LIKE 'ERROR:%'
+    --      AND (l_target_owner IS NULL OR target_owner = l_target_owner)
+    --      AND (l_target_table IS NULL OR target_table_name = l_target_table)
+    -- ) LOOP
+    --   PKG_ARCHIVE_LOG.prc_log_message
+    --   (
+    --     p_run_id  => l_run_id,
+    --     p_log_msg => 'ERROR: table ' || bad.source_owner || '.' || bad.source_table_name ||
+    --                  ' preserve_rule "' || bad.preserve_rule || '" - ' || bad.preserve_calc
+    --   );
+    --   l_bad_tables := l_bad_tables + 1;
+    -- END LOOP;
 
     IF l_bad_tables > 0 THEN
       PKG_ARCHIVE_LOG.prc_log_message
@@ -213,6 +213,9 @@ AS
           PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
           PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_name) || '|' ||
           PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_name) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.last_business_date_calc) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.days_online) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.cutoff_date) || '|' ||
           PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_high_value) || '|' ||
           PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_high_value) || '|' ||
           PKG_ARCHIVE_LOG.fn_summary_cell(r.archive_status) || '|' ||

@@ -18,12 +18,16 @@ SELECT p.source_db_link,
        p.quality_status,
        p.truncate_status,
        p.source_row_count,
-       p.target_row_count
+       p.target_row_count,
+       t.LAST_BUSINESS_DATE,
+       FN_ARCHIVE_HIGH_VALUE_DATE(t.LAST_BUSINESS_DATE) eod_date_calc,
+       FN_ARCHIVE_HIGH_VALUE_DATE(partition_high_value) partition_high_date
   FROM tw_archive_partitions p
   JOIN tw_archive_tables t
     ON t.source_db_link = p.source_db_link
    AND t.source_owner = p.source_owner
    AND t.source_table_name = p.source_table_name
    AND t.enabled_flag = 'Y'
- WHERE p.archive_status = 'N';
+ WHERE p.archive_status = 'N'
+   AND FN_ARCHIVE_HIGH_VALUE_DATE(partition_high_value) < FN_ARCHIVE_HIGH_VALUE_DATE(t.LAST_BUSINESS_DATE);
 /
