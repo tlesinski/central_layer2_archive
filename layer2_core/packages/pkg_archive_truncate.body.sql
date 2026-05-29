@@ -82,26 +82,10 @@ AS
                    '  p_target_table_name => ' || NVL(l_target_table, '<ALL>')
     );
 
-    FOR bad IN (
-      SELECT source_db_link, source_owner, source_table_name, retention_rule, retention_calc
-        FROM tw_archive_tables
-       WHERE retention_calc LIKE 'ERROR:%'
-         AND (l_target_owner IS NULL OR target_owner = l_target_owner)
-         AND (l_target_table IS NULL OR target_table_name = l_target_table)
-    ) LOOP
-      PKG_ARCHIVE_LOG.prc_log_message
-      (
-        p_run_id  => l_run_id,
-        p_log_msg => 'ERROR: table ' || bad.source_owner || '.' || bad.source_table_name ||
-                     ' retention_rule "' || bad.retention_rule || '" - ' || bad.retention_calc
-      );
-      l_bad_tables := l_bad_tables + 1;
-    END LOOP;
-
     -- FOR bad IN (
-    --   SELECT source_db_link, source_owner, source_table_name, preserve_rule, preserve_calc
+    --   SELECT source_db_link, source_owner, source_table_name, retention_rule, retention_calc
     --     FROM tw_archive_tables
-    --    WHERE preserve_calc LIKE 'ERROR:%'
+    --    WHERE retention_calc LIKE 'ERROR:%'
     --      AND (l_target_owner IS NULL OR target_owner = l_target_owner)
     --      AND (l_target_table IS NULL OR target_table_name = l_target_table)
     -- ) LOOP
@@ -109,10 +93,26 @@ AS
     --   (
     --     p_run_id  => l_run_id,
     --     p_log_msg => 'ERROR: table ' || bad.source_owner || '.' || bad.source_table_name ||
-    --                  ' preserve_rule "' || bad.preserve_rule || '" - ' || bad.preserve_calc
+    --                  ' retention_rule "' || bad.retention_rule || '" - ' || bad.retention_calc
     --   );
     --   l_bad_tables := l_bad_tables + 1;
     -- END LOOP;
+
+    FOR bad IN (
+      SELECT source_db_link, source_owner, source_table_name, preserve_rule, preserve_calc
+        FROM tw_archive_tables
+       WHERE preserve_calc LIKE 'ERROR:%'
+         AND (l_target_owner IS NULL OR target_owner = l_target_owner)
+         AND (l_target_table IS NULL OR target_table_name = l_target_table)
+    ) LOOP
+      PKG_ARCHIVE_LOG.prc_log_message
+      (
+        p_run_id  => l_run_id,
+        p_log_msg => 'ERROR: table ' || bad.source_owner || '.' || bad.source_table_name ||
+                     ' preserve_rule "' || bad.preserve_rule || '" - ' || bad.preserve_calc
+      );
+      l_bad_tables := l_bad_tables + 1;
+    END LOOP;
 
     IF l_bad_tables > 0 THEN
       PKG_ARCHIVE_LOG.prc_log_message
