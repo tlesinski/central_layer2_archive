@@ -22,11 +22,5 @@ AS
     p_target_owner      IN VARCHAR2 DEFAULT NULL,
     p_target_table_name IN VARCHAR2 DEFAULT NULL
   );
-
-  FUNCTION fnc_calculate_retention_rule
-  (
-    p_retention_rule IN VARCHAR2
-  ) 
-  RETURN DATE;
 END PKG_ARCHIVE_TRUNCATE;
 /

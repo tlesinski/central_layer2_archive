@@ -1,0 +1,17 @@
+CREATE OR REPLACE FUNCTION FN_CALCULATE_RETENTION_RULE
+(
+  p_retention_rule IN VARCHAR2
+)
+RETURN DATE
+DETERMINISTIC
+IS
+  l_retention_date  DATE;
+BEGIN
+  EXECUTE IMMEDIATE 'SELECT ' || p_retention_rule || ' FROM DUAL' INTO l_retention_date;
+
+  RETURN l_retention_date;
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN NULL;
+END;
+/

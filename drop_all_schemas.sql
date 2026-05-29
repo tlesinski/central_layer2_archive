@@ -56,7 +56,7 @@ BEGIN
       FROM dba_objects
      WHERE owner = 'CARCH'
        AND object_type = 'FUNCTION'
-       AND object_name = 'FN_ARCHIVE_HIGH_VALUE_DATE'
+       AND object_name IN ('FN_ARCHIVE_HIGH_VALUE_DATE', 'FN_CALCULATE_RETENTION_RULE')
   ) LOOP
     BEGIN
       EXECUTE IMMEDIATE 'DROP FUNCTION CARCH.' || r.object_name;
@@ -65,6 +65,23 @@ BEGIN
       WHEN OTHERS THEN
         DBMS_OUTPUT.PUT_LINE('Could not drop FUNCTION ' ||
                              r.object_name || ': ' || SQLERRM);
+    END;
+  END LOOP;
+
+  -- trigger
+  FOR r IN (
+    SELECT trigger_name
+      FROM dba_triggers
+     WHERE owner = 'CARCH'
+       AND trigger_name = 'TRG_ARCHIVE_TABLES_RETENTION_CALC'
+  ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'DROP TRIGGER CARCH.' || r.trigger_name;
+      DBMS_OUTPUT.PUT_LINE('Dropped TRIGGER CARCH.' || r.trigger_name);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Could not drop TRIGGER ' ||
+                             r.trigger_name || ': ' || SQLERRM);
     END;
   END LOOP;
 

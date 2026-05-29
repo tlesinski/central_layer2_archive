@@ -22,7 +22,7 @@ SELECT p.source_db_link,
        p.source_row_count,
        p.target_row_count,
        t.retention_rule,
-       pkg_archive_truncate.fnc_calculate_retention_rule(t.retention_rule) AS cutoff_date,
+       fn_calculate_retention_rule(t.retention_rule) AS cutoff_date,
        FN_ARCHIVE_HIGH_VALUE_DATE(p.partition_high_value) AS partition_high_value_date
   FROM tw_archive_partitions p
   JOIN tw_archive_tables t

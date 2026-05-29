@@ -31,19 +31,6 @@ AS
     RETURN PKG_SQL.fn_assert_simple_name(p_name);
   END;
 
-  FUNCTION fnc_calculate_retention_rule
-  (
-    p_retention_rule IN VARCHAR2
-  ) 
-  RETURN DATE
-  IS
-    l_retention_date  DATE;
-  BEGIN
-    EXECUTE IMMEDIATE 'SELECT ' || p_retention_rule || ' FROM DUAL' INTO l_retention_date;
-
-    RETURN l_retention_date;
-  END;
-
   FUNCTION fn_qualified_agent_procedure(p_agent_schema IN VARCHAR2, p_source_db_link IN VARCHAR2) RETURN VARCHAR2 IS
     l_name VARCHAR2(400);
   BEGIN
