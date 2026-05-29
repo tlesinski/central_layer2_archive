@@ -17,7 +17,7 @@ USING (
          4 AS parallel_degree,
          'USERS' AS tablespace_name,
           'SELECT dat.fn_eod-90 FROM DUAL' AS retention_rule,
-          'SELECT dat.fn_boy FROM DUAL UNION ALL SELECT dat.fn_eoy FROM DUAL' AS preserve_rule,
+          NULL AS preserve_rule,
          'Y' AS enabled_flag
     FROM dual
 ) src

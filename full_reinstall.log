@@ -6648,7 +6648,7 @@ SQL> MERGE INTO TW_ARCHIVE_TABLES dst
  10           4 AS parallel_degree,
  11           'USERS' AS tablespace_name,
  12            'SELECT dat.fn_eod-90 FROM DUAL' AS retention_rule,
- 13            'SELECT dat.fn_boy FROM DUAL UNION ALL SELECT dat.fn_eoy FROM DUAL' AS preserve_rule,
+ 13            NULL AS preserve_rule,
  14           'Y' AS enabled_flag
  15      FROM dual
  16  ) src
@@ -6762,7 +6762,7 @@ SQL> MERGE INTO TW_ARCHIVE_TABLES dst
  10           4 AS parallel_degree,
  11           'USERS' AS tablespace_name,
  12            'SELECT dat.fn_eod-90 FROM DUAL' AS retention_rule,
- 13            'SELECT dat.fn_boy FROM DUAL UNION ALL SELECT dat.fn_eoy FROM DUAL' AS preserve_rule,
+ 13            NULL AS preserve_rule,
  14           'Y' AS enabled_flag
  15      FROM dual
  16  ) src
@@ -6903,7 +6903,7 @@ SQL> MERGE INTO TW_ARCHIVE_TABLES dst
  10           4 AS parallel_degree,
  11           'USERS' AS tablespace_name,
  12            'SELECT dat.fn_eod-90 FROM DUAL' AS retention_rule,
- 13            'SELECT dat.fn_boy FROM DUAL UNION ALL SELECT dat.fn_eoy FROM DUAL' AS preserve_rule,
+ 13            NULL AS preserve_rule,
  14           'Y' AS enabled_flag
  15      FROM dual
  16  ) src
