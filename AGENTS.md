@@ -147,7 +147,7 @@ over relying on manual execution order.
 Connect as SYS and run in order:
 
 ```text
-1. @deploy/drop_all_schemas.sql
+1. @drop_all_schemas.sql
 2. @full_reinstall.sql
 ```
 

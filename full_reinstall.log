@@ -1300,7 +1300,7 @@ SQL> CREATE SEQUENCE MD_PROCESS_LOG_SEQ
 
 Sequence MD_PROCESS_LOG_SEQ created.
 
-SQL> @deploy/layer2/sequences/stg_tmp_arch_seq.sql
+SQL> @layer2_core/sequences/stg_tmp_arch_seq.sql
 SQL> CREATE SEQUENCE STG_TMP_ARCH_SEQ
   2    MINVALUE 1
   3    MAXVALUE 9999999999999999999999999999
@@ -6868,5 +6868,90 @@ SQL> PROMPT Check full_reinstall.log for details.
 Check full_reinstall.log for details.
 SQL> PROMPT ============================================================
 ============================================================
+SQL> 
+SQL> PROMPT
+
+SQL> PROMPT ============================================================
+============================================================
+SQL> PROMPT Installed objects per schema:
+Installed objects per schema:
+SQL> PROMPT ============================================================
+============================================================
+SQL> BEGIN
+  2    FOR r IN (
+  3      SELECT owner, object_type, COUNT(*) AS cnt
+  4        FROM dba_objects
+  5       WHERE owner IN ('CARCH','CAGENT1','CLIENT1','CLIENT2')
+  6         AND object_name NOT LIKE 'SYS_P%'
+  7         AND object_name NOT LIKE 'TMP$%'
+  8       GROUP BY owner, object_type
+  9       ORDER BY owner, object_type
+ 10    ) LOOP
+ 11      DBMS_OUTPUT.PUT_LINE('  ' || RPAD(r.owner, 10) || RPAD(r.object_type, 20) || r.cnt);
+ 12    END LOOP;
+ 13  
+ 14    FOR r IN (
+ 15      SELECT 'CARCH' AS owner, COUNT(*) AS cnt FROM dba_sequences WHERE sequence_owner = 'CARCH'
+ 16        AND sequence_name NOT LIKE 'ISEQ$$_%'
+ 17    ) LOOP
+ 18      IF r.cnt > 0 THEN
+ 19        DBMS_OUTPUT.PUT_LINE('  SEQUENCE     ' || r.cnt || ' in CARCH');
+ 20      END IF;
+ 21    END LOOP;
+ 22  END;
+ 23  /
+CAGENT1   PACKAGE             1
+  CAGENT1   PACKAGE BODY        1
+  CAGENT1   TYPE                2
+  CAGENT1   VIEW                1
+  CARCH     DATABASE LINK       1
+  CARCH     FUNCTION            1
+  CARCH     INDEX               23
+  CARCH     INDEX PARTITION     15
+  CARCH     INDEX SUBPARTITION  16
+  CARCH     LOB                 2
+  CARCH     LOB PARTITION       2
+  CARCH     PACKAGE             10
+  CARCH     PACKAGE BODY        10
+  CARCH     SEQUENCE            3
+  CARCH     TABLE               10
+  CARCH     TABLE PARTITION     7
+  CARCH     TABLE SUBPARTITION  8
+  CARCH     VIEW                5
+  CLIENT1   INDEX               7
+  CLIENT1   INDEX PARTITION     34
+  CLIENT1   INDEX SUBPARTITION  44
+  CLIENT1   TABLE               3
+  CLIENT1   TABLE PARTITION     17
+  CLIENT1   TABLE SUBPARTITION  22
+  CLIENT2   INDEX               7
+  CLIENT2   INDEX PARTITION     34
+  CLIENT2   INDEX SUBPARTITION  44
+  CLIENT2   TABLE               3
+  CLIENT2   TABLE PARTITION     17
+  CLIENT2   TABLE SUBPARTITION  22
+  SEQUENCE     2 in CARCH
+
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> SELECT 'CARCH: '   || COUNT(*) || ' objects installed' AS summary FROM dba_objects WHERE owner = 'CARCH'   AND object_name NOT LIKE 'SYS_P%' AND object_name NOT LIKE 'TMP$%'
+  2  UNION ALL
+  3  SELECT 'CAGENT1: ' || COUNT(*) || ' objects installed' FROM dba_objects WHERE owner = 'CAGENT1' AND object_name NOT LIKE 'SYS_P%' AND object_name NOT LIKE 'TMP$%'
+  4  UNION ALL
+  5  SELECT 'CLIENT1: ' || COUNT(*) || ' objects installed' FROM dba_objects WHERE owner = 'CLIENT1' AND object_name NOT LIKE 'SYS_P%' AND object_name NOT LIKE 'TMP$%'
+  6  UNION ALL
+  7  SELECT 'CLIENT2: ' || COUNT(*) || ' objects installed' FROM dba_objects WHERE owner = 'CLIENT2' AND object_name NOT LIKE 'SYS_P%' AND object_name NOT LIKE 'TMP$%';
+
+SUMMARY                                                            
+-------------------------------------------------------------------
+CARCH: 113 objects installed
+CAGENT1: 5 objects installed
+CLIENT1: 127 objects installed
+CLIENT2: 127 objects installed
+
+4 rows selected. 
+
 SQL> 
 SQL> SPOOL OFF

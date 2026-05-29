@@ -7,7 +7,7 @@ PROMPT Installing Central Layer 2 Archive core objects
 PROMPT Prerequisite: DAT package must exist in the install schema.
 
 @@../../layer2_core/sequences/md_process_log_seq.sql
-@@sequences/stg_tmp_arch_seq.sql
+@@../../layer2_core/sequences/stg_tmp_arch_seq.sql
 @@../../layer2_core/tables/md_process_log.sql
 @@../../layer2_core/tables/tw_archive_tables.sql
 @@../../layer2_core/tables/tw_archive_runs.sql
