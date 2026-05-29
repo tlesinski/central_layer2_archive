@@ -13,21 +13,12 @@ SELECT p.source_db_link,
        p.subpartition_name,
        p.partition_high_value,
        p.subpartition_high_value,
-       p.partition_position,
-       p.subpartition_position,
+       p.prev_partition_high_value,
        p.archive_status,
        p.quality_status,
        p.truncate_status,
        p.source_row_count,
-       p.target_row_count,
-       (
-         SELECT MAX(pp.partition_high_value) KEEP (DENSE_RANK LAST ORDER BY pp.partition_position)
-           FROM tw_archive_partitions pp
-          WHERE pp.source_db_link = p.source_db_link
-            AND pp.source_owner = p.source_owner
-            AND pp.source_table_name = p.source_table_name
-            AND pp.partition_position < p.partition_position
-       ) AS prev_partition_high_value
+       p.target_row_count
   FROM tw_archive_partitions p
   JOIN tw_archive_tables t
     ON t.source_db_link = p.source_db_link

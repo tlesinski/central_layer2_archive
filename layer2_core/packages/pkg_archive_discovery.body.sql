@@ -147,15 +147,14 @@ AS
 
       FOR p IN (
         SELECT DISTINCT partition_name,
-               partition_high_value,
-               partition_position
+               partition_high_value
           FROM tw_archive_discovery_partitions_vw
          WHERE source_db_link = t.source_db_link
            AND source_owner = t.source_owner
            AND source_table_name = t.source_table_name
            AND target_owner = t.target_owner
            AND target_table_name = t.target_table_name
-         ORDER BY partition_position
+         ORDER BY partition_high_value
       ) LOOP
         l_partitions := l_partitions + 1;
         l_partition_summary := NULL;
@@ -171,26 +170,25 @@ AS
           'INSERT INTO TW_ARCHIVE_PARTITIONS ' || CHR(10) ||
           '  (source_db_link, source_owner, source_table_name, target_owner, target_table_name, ' || CHR(10) ||
           '   archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name, ' || CHR(10) ||
-          '   partition_high_value, subpartition_high_value, ' || CHR(10) ||
-          '   partition_position, subpartition_position, archive_status, quality_status, truncate_status, last_run_id) ' || CHR(10) ||
-          'VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, TO_NUMBER(:13), TO_NUMBER(:14), ''N'', ''N'', ''N'', TO_NUMBER(:15))';
+          '   partition_high_value, subpartition_high_value, prev_partition_high_value, ' || CHR(10) ||
+          '   archive_status, quality_status, truncate_status, last_run_id) ' || CHR(10) ||
+          'VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, ''N'', ''N'', ''N'', TO_NUMBER(:14))';
 
         IF l_execute_flag = 'Y' THEN
           FOR s IN (
-            SELECT target_owner,
-                   target_table_name,
-                   source_db_link,
-                   source_owner,
-                   source_table_name,
-                   source_partition_name,
-                   source_subpartition_name,
-                   partition_name,
-                   subpartition_name,
-                   partition_high_value,
-                   subpartition_high_value,
-                   partition_position,
-                   subpartition_position,
-                   archive_unit_type
+             SELECT target_owner,
+                    target_table_name,
+                    source_db_link,
+                    source_owner,
+                    source_table_name,
+                    source_partition_name,
+                    source_subpartition_name,
+                    partition_name,
+                    subpartition_name,
+                    partition_high_value,
+                    subpartition_high_value,
+                    prev_partition_high_value,
+                    archive_unit_type
               FROM tw_archive_discovery_partitions_vw
              WHERE source_db_link = t.source_db_link
                AND source_owner = t.source_owner
@@ -198,7 +196,7 @@ AS
                AND target_owner = t.target_owner
                AND target_table_name = t.target_table_name
                AND partition_high_value = p.partition_high_value
-             ORDER BY partition_position, subpartition_position
+              ORDER BY partition_high_value, subpartition_high_value
           ) LOOP
             IF s.archive_unit_type = 'SUBPARTITION' THEN
               l_target_subpart := fn_target_subpartition_name
@@ -230,8 +228,7 @@ AS
                                 l_target_subpart,
                                 s.partition_high_value,
                                 s.subpartition_high_value,
-                                TO_CHAR(s.partition_position),
-                                TO_CHAR(s.subpartition_position),
+                                s.prev_partition_high_value,
                                 TO_CHAR(l_run_id)
                               ),
               p_execute    => l_execute_flag

@@ -59,9 +59,8 @@ USING (
          'P_ERROR' AS partition_name,
          '#' AS subpartition_name,
          'TO_DATE('' 1800-01-01 00:00:00'', ''SYYYY-MM-DD HH24:MI:SS'', ''NLS_CALENDAR=GREGORIAN'')' AS partition_high_value,
-         '#' AS subpartition_high_value,
-         1 AS partition_position,
-         NULL AS subpartition_position
+          '#' AS subpartition_high_value,
+          NULL AS prev_partition_high_value
     FROM dual
 ) src
 ON (
@@ -76,27 +75,26 @@ WHEN MATCHED THEN UPDATE SET
   dst.target_table_name = src.target_table_name,
   dst.archive_unit_type = src.archive_unit_type,
   dst.source_partition_name = src.source_partition_name,
-  dst.source_subpartition_name = src.source_subpartition_name,
-  dst.partition_position = src.partition_position,
-  dst.subpartition_position = src.subpartition_position,
-  dst.archive_status = 'Y',
-  dst.quality_status = 'Y',
-  dst.truncate_status = 'Y',
-  dst.source_row_count = 0,
-  dst.target_row_count = 0,
-  dst.error_message = NULL,
-  dst.updated_at = SYSTIMESTAMP
+   dst.source_subpartition_name = src.source_subpartition_name,
+   dst.prev_partition_high_value = src.prev_partition_high_value,
+   dst.archive_status = 'Y',
+   dst.quality_status = 'Y',
+   dst.truncate_status = 'Y',
+   dst.source_row_count = 0,
+   dst.target_row_count = 0,
+   dst.error_message = NULL,
+   dst.updated_at = SYSTIMESTAMP
 WHEN NOT MATCHED THEN INSERT
   (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
    archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
    partition_high_value, subpartition_high_value,
-   partition_position, subpartition_position, archive_status, quality_status,
+   prev_partition_high_value, archive_status, quality_status,
    truncate_status, source_row_count, target_row_count)
 VALUES
   (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
    src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
    src.partition_high_value, src.subpartition_high_value,
-   src.partition_position, src.subpartition_position, 'Y', 'Y',
+   src.prev_partition_high_value, 'Y', 'Y',
    'Y', 0, 0);
 
 COMMIT;

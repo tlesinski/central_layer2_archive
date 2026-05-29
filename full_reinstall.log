@@ -926,31 +926,43 @@ SQL> CREATE OR REPLACE VIEW ARCHIVE_PARTITION_INFO_VW
  17           ),
  18           '/ROWSET/ROW/HIGH_VALUE'
  19         ) AS partition_high_value,
- 20         CASE
- 21           WHEN s.subpartition_name IS NULL THEN NULL
- 22           ELSE EXTRACTVALUE
- 23                (
- 24                  DBMS_XMLGEN.GETXMLTYPE
- 25                  (
- 26                    'select high_value from all_tab_subpartitions where table_owner = ''' ||
- 27                    REPLACE(s.table_owner, '''', '''''') ||
- 28                    ''' and table_name = ''' ||
- 29                    REPLACE(s.table_name, '''', '''''') ||
- 30                    ''' and partition_name = ''' ||
- 31                    REPLACE(s.partition_name, '''', '''''') ||
- 32                    ''' and subpartition_name = ''' ||
- 33                    REPLACE(s.subpartition_name, '''', '''''') || ''''
- 34                  ),
- 35                  '/ROWSET/ROW/HIGH_VALUE'
- 36                )
- 37         END AS subpartition_high_value,
- 38         p.partition_position,
- 39         s.subpartition_position
- 40    FROM all_tab_partitions p
- 41    LEFT JOIN all_tab_subpartitions s
- 42      ON p.table_owner = s.table_owner
- 43     AND p.table_name = s.table_name
- 44     AND p.partition_name = s.partition_name;
+ 20         EXTRACTVALUE
+ 21         (
+ 22           DBMS_XMLGEN.GETXMLTYPE
+ 23           (
+ 24             'select high_value from all_tab_partitions where table_owner = ''' ||
+ 25             p.table_owner ||
+ 26             ''' and table_name = ''' ||
+ 27             p.table_name ||
+ 28             ''' and partition_position = '||(p.partition_position-1)
+ 29           ),
+ 30           '/ROWSET/ROW/HIGH_VALUE'
+ 31         ) AS prev_partition_high_value,
+ 32         CASE
+ 33           WHEN s.subpartition_name IS NULL THEN NULL
+ 34           ELSE EXTRACTVALUE
+ 35                (
+ 36                  DBMS_XMLGEN.GETXMLTYPE
+ 37                  (
+ 38                    'select high_value from all_tab_subpartitions where table_owner = ''' ||
+ 39                    REPLACE(s.table_owner, '''', '''''') ||
+ 40                    ''' and table_name = ''' ||
+ 41                    REPLACE(s.table_name, '''', '''''') ||
+ 42                    ''' and partition_name = ''' ||
+ 43                    REPLACE(s.partition_name, '''', '''''') ||
+ 44                    ''' and subpartition_name = ''' ||
+ 45                    REPLACE(s.subpartition_name, '''', '''''') || ''''
+ 46                  ),
+ 47                  '/ROWSET/ROW/HIGH_VALUE'
+ 48                )
+ 49         END AS subpartition_high_value,
+ 50         p.partition_position,
+ 51         s.subpartition_position
+ 52    FROM all_tab_partitions p
+ 53    LEFT JOIN all_tab_subpartitions s
+ 54      ON p.table_owner = s.table_owner
+ 55     AND p.table_name = s.table_name
+ 56     AND p.partition_name = s.partition_name;
 
 View ARCHIVE_PARTITION_INFO_VW created.
 
@@ -1438,51 +1450,50 @@ SQL> CREATE TABLE TW_ARCHIVE_PARTITIONS
  12    SUBPARTITION_NAME         VARCHAR2(128) DEFAULT '#' NOT NULL,
  13    PARTITION_HIGH_VALUE      VARCHAR2(4000) NOT NULL,
  14    SUBPARTITION_HIGH_VALUE   VARCHAR2(4000) DEFAULT '#' NOT NULL,
- 15    PARTITION_POSITION        NUMBER,
- 16    SUBPARTITION_POSITION     NUMBER,
- 17    ARCHIVE_STATUS            VARCHAR2(1) DEFAULT 'N' NOT NULL,
- 18    QUALITY_STATUS            VARCHAR2(1) DEFAULT 'N' NOT NULL,
- 19    TRUNCATE_STATUS           VARCHAR2(1) DEFAULT 'N' NOT NULL,
- 20    SOURCE_ROW_COUNT          NUMBER,
- 21    TARGET_ROW_COUNT          NUMBER,
- 22    LAST_RUN_ID               NUMBER,
- 23    ERROR_MESSAGE             VARCHAR2(4000),
- 24    CREATED_AT                TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
- 25    UPDATED_AT                TIMESTAMP,
- 26    CONSTRAINT TW_ARCHIVE_PARTITIONS_PK PRIMARY KEY
- 27      (SOURCE_DB_LINK, SOURCE_OWNER, SOURCE_TABLE_NAME, PARTITION_HIGH_VALUE, SUBPARTITION_HIGH_VALUE),
- 28    CONSTRAINT TW_ARCHIVE_PARTITIONS_FK1 FOREIGN KEY
- 29      (SOURCE_DB_LINK, SOURCE_OWNER, SOURCE_TABLE_NAME)
- 30      REFERENCES TW_ARCHIVE_TABLES
- 31      (SOURCE_DB_LINK, SOURCE_OWNER, SOURCE_TABLE_NAME),
- 32    CONSTRAINT TW_ARCHIVE_PARTITIONS_FK2 FOREIGN KEY (LAST_RUN_ID)
- 33      REFERENCES TW_ARCHIVE_RUNS (RUN_ID),
- 34    CONSTRAINT TW_ARCHIVE_PARTITIONS_UK1 UNIQUE
- 35      (TARGET_OWNER, TARGET_TABLE_NAME, PARTITION_HIGH_VALUE, SUBPARTITION_HIGH_VALUE),
- 36    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK1 CHECK
- 37      (ARCHIVE_UNIT_TYPE IN ('PARTITION', 'SUBPARTITION')),
- 38    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK6 CHECK
- 39      (
- 40        (ARCHIVE_UNIT_TYPE = 'PARTITION' AND SOURCE_SUBPARTITION_NAME = '#')
- 41        OR
- 42        (ARCHIVE_UNIT_TYPE = 'SUBPARTITION' AND SOURCE_SUBPARTITION_NAME <> '#')
- 43      ),
- 44    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK2 CHECK
- 45      (
- 46        (ARCHIVE_UNIT_TYPE = 'PARTITION' AND SUBPARTITION_NAME = '#')
- 47        OR
- 48        (ARCHIVE_UNIT_TYPE = 'SUBPARTITION' AND SUBPARTITION_NAME <> '#')
- 49      ),
- 50    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK7 CHECK
- 51      (
- 52        (ARCHIVE_UNIT_TYPE = 'PARTITION' AND SUBPARTITION_HIGH_VALUE = '#')
- 53        OR
- 54        (ARCHIVE_UNIT_TYPE = 'SUBPARTITION' AND SUBPARTITION_HIGH_VALUE <> '#')
- 55      ),
- 56    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK3 CHECK (ARCHIVE_STATUS IN ('Y', 'N')),
- 57    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK4 CHECK (QUALITY_STATUS IN ('Y', 'N')),
- 58    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK5 CHECK (TRUNCATE_STATUS IN ('Y', 'N'))
- 59  );
+ 15    PREV_PARTITION_HIGH_VALUE VARCHAR2(4000),
+ 16    ARCHIVE_STATUS            VARCHAR2(1) DEFAULT 'N' NOT NULL,
+ 17    QUALITY_STATUS            VARCHAR2(1) DEFAULT 'N' NOT NULL,
+ 18    TRUNCATE_STATUS           VARCHAR2(1) DEFAULT 'N' NOT NULL,
+ 19    SOURCE_ROW_COUNT          NUMBER,
+ 20    TARGET_ROW_COUNT          NUMBER,
+ 21    LAST_RUN_ID               NUMBER,
+ 22    ERROR_MESSAGE             VARCHAR2(4000),
+ 23    CREATED_AT                TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+ 24    UPDATED_AT                TIMESTAMP,
+ 25    CONSTRAINT TW_ARCHIVE_PARTITIONS_PK PRIMARY KEY
+ 26      (SOURCE_DB_LINK, SOURCE_OWNER, SOURCE_TABLE_NAME, PARTITION_HIGH_VALUE, SUBPARTITION_HIGH_VALUE),
+ 27    CONSTRAINT TW_ARCHIVE_PARTITIONS_FK1 FOREIGN KEY
+ 28      (SOURCE_DB_LINK, SOURCE_OWNER, SOURCE_TABLE_NAME)
+ 29      REFERENCES TW_ARCHIVE_TABLES
+ 30      (SOURCE_DB_LINK, SOURCE_OWNER, SOURCE_TABLE_NAME),
+ 31    CONSTRAINT TW_ARCHIVE_PARTITIONS_FK2 FOREIGN KEY (LAST_RUN_ID)
+ 32      REFERENCES TW_ARCHIVE_RUNS (RUN_ID),
+ 33    CONSTRAINT TW_ARCHIVE_PARTITIONS_UK1 UNIQUE
+ 34      (TARGET_OWNER, TARGET_TABLE_NAME, PARTITION_HIGH_VALUE, SUBPARTITION_HIGH_VALUE),
+ 35    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK1 CHECK
+ 36      (ARCHIVE_UNIT_TYPE IN ('PARTITION', 'SUBPARTITION')),
+ 37    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK6 CHECK
+ 38      (
+ 39        (ARCHIVE_UNIT_TYPE = 'PARTITION' AND SOURCE_SUBPARTITION_NAME = '#')
+ 40        OR
+ 41        (ARCHIVE_UNIT_TYPE = 'SUBPARTITION' AND SOURCE_SUBPARTITION_NAME <> '#')
+ 42      ),
+ 43    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK2 CHECK
+ 44      (
+ 45        (ARCHIVE_UNIT_TYPE = 'PARTITION' AND SUBPARTITION_NAME = '#')
+ 46        OR
+ 47        (ARCHIVE_UNIT_TYPE = 'SUBPARTITION' AND SUBPARTITION_NAME <> '#')
+ 48      ),
+ 49    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK7 CHECK
+ 50      (
+ 51        (ARCHIVE_UNIT_TYPE = 'PARTITION' AND SUBPARTITION_HIGH_VALUE = '#')
+ 52        OR
+ 53        (ARCHIVE_UNIT_TYPE = 'SUBPARTITION' AND SUBPARTITION_HIGH_VALUE <> '#')
+ 54      ),
+ 55    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK3 CHECK (ARCHIVE_STATUS IN ('Y', 'N')),
+ 56    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK4 CHECK (QUALITY_STATUS IN ('Y', 'N')),
+ 57    CONSTRAINT TW_ARCHIVE_PARTITIONS_CK5 CHECK (TRUNCATE_STATUS IN ('Y', 'N'))
+ 58  );
 
 Table TW_ARCHIVE_PARTITIONS created.
 
@@ -1764,52 +1775,55 @@ SQL> CREATE OR REPLACE VIEW TW_ARCHIVE_SOURCE_PARTITIONS_VW
  26           x.partition_name AS partition_name,
  27           NVL(x.subpartition_name, '#') AS subpartition_name,
  28           x.partition_high_value,
- 29           NVL(x.subpartition_high_value, '#') AS subpartition_high_value,
- 30           x.partition_position,
- 31           NVL(x.subpartition_position, 0) AS subpartition_position
- 32      FROM cfg c,
- 33           XMLTABLE(
- 34             '/ROWSET/ROW'
- 35             PASSING DBMS_XMLGEN.GETXMLTYPE(
- 36               'SELECT * FROM ' ||
- 37               DBMS_ASSERT.SIMPLE_SQL_NAME(c.source_agent_schema) ||
- 38               '.ARCHIVE_PARTITION_INFO_VW' ||
- 39               CASE
- 40                 WHEN c.source_db_link IS NOT NULL
- 41                      AND UPPER(TRIM(c.source_db_link)) NOT IN ('LOCAL', 'NONE')
- 42                   THEN '@' || DBMS_ASSERT.SIMPLE_SQL_NAME(c.source_db_link)
- 43               END ||
- 44               ' WHERE schema_name = ''' || REPLACE(UPPER(c.source_owner), '''', '''''') || '''' ||
- 45               ' AND table_name = ''' || REPLACE(UPPER(c.source_table_name), '''', '''''') || ''''
- 46             )
- 47             COLUMNS
- 48               schema_name              VARCHAR2(128)  PATH 'SCHEMA_NAME',
- 49               table_name               VARCHAR2(128)  PATH 'TABLE_NAME',
- 50               partition_name           VARCHAR2(128)  PATH 'PARTITION_NAME',
- 51               subpartition_name        VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
- 52               partition_high_value     VARCHAR2(4000) PATH 'PARTITION_HIGH_VALUE',
- 53               subpartition_high_value  VARCHAR2(4000) PATH 'SUBPARTITION_HIGH_VALUE',
- 54               partition_position       NUMBER         PATH 'PARTITION_POSITION',
- 55               subpartition_position    NUMBER         PATH 'SUBPARTITION_POSITION'
- 56           ) x
- 57     WHERE UPPER(TRIM(x.partition_high_value)) <> 'MAXVALUE'
- 58  )
- 59  SELECT source_db_link,
- 60         source_agent_schema,
- 61         source_owner,
- 62         source_table_name,
- 63         target_owner,
- 64         target_table_name,
- 65         archive_unit_type,
- 66         source_partition_name,
- 67         source_subpartition_name,
- 68         partition_name,
- 69         subpartition_name,
- 70         partition_high_value,
- 71         subpartition_high_value,
- 72         partition_position,
- 73         subpartition_position
- 74    FROM src;
+ 29            NVL(x.subpartition_high_value, '#') AS subpartition_high_value,
+ 30            x.prev_partition_high_value,
+ 31            x.partition_position,
+ 32           NVL(x.subpartition_position, 0) AS subpartition_position
+ 33      FROM cfg c,
+ 34           XMLTABLE(
+ 35             '/ROWSET/ROW'
+ 36             PASSING DBMS_XMLGEN.GETXMLTYPE(
+ 37               'SELECT * FROM ' ||
+ 38               DBMS_ASSERT.SIMPLE_SQL_NAME(c.source_agent_schema) ||
+ 39               '.ARCHIVE_PARTITION_INFO_VW' ||
+ 40               CASE
+ 41                 WHEN c.source_db_link IS NOT NULL
+ 42                      AND UPPER(TRIM(c.source_db_link)) NOT IN ('LOCAL', 'NONE')
+ 43                   THEN '@' || DBMS_ASSERT.SIMPLE_SQL_NAME(c.source_db_link)
+ 44               END ||
+ 45               ' WHERE schema_name = ''' || REPLACE(UPPER(c.source_owner), '''', '''''') || '''' ||
+ 46               ' AND table_name = ''' || REPLACE(UPPER(c.source_table_name), '''', '''''') || ''''
+ 47             )
+ 48             COLUMNS
+ 49               schema_name              VARCHAR2(128)  PATH 'SCHEMA_NAME',
+ 50               table_name               VARCHAR2(128)  PATH 'TABLE_NAME',
+ 51               partition_name           VARCHAR2(128)  PATH 'PARTITION_NAME',
+ 52               subpartition_name        VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
+ 53                partition_high_value     VARCHAR2(4000) PATH 'PARTITION_HIGH_VALUE',
+ 54                subpartition_high_value  VARCHAR2(4000) PATH 'SUBPARTITION_HIGH_VALUE',
+ 55                prev_partition_high_value VARCHAR2(4000) PATH 'PREV_PARTITION_HIGH_VALUE',
+ 56                partition_position       NUMBER         PATH 'PARTITION_POSITION',
+ 57                subpartition_position    NUMBER         PATH 'SUBPARTITION_POSITION'
+ 58            ) x
+ 59      WHERE UPPER(TRIM(x.partition_high_value)) <> 'MAXVALUE'
+ 60  )
+ 61  SELECT source_db_link,
+ 62         source_agent_schema,
+ 63         source_owner,
+ 64         source_table_name,
+ 65         target_owner,
+ 66         target_table_name,
+ 67         archive_unit_type,
+ 68         source_partition_name,
+ 69         source_subpartition_name,
+ 70         partition_name,
+ 71         subpartition_name,
+ 72         partition_high_value,
+ 73         subpartition_high_value,
+ 74         prev_partition_high_value,
+ 75         partition_position,
+ 76         subpartition_position
+ 77    FROM src;
 
 View TW_ARCHIVE_SOURCE_PARTITIONS_VW created.
 
@@ -1830,18 +1844,17 @@ SQL> CREATE OR REPLACE VIEW TW_ARCHIVE_DISCOVERY_PARTITIONS_VW
  13         s.subpartition_name,
  14         s.partition_high_value,
  15         s.subpartition_high_value,
- 16         s.partition_position,
- 17         s.subpartition_position
- 18    FROM tw_archive_source_partitions_vw s
- 19   WHERE NOT EXISTS (
- 20         SELECT 1
- 21           FROM tw_archive_partitions p
- 22          WHERE p.source_db_link = s.source_db_link
- 23            AND p.source_owner = s.source_owner
- 24            AND p.source_table_name = s.source_table_name
- 25            AND p.partition_high_value = s.partition_high_value
- 26            AND p.subpartition_high_value = s.subpartition_high_value
- 27         );
+ 16         s.prev_partition_high_value
+ 17    FROM tw_archive_source_partitions_vw s
+ 18   WHERE NOT EXISTS (
+ 19         SELECT 1
+ 20           FROM tw_archive_partitions p
+ 21          WHERE p.source_db_link = s.source_db_link
+ 22            AND p.source_owner = s.source_owner
+ 23            AND p.source_table_name = s.source_table_name
+ 24            AND p.partition_high_value = s.partition_high_value
+ 25            AND p.subpartition_high_value = s.subpartition_high_value
+ 26         );
 
 View TW_ARCHIVE_DISCOVERY_PARTITIONS_VW created.
 
@@ -1862,28 +1875,19 @@ SQL> CREATE OR REPLACE VIEW TW_ARCHIVE_IMPORT_PARTITIONS_VW
  13         p.subpartition_name,
  14         p.partition_high_value,
  15         p.subpartition_high_value,
- 16         p.partition_position,
- 17         p.subpartition_position,
- 18         p.archive_status,
- 19         p.quality_status,
- 20         p.truncate_status,
- 21         p.source_row_count,
- 22         p.target_row_count,
- 23         (
- 24           SELECT MAX(pp.partition_high_value) KEEP (DENSE_RANK LAST ORDER BY pp.partition_position)
- 25             FROM tw_archive_partitions pp
- 26            WHERE pp.source_db_link = p.source_db_link
- 27              AND pp.source_owner = p.source_owner
- 28              AND pp.source_table_name = p.source_table_name
- 29              AND pp.partition_position < p.partition_position
- 30         ) AS prev_partition_high_value
- 31    FROM tw_archive_partitions p
- 32    JOIN tw_archive_tables t
- 33      ON t.source_db_link = p.source_db_link
- 34     AND t.source_owner = p.source_owner
- 35     AND t.source_table_name = p.source_table_name
- 36     AND t.enabled_flag = 'Y'
- 37   WHERE p.archive_status = 'N';
+ 16         p.prev_partition_high_value,
+ 17         p.archive_status,
+ 18         p.quality_status,
+ 19         p.truncate_status,
+ 20         p.source_row_count,
+ 21         p.target_row_count
+ 22    FROM tw_archive_partitions p
+ 23    JOIN tw_archive_tables t
+ 24      ON t.source_db_link = p.source_db_link
+ 25     AND t.source_owner = p.source_owner
+ 26     AND t.source_table_name = p.source_table_name
+ 27     AND t.enabled_flag = 'Y'
+ 28   WHERE p.archive_status = 'N';
 
 View TW_ARCHIVE_IMPORT_PARTITIONS_VW created.
 
@@ -1904,21 +1908,20 @@ SQL> CREATE OR REPLACE VIEW TW_ARCHIVE_QUALITY_PARTITIONS_VW
  13         p.subpartition_name,
  14         p.partition_high_value,
  15         p.subpartition_high_value,
- 16         p.partition_position,
- 17         p.subpartition_position,
- 18         p.archive_status,
- 19         p.quality_status,
- 20         p.truncate_status,
- 21         p.source_row_count,
- 22         p.target_row_count
- 23    FROM tw_archive_partitions p
- 24    JOIN tw_archive_tables t
- 25      ON t.source_db_link = p.source_db_link
- 26     AND t.source_owner = p.source_owner
- 27     AND t.source_table_name = p.source_table_name
- 28     AND t.enabled_flag = 'Y'
- 29   WHERE p.archive_status = 'Y'
- 30     AND p.quality_status = 'N';
+ 16         p.prev_partition_high_value,
+ 17         p.archive_status,
+ 18         p.quality_status,
+ 19         p.truncate_status,
+ 20         p.source_row_count,
+ 21         p.target_row_count
+ 22    FROM tw_archive_partitions p
+ 23    JOIN tw_archive_tables t
+ 24      ON t.source_db_link = p.source_db_link
+ 25     AND t.source_owner = p.source_owner
+ 26     AND t.source_table_name = p.source_table_name
+ 27     AND t.enabled_flag = 'Y'
+ 28   WHERE p.archive_status = 'Y'
+ 29     AND p.quality_status = 'N';
 
 View TW_ARCHIVE_QUALITY_PARTITIONS_VW created.
 
@@ -1940,52 +1943,50 @@ SQL> CREATE OR REPLACE FORCE VIEW TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
  14         p.subpartition_name,
  15         p.partition_high_value,
  16         p.subpartition_high_value,
- 17         p.partition_position,
- 18         p.subpartition_position,
- 19         p.archive_status,
- 20         p.quality_status,
- 21         p.truncate_status,
- 22         p.source_row_count,
- 23         p.target_row_count,
- 24         t.retention_rule,
- 25         (select column_value from table(fn_calculate_retention_rule(t.retention_rule))) AS cutoff_date,
- 26         FN_ARCHIVE_HIGH_VALUE_DATE(p.partition_high_value) AS partition_high_value_date
- 27    FROM tw_archive_partitions p
- 28    JOIN tw_archive_tables t
- 29      ON t.source_db_link = p.source_db_link
- 30     AND t.source_owner = p.source_owner
- 31     AND t.source_table_name = p.source_table_name
- 32     AND t.enabled_flag = 'Y'
- 33     AND t.truncate_mode = 'TRUNCATE'
- 34   WHERE p.archive_status = 'Y'
- 35     AND p.quality_status = 'Y'
- 36     AND p.truncate_status = 'N'
- 37  )
- 38  SELECT source_db_link,
- 39         source_agent_schema,
- 40         source_owner,
- 41         source_table_name,
- 42         target_owner,
- 43         target_table_name,
- 44         archive_unit_type,
- 45         source_partition_name,
- 46         source_subpartition_name,
- 47         partition_name,
- 48         subpartition_name,
- 49         partition_high_value,
- 50         subpartition_high_value,
- 51         partition_position,
- 52         subpartition_position,
- 53         archive_status,
- 54         quality_status,
- 55         truncate_status,
- 56         source_row_count,
- 57         target_row_count,
- 58         retention_rule,
- 59         cutoff_date,
- 60         partition_high_value_date
- 61    FROM candidate_partitions
- 62   WHERE partition_high_value_date <= cutoff_date;
+ 17         p.prev_partition_high_value,
+ 18         p.archive_status,
+ 19         p.quality_status,
+ 20         p.truncate_status,
+ 21         p.source_row_count,
+ 22         p.target_row_count,
+ 23         t.retention_rule,
+ 24         (select column_value from table(fn_calculate_retention_rule(t.retention_rule))) AS cutoff_date,
+ 25         FN_ARCHIVE_HIGH_VALUE_DATE(p.partition_high_value) AS partition_high_value_date
+ 26    FROM tw_archive_partitions p
+ 27    JOIN tw_archive_tables t
+ 28      ON t.source_db_link = p.source_db_link
+ 29     AND t.source_owner = p.source_owner
+ 30     AND t.source_table_name = p.source_table_name
+ 31     AND t.enabled_flag = 'Y'
+ 32     AND t.truncate_mode = 'TRUNCATE'
+ 33   WHERE p.archive_status = 'Y'
+ 34     AND p.quality_status = 'Y'
+ 35     AND p.truncate_status = 'N'
+ 36  )
+ 37  SELECT source_db_link,
+ 38         source_agent_schema,
+ 39         source_owner,
+ 40         source_table_name,
+ 41         target_owner,
+ 42         target_table_name,
+ 43         archive_unit_type,
+ 44         source_partition_name,
+ 45         source_subpartition_name,
+ 46         partition_name,
+ 47         subpartition_name,
+ 48         partition_high_value,
+ 49         subpartition_high_value,
+ 50         prev_partition_high_value,
+ 51         archive_status,
+ 52         quality_status,
+ 53         truncate_status,
+ 54         source_row_count,
+ 55         target_row_count,
+ 56         retention_rule,
+ 57         cutoff_date,
+ 58         partition_high_value_date
+ 59    FROM candidate_partitions
+ 60   WHERE partition_high_value_date <= cutoff_date;
 
 View TW_ARCHIVE_TRUNCATE_PARTITIONS_VW created.
 
@@ -4272,161 +4273,158 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_DISCOVERY
 147  
 148        FOR p IN (
 149          SELECT DISTINCT partition_name,
-150                 partition_high_value,
-151                 partition_position
-152            FROM tw_archive_discovery_partitions_vw
-153           WHERE source_db_link = t.source_db_link
-154             AND source_owner = t.source_owner
-155             AND source_table_name = t.source_table_name
-156             AND target_owner = t.target_owner
-157             AND target_table_name = t.target_table_name
-158           ORDER BY partition_position
-159        ) LOOP
-160          l_partitions := l_partitions + 1;
-161          l_partition_summary := NULL;
-162  
-163          l_add_sql :=
-164            'ALTER TABLE ' || fn_qualified_table(t.target_owner, t.target_table_name) ||
-165            ' ADD PARTITION ' || PKG_SQL.fn_assert_simple_name(p.partition_name) ||
-166            ' VALUES LESS THAN (' || p.partition_high_value || ')';
-167  
-168          l_rows := PKG_SQL.fn_run_sql(l_log_id, l_add_sql, l_execute_flag);
-169  
-170          l_insert_sql :=
-171            'INSERT INTO TW_ARCHIVE_PARTITIONS ' || CHR(10) ||
-172            '  (source_db_link, source_owner, source_table_name, target_owner, target_table_name, ' || CHR(10) ||
-173            '   archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name, ' || CHR(10) ||
-174            '   partition_high_value, subpartition_high_value, ' || CHR(10) ||
-175            '   partition_position, subpartition_position, archive_status, quality_status, truncate_status, last_run_id) ' || CHR(10) ||
-176            'VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, TO_NUMBER(:13), TO_NUMBER(:14), ''N'', ''N'', ''N'', TO_NUMBER(:15))';
-177  
-178          IF l_execute_flag = 'Y' THEN
-179            FOR s IN (
-180              SELECT target_owner,
-181                     target_table_name,
-182                     source_db_link,
-183                     source_owner,
-184                     source_table_name,
-185                     source_partition_name,
-186                     source_subpartition_name,
-187                     partition_name,
-188                     subpartition_name,
-189                     partition_high_value,
-190                     subpartition_high_value,
-191                     partition_position,
-192                     subpartition_position,
-193                     archive_unit_type
-194                FROM tw_archive_discovery_partitions_vw
-195               WHERE source_db_link = t.source_db_link
-196                 AND source_owner = t.source_owner
-197                 AND source_table_name = t.source_table_name
-198                 AND target_owner = t.target_owner
-199                 AND target_table_name = t.target_table_name
-200                 AND partition_high_value = p.partition_high_value
-201               ORDER BY partition_position, subpartition_position
-202            ) LOOP
-203              IF s.archive_unit_type = 'SUBPARTITION' THEN
-204                l_target_subpart := fn_target_subpartition_name
-205                                    (
-206                                      s.target_owner,
-207                                      s.target_table_name,
-208                                      s.partition_name,
-209                                      s.subpartition_high_value
-210                                    );
-211              ELSE
-212                l_target_subpart := '#';
-213              END IF;
-214  
-215              l_rows := PKG_SQL.fn_run_sql_in_bind
-216              (
-217                p_log_id     => l_log_id,
-218                p_sql        => l_insert_sql,
-219                p_array_bind => SYS.ODCIVARCHAR2LIST
-220                                (
-221                                  s.source_db_link,
-222                                  s.source_owner,
-223                                  s.source_table_name,
-224                                  s.target_owner,
-225                                  s.target_table_name,
-226                                  s.archive_unit_type,
-227                                  s.source_partition_name,
-228                                  s.source_subpartition_name,
-229                                  s.partition_name,
-230                                  l_target_subpart,
-231                                  s.partition_high_value,
-232                                  s.subpartition_high_value,
-233                                  TO_CHAR(s.partition_position),
-234                                  TO_CHAR(s.subpartition_position),
-235                                  TO_CHAR(l_run_id)
-236                                ),
-237                p_execute    => l_execute_flag
-238              );
-239  
-240              l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
-241  
-242              l_partition_summary := l_partition_summary ||
-243                PKG_ARCHIVE_LOG.fn_summary_row
-244                (
-245                  p_source_db_link          => s.source_db_link,
-246                  p_table_owner             => s.source_owner,
-247                  p_table_name              => s.source_table_name,
-248                  p_partition_name          => s.source_partition_name,
-249                  p_subpartition_name       => s.source_subpartition_name,
-250                  p_partition_high_value    => s.partition_high_value,
-251                  p_subpartition_high_value => s.subpartition_high_value,
-252                  p_archive_status          => 'N',
-253                  p_quality_status          => 'N',
-254                  p_truncate_status         => 'N',
-255                  p_source_row_count        => NULL,
-256                  p_target_row_count        => NULL,
-257                  p_note                    => 'target=' || s.target_owner || '.' || s.target_table_name ||
-258                                               ' ' || s.partition_name ||
-259                                               CASE WHEN s.archive_unit_type = 'SUBPARTITION' THEN '.' || l_target_subpart END ||
-260                                               ', execute=' || l_execute_flag
-261                );
-262            END LOOP;
-263          ELSE
-264            l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
-265          END IF;
-266  
-267          IF l_execute_flag = 'Y' THEN
-268            COMMIT;
-269            l_summary := l_summary || l_partition_summary;
-270          END IF;
-271        END LOOP;
-272      END LOOP;
-273  
-274      DBMS_OUTPUT.PUT_LINE(
-275        'DISCOVER tables=' || l_tables ||
-276        ' partitions=' || l_partitions ||
-277        ' found=' || l_rows_discovered ||
-278        ' inserted=' || l_rows_inserted ||
-279        ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
-280        ' target_table=' || NVL(l_target_table, '<ALL>') ||
-281        ' execute=' || l_execute_flag
-282      );
-283  
-284      IF l_summary IS NOT NULL THEN
-285        PKG_ARCHIVE_LOG.prc_log_summary
-286        (
-287          p_run_id       => l_run_id,
-288          p_process_name => 'DISCOVER',
-289          p_columns      => l_summary_columns,
-290          p_rows         => l_summary
-291        );
-292      END IF;
-293  
-294      PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
-295    EXCEPTION
-296      WHEN OTHERS THEN
-297        IF l_run_id IS NOT NULL THEN
-298          PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
-299          PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
-300        END IF;
-301        RAISE;
-302    END prc_discover;
-303  END PKG_ARCHIVE_DISCOVERY;
-304  /
+150                 partition_high_value
+151            FROM tw_archive_discovery_partitions_vw
+152           WHERE source_db_link = t.source_db_link
+153             AND source_owner = t.source_owner
+154             AND source_table_name = t.source_table_name
+155             AND target_owner = t.target_owner
+156             AND target_table_name = t.target_table_name
+157           ORDER BY partition_high_value
+158        ) LOOP
+159          l_partitions := l_partitions + 1;
+160          l_partition_summary := NULL;
+161  
+162          l_add_sql :=
+163            'ALTER TABLE ' || fn_qualified_table(t.target_owner, t.target_table_name) ||
+164            ' ADD PARTITION ' || PKG_SQL.fn_assert_simple_name(p.partition_name) ||
+165            ' VALUES LESS THAN (' || p.partition_high_value || ')';
+166  
+167          l_rows := PKG_SQL.fn_run_sql(l_log_id, l_add_sql, l_execute_flag);
+168  
+169          l_insert_sql :=
+170            'INSERT INTO TW_ARCHIVE_PARTITIONS ' || CHR(10) ||
+171            '  (source_db_link, source_owner, source_table_name, target_owner, target_table_name, ' || CHR(10) ||
+172            '   archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name, ' || CHR(10) ||
+173            '   partition_high_value, subpartition_high_value, prev_partition_high_value, ' || CHR(10) ||
+174            '   archive_status, quality_status, truncate_status, last_run_id) ' || CHR(10) ||
+175            'VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, ''N'', ''N'', ''N'', TO_NUMBER(:14))';
+176  
+177          IF l_execute_flag = 'Y' THEN
+178            FOR s IN (
+179               SELECT target_owner,
+180                      target_table_name,
+181                      source_db_link,
+182                      source_owner,
+183                      source_table_name,
+184                      source_partition_name,
+185                      source_subpartition_name,
+186                      partition_name,
+187                      subpartition_name,
+188                      partition_high_value,
+189                      subpartition_high_value,
+190                      prev_partition_high_value,
+191                      archive_unit_type
+192                FROM tw_archive_discovery_partitions_vw
+193               WHERE source_db_link = t.source_db_link
+194                 AND source_owner = t.source_owner
+195                 AND source_table_name = t.source_table_name
+196                 AND target_owner = t.target_owner
+197                 AND target_table_name = t.target_table_name
+198                 AND partition_high_value = p.partition_high_value
+199                ORDER BY partition_high_value, subpartition_high_value
+200            ) LOOP
+201              IF s.archive_unit_type = 'SUBPARTITION' THEN
+202                l_target_subpart := fn_target_subpartition_name
+203                                    (
+204                                      s.target_owner,
+205                                      s.target_table_name,
+206                                      s.partition_name,
+207                                      s.subpartition_high_value
+208                                    );
+209              ELSE
+210                l_target_subpart := '#';
+211              END IF;
+212  
+213              l_rows := PKG_SQL.fn_run_sql_in_bind
+214              (
+215                p_log_id     => l_log_id,
+216                p_sql        => l_insert_sql,
+217                p_array_bind => SYS.ODCIVARCHAR2LIST
+218                                (
+219                                  s.source_db_link,
+220                                  s.source_owner,
+221                                  s.source_table_name,
+222                                  s.target_owner,
+223                                  s.target_table_name,
+224                                  s.archive_unit_type,
+225                                  s.source_partition_name,
+226                                  s.source_subpartition_name,
+227                                  s.partition_name,
+228                                  l_target_subpart,
+229                                  s.partition_high_value,
+230                                  s.subpartition_high_value,
+231                                  s.prev_partition_high_value,
+232                                  TO_CHAR(l_run_id)
+233                                ),
+234                p_execute    => l_execute_flag
+235              );
+236  
+237              l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
+238  
+239              l_partition_summary := l_partition_summary ||
+240                PKG_ARCHIVE_LOG.fn_summary_row
+241                (
+242                  p_source_db_link          => s.source_db_link,
+243                  p_table_owner             => s.source_owner,
+244                  p_table_name              => s.source_table_name,
+245                  p_partition_name          => s.source_partition_name,
+246                  p_subpartition_name       => s.source_subpartition_name,
+247                  p_partition_high_value    => s.partition_high_value,
+248                  p_subpartition_high_value => s.subpartition_high_value,
+249                  p_archive_status          => 'N',
+250                  p_quality_status          => 'N',
+251                  p_truncate_status         => 'N',
+252                  p_source_row_count        => NULL,
+253                  p_target_row_count        => NULL,
+254                  p_note                    => 'target=' || s.target_owner || '.' || s.target_table_name ||
+255                                               ' ' || s.partition_name ||
+256                                               CASE WHEN s.archive_unit_type = 'SUBPARTITION' THEN '.' || l_target_subpart END ||
+257                                               ', execute=' || l_execute_flag
+258                );
+259            END LOOP;
+260          ELSE
+261            l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
+262          END IF;
+263  
+264          IF l_execute_flag = 'Y' THEN
+265            COMMIT;
+266            l_summary := l_summary || l_partition_summary;
+267          END IF;
+268        END LOOP;
+269      END LOOP;
+270  
+271      DBMS_OUTPUT.PUT_LINE(
+272        'DISCOVER tables=' || l_tables ||
+273        ' partitions=' || l_partitions ||
+274        ' found=' || l_rows_discovered ||
+275        ' inserted=' || l_rows_inserted ||
+276        ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
+277        ' target_table=' || NVL(l_target_table, '<ALL>') ||
+278        ' execute=' || l_execute_flag
+279      );
+280  
+281      IF l_summary IS NOT NULL THEN
+282        PKG_ARCHIVE_LOG.prc_log_summary
+283        (
+284          p_run_id       => l_run_id,
+285          p_process_name => 'DISCOVER',
+286          p_columns      => l_summary_columns,
+287          p_rows         => l_summary
+288        );
+289      END IF;
+290  
+291      PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+292    EXCEPTION
+293      WHEN OTHERS THEN
+294        IF l_run_id IS NOT NULL THEN
+295          PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
+296          PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
+297        END IF;
+298        RAISE;
+299    END prc_discover;
+300  END PKG_ARCHIVE_DISCOVERY;
+301  /
 
 Package Body PKG_ARCHIVE_DISCOVERY compiled
 
@@ -4611,7 +4609,7 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_IMPORT
 149             AND p.source_table_name = t.source_table_name
 150             AND p.target_owner = t.target_owner
 151             AND p.target_table_name = t.target_table_name
-152           ORDER BY p.partition_position, p.subpartition_position
+152            ORDER BY p.partition_high_value, p.subpartition_high_value
 153        ) LOOP
 154          l_units := l_units + 1;
 155          l_rows_loaded := NULL;
@@ -4971,7 +4969,7 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_QUALITY
 119             AND p.source_table_name = t.source_table_name
 120             AND p.target_owner = t.target_owner
 121             AND p.target_table_name = t.target_table_name
-122           ORDER BY p.partition_position, p.subpartition_position
+122            ORDER BY p.partition_high_value, p.subpartition_high_value
 123        ) LOOP
 124          l_units := l_units + 1;
 125  
@@ -5278,7 +5276,7 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_TRUNCATE
 162             AND p.source_table_name = t.source_table_name
 163             AND p.target_owner = t.target_owner
 164             AND p.target_table_name = t.target_table_name
-165           ORDER BY p.partition_position, p.subpartition_position
+165            ORDER BY p.partition_high_value, p.subpartition_high_value
 166        ) LOOP
 167          l_units := l_units + 1;
 168          DBMS_OUTPUT.PUT_LINE('TRUNCATE ' || r.SOURCE_DB_LINK || '.' || r.SOURCE_OWNER || '.' ||
@@ -6299,45 +6297,43 @@ SQL> MERGE INTO TW_ARCHIVE_PARTITIONS dst
  11           'P_ERROR' AS partition_name,
  12           '#' AS subpartition_name,
  13           'TO_DATE('' 1800-01-01 00:00:00'', ''SYYYY-MM-DD HH24:MI:SS'', ''NLS_CALENDAR=GREGORIAN'')' AS partition_high_value,
- 14           '#' AS subpartition_high_value,
- 15           1 AS partition_position,
- 16           NULL AS subpartition_position
- 17      FROM dual
- 18  ) src
- 19  ON (
- 20    dst.source_db_link = src.source_db_link
- 21    AND dst.source_owner = src.source_owner
- 22    AND dst.source_table_name = src.source_table_name
- 23    AND dst.partition_high_value = src.partition_high_value
- 24    AND dst.subpartition_high_value = src.subpartition_high_value
- 25  )
- 26  WHEN MATCHED THEN UPDATE SET
- 27    dst.target_owner = src.target_owner,
- 28    dst.target_table_name = src.target_table_name,
- 29    dst.archive_unit_type = src.archive_unit_type,
- 30    dst.source_partition_name = src.source_partition_name,
- 31    dst.source_subpartition_name = src.source_subpartition_name,
- 32    dst.partition_position = src.partition_position,
- 33    dst.subpartition_position = src.subpartition_position,
- 34    dst.archive_status = 'Y',
- 35    dst.quality_status = 'Y',
- 36    dst.truncate_status = 'Y',
- 37    dst.source_row_count = 0,
- 38    dst.target_row_count = 0,
- 39    dst.error_message = NULL,
- 40    dst.updated_at = SYSTIMESTAMP
- 41  WHEN NOT MATCHED THEN INSERT
- 42    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
- 43     archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
- 44     partition_high_value, subpartition_high_value,
- 45     partition_position, subpartition_position, archive_status, quality_status,
- 46     truncate_status, source_row_count, target_row_count)
- 47  VALUES
- 48    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
- 49     src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
- 50     src.partition_high_value, src.subpartition_high_value,
- 51     src.partition_position, src.subpartition_position, 'Y', 'Y',
- 52     'Y', 0, 0);
+ 14            '#' AS subpartition_high_value,
+ 15            NULL AS prev_partition_high_value
+ 16      FROM dual
+ 17  ) src
+ 18  ON (
+ 19    dst.source_db_link = src.source_db_link
+ 20    AND dst.source_owner = src.source_owner
+ 21    AND dst.source_table_name = src.source_table_name
+ 22    AND dst.partition_high_value = src.partition_high_value
+ 23    AND dst.subpartition_high_value = src.subpartition_high_value
+ 24  )
+ 25  WHEN MATCHED THEN UPDATE SET
+ 26    dst.target_owner = src.target_owner,
+ 27    dst.target_table_name = src.target_table_name,
+ 28    dst.archive_unit_type = src.archive_unit_type,
+ 29    dst.source_partition_name = src.source_partition_name,
+ 30     dst.source_subpartition_name = src.source_subpartition_name,
+ 31     dst.prev_partition_high_value = src.prev_partition_high_value,
+ 32     dst.archive_status = 'Y',
+ 33     dst.quality_status = 'Y',
+ 34     dst.truncate_status = 'Y',
+ 35     dst.source_row_count = 0,
+ 36     dst.target_row_count = 0,
+ 37     dst.error_message = NULL,
+ 38     dst.updated_at = SYSTIMESTAMP
+ 39  WHEN NOT MATCHED THEN INSERT
+ 40    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
+ 41     archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
+ 42     partition_high_value, subpartition_high_value,
+ 43     prev_partition_high_value, archive_status, quality_status,
+ 44     truncate_status, source_row_count, target_row_count)
+ 45  VALUES
+ 46    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
+ 47     src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
+ 48     src.partition_high_value, src.subpartition_high_value,
+ 49     src.prev_partition_high_value, 'Y', 'Y',
+ 50     'Y', 0, 0);
 
 1 row merged.
 
@@ -6414,75 +6410,71 @@ SQL> MERGE INTO TW_ARCHIVE_PARTITIONS dst
  10           s.subpartition_name AS source_subpartition_name,
  11           p.partition_name,
  12           s.subpartition_name,
- 13           p.partition_high_value,
- 14           s.subpartition_high_value,
- 15           p.partition_position,
- 16           s.subpartition_position
- 17      FROM XMLTABLE(
- 18             '/ROWSET/ROW'
- 19             PASSING DBMS_XMLGEN.GETXMLTYPE(
- 20                'SELECT table_name, partition_name, high_value, partition_position ' ||
- 21                'FROM all_tab_partitions ' ||
- 22                'WHERE table_owner = ''CARCH'' ' ||
- 23                'AND table_name = ''ORDERS_SUBPART_SRC'' ' ||
- 24                'AND partition_name = ''P_ERROR'''
- 25             )
- 26             COLUMNS
- 27               partition_name       VARCHAR2(128)  PATH 'PARTITION_NAME',
- 28               partition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE',
- 29               partition_position   NUMBER         PATH 'PARTITION_POSITION'
- 30           ) p
- 31      JOIN XMLTABLE(
- 32             '/ROWSET/ROW'
- 33             PASSING DBMS_XMLGEN.GETXMLTYPE(
- 34                'SELECT table_name, partition_name, subpartition_name, high_value, subpartition_position ' ||
- 35                'FROM all_tab_subpartitions ' ||
- 36                'WHERE table_owner = ''CARCH'' ' ||
- 37                'AND table_name = ''ORDERS_SUBPART_SRC'' ' ||
- 38                'AND partition_name = ''P_ERROR'''
- 39             )
- 40             COLUMNS
- 41               partition_name          VARCHAR2(128)  PATH 'PARTITION_NAME',
- 42               subpartition_name       VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
- 43               subpartition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE',
- 44               subpartition_position   NUMBER         PATH 'SUBPARTITION_POSITION'
- 45           ) s
- 46        ON s.partition_name = p.partition_name
- 47  ) src
- 48  ON (
- 49    dst.source_db_link = src.source_db_link
- 50    AND dst.source_owner = src.source_owner
- 51    AND dst.source_table_name = src.source_table_name
- 52    AND dst.partition_high_value = src.partition_high_value
- 53    AND dst.subpartition_high_value = src.subpartition_high_value
- 54  )
- 55  WHEN MATCHED THEN UPDATE SET
- 56    dst.target_owner = src.target_owner,
- 57    dst.target_table_name = src.target_table_name,
- 58    dst.archive_unit_type = src.archive_unit_type,
- 59    dst.source_partition_name = src.source_partition_name,
- 60    dst.source_subpartition_name = src.source_subpartition_name,
- 61    dst.partition_position = src.partition_position,
- 62    dst.subpartition_position = src.subpartition_position,
- 63    dst.archive_status = 'Y',
- 64    dst.quality_status = 'Y',
- 65    dst.truncate_status = 'Y',
- 66    dst.source_row_count = 0,
- 67    dst.target_row_count = 0,
- 68    dst.error_message = NULL,
- 69    dst.updated_at = SYSTIMESTAMP
- 70  WHEN NOT MATCHED THEN INSERT
- 71    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
- 72     archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
- 73     partition_high_value, subpartition_high_value,
- 74     partition_position, subpartition_position, archive_status, quality_status,
- 75     truncate_status, source_row_count, target_row_count)
- 76  VALUES
- 77    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
- 78     src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
- 79     src.partition_high_value, src.subpartition_high_value,
- 80     src.partition_position, src.subpartition_position, 'Y', 'Y',
- 81     'Y', 0, 0);
+ 13            p.partition_high_value,
+ 14            s.subpartition_high_value,
+ 15            NULL AS prev_partition_high_value
+ 16      FROM XMLTABLE(
+ 17             '/ROWSET/ROW'
+ 18             PASSING DBMS_XMLGEN.GETXMLTYPE(
+ 19                'SELECT table_name, partition_name, high_value, partition_position ' ||
+ 20                'FROM all_tab_partitions ' ||
+ 21                'WHERE table_owner = ''CARCH'' ' ||
+ 22                'AND table_name = ''ORDERS_SUBPART_SRC'' ' ||
+ 23                'AND partition_name = ''P_ERROR'''
+ 24             )
+ 25              COLUMNS
+ 26                partition_name       VARCHAR2(128)  PATH 'PARTITION_NAME',
+ 27                partition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE'
+ 28            ) p
+ 29      JOIN XMLTABLE(
+ 30             '/ROWSET/ROW'
+ 31             PASSING DBMS_XMLGEN.GETXMLTYPE(
+ 32                'SELECT table_name, partition_name, subpartition_name, high_value, subpartition_position ' ||
+ 33                'FROM all_tab_subpartitions ' ||
+ 34                'WHERE table_owner = ''CARCH'' ' ||
+ 35                'AND table_name = ''ORDERS_SUBPART_SRC'' ' ||
+ 36                'AND partition_name = ''P_ERROR'''
+ 37             )
+ 38              COLUMNS
+ 39                partition_name          VARCHAR2(128)  PATH 'PARTITION_NAME',
+ 40                subpartition_name       VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
+ 41                subpartition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE'
+ 42            ) s
+ 43        ON s.partition_name = p.partition_name
+ 44  ) src
+ 45  ON (
+ 46    dst.source_db_link = src.source_db_link
+ 47    AND dst.source_owner = src.source_owner
+ 48    AND dst.source_table_name = src.source_table_name
+ 49    AND dst.partition_high_value = src.partition_high_value
+ 50    AND dst.subpartition_high_value = src.subpartition_high_value
+ 51  )
+ 52  WHEN MATCHED THEN UPDATE SET
+ 53    dst.target_owner = src.target_owner,
+ 54    dst.target_table_name = src.target_table_name,
+ 55    dst.archive_unit_type = src.archive_unit_type,
+ 56    dst.source_partition_name = src.source_partition_name,
+ 57    dst.source_subpartition_name = src.source_subpartition_name,
+ 58    dst.prev_partition_high_value = src.prev_partition_high_value,
+ 59    dst.archive_status = 'Y',
+ 60    dst.quality_status = 'Y',
+ 61    dst.truncate_status = 'Y',
+ 62    dst.source_row_count = 0,
+ 63    dst.target_row_count = 0,
+ 64    dst.error_message = NULL,
+ 65    dst.updated_at = SYSTIMESTAMP
+ 66  WHEN NOT MATCHED THEN INSERT
+ 67    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
+ 68     archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
+ 69     partition_high_value, subpartition_high_value,
+ 70     prev_partition_high_value, archive_status, quality_status,
+ 71     truncate_status, source_row_count, target_row_count)
+ 72  VALUES
+ 73    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
+ 74     src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
+ 75     src.partition_high_value, src.subpartition_high_value,
+ 76     src.prev_partition_high_value, 'Y', 'Y',
+ 77     'Y', 0, 0);
 
 2 rows merged.
 
@@ -6559,75 +6551,71 @@ SQL> MERGE INTO TW_ARCHIVE_PARTITIONS dst
  10           s.subpartition_name AS source_subpartition_name,
  11           p.partition_name,
  12           s.subpartition_name,
- 13           p.partition_high_value,
- 14           s.subpartition_high_value,
- 15           p.partition_position,
- 16           s.subpartition_position
- 17      FROM XMLTABLE(
- 18             '/ROWSET/ROW'
- 19             PASSING DBMS_XMLGEN.GETXMLTYPE(
- 20                'SELECT table_name, partition_name, high_value, partition_position ' ||
- 21                'FROM all_tab_partitions ' ||
- 22                'WHERE table_owner = ''CARCH'' ' ||
- 23                'AND table_name = ''ORDERS_DAILY_INT_SRC'' ' ||
- 24                'AND partition_name = ''P_ERROR'''
- 25             )
- 26             COLUMNS
- 27               partition_name       VARCHAR2(128)  PATH 'PARTITION_NAME',
- 28               partition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE',
- 29               partition_position   NUMBER         PATH 'PARTITION_POSITION'
- 30           ) p
- 31      JOIN XMLTABLE(
- 32             '/ROWSET/ROW'
- 33             PASSING DBMS_XMLGEN.GETXMLTYPE(
- 34                'SELECT table_name, partition_name, subpartition_name, high_value, subpartition_position ' ||
- 35                'FROM all_tab_subpartitions ' ||
- 36                'WHERE table_owner = ''CARCH'' ' ||
- 37                'AND table_name = ''ORDERS_DAILY_INT_SRC'' ' ||
- 38                'AND partition_name = ''P_ERROR'''
- 39             )
- 40             COLUMNS
- 41               partition_name          VARCHAR2(128)  PATH 'PARTITION_NAME',
- 42               subpartition_name       VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
- 43               subpartition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE',
- 44               subpartition_position   NUMBER         PATH 'SUBPARTITION_POSITION'
- 45           ) s
- 46        ON s.partition_name = p.partition_name
- 47  ) src
- 48  ON (
- 49    dst.source_db_link = src.source_db_link
- 50    AND dst.source_owner = src.source_owner
- 51    AND dst.source_table_name = src.source_table_name
- 52    AND dst.partition_high_value = src.partition_high_value
- 53    AND dst.subpartition_high_value = src.subpartition_high_value
- 54  )
- 55  WHEN MATCHED THEN UPDATE SET
- 56    dst.target_owner = src.target_owner,
- 57    dst.target_table_name = src.target_table_name,
- 58    dst.archive_unit_type = src.archive_unit_type,
- 59    dst.source_partition_name = src.source_partition_name,
- 60    dst.source_subpartition_name = src.source_subpartition_name,
- 61    dst.partition_position = src.partition_position,
- 62    dst.subpartition_position = src.subpartition_position,
- 63    dst.archive_status = 'Y',
- 64    dst.quality_status = 'Y',
- 65    dst.truncate_status = 'Y',
- 66    dst.source_row_count = 0,
- 67    dst.target_row_count = 0,
- 68    dst.error_message = NULL,
- 69    dst.updated_at = SYSTIMESTAMP
- 70  WHEN NOT MATCHED THEN INSERT
- 71    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
- 72     archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
- 73     partition_high_value, subpartition_high_value,
- 74     partition_position, subpartition_position, archive_status, quality_status,
- 75     truncate_status, source_row_count, target_row_count)
- 76  VALUES
- 77    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
- 78     src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
- 79     src.partition_high_value, src.subpartition_high_value,
- 80     src.partition_position, src.subpartition_position, 'Y', 'Y',
- 81     'Y', 0, 0);
+ 13            p.partition_high_value,
+ 14            s.subpartition_high_value,
+ 15            NULL AS prev_partition_high_value
+ 16      FROM XMLTABLE(
+ 17             '/ROWSET/ROW'
+ 18             PASSING DBMS_XMLGEN.GETXMLTYPE(
+ 19                'SELECT table_name, partition_name, high_value, partition_position ' ||
+ 20                'FROM all_tab_partitions ' ||
+ 21                'WHERE table_owner = ''CARCH'' ' ||
+ 22                'AND table_name = ''ORDERS_DAILY_INT_SRC'' ' ||
+ 23                'AND partition_name = ''P_ERROR'''
+ 24             )
+ 25              COLUMNS
+ 26                partition_name       VARCHAR2(128)  PATH 'PARTITION_NAME',
+ 27                partition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE'
+ 28            ) p
+ 29      JOIN XMLTABLE(
+ 30             '/ROWSET/ROW'
+ 31             PASSING DBMS_XMLGEN.GETXMLTYPE(
+ 32                'SELECT table_name, partition_name, subpartition_name, high_value, subpartition_position ' ||
+ 33                'FROM all_tab_subpartitions ' ||
+ 34                'WHERE table_owner = ''CARCH'' ' ||
+ 35                'AND table_name = ''ORDERS_DAILY_INT_SRC'' ' ||
+ 36                'AND partition_name = ''P_ERROR'''
+ 37             )
+ 38              COLUMNS
+ 39                partition_name          VARCHAR2(128)  PATH 'PARTITION_NAME',
+ 40                subpartition_name       VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
+ 41                subpartition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE'
+ 42            ) s
+ 43        ON s.partition_name = p.partition_name
+ 44  ) src
+ 45  ON (
+ 46    dst.source_db_link = src.source_db_link
+ 47    AND dst.source_owner = src.source_owner
+ 48    AND dst.source_table_name = src.source_table_name
+ 49    AND dst.partition_high_value = src.partition_high_value
+ 50    AND dst.subpartition_high_value = src.subpartition_high_value
+ 51  )
+ 52  WHEN MATCHED THEN UPDATE SET
+ 53    dst.target_owner = src.target_owner,
+ 54    dst.target_table_name = src.target_table_name,
+ 55    dst.archive_unit_type = src.archive_unit_type,
+ 56    dst.source_partition_name = src.source_partition_name,
+ 57    dst.source_subpartition_name = src.source_subpartition_name,
+ 58    dst.prev_partition_high_value = src.prev_partition_high_value,
+ 59    dst.archive_status = 'Y',
+ 60    dst.quality_status = 'Y',
+ 61    dst.truncate_status = 'Y',
+ 62    dst.source_row_count = 0,
+ 63    dst.target_row_count = 0,
+ 64    dst.error_message = NULL,
+ 65    dst.updated_at = SYSTIMESTAMP
+ 66  WHEN NOT MATCHED THEN INSERT
+ 67    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
+ 68     archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
+ 69     partition_high_value, subpartition_high_value,
+ 70     prev_partition_high_value, archive_status, quality_status,
+ 71     truncate_status, source_row_count, target_row_count)
+ 72  VALUES
+ 73    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
+ 74     src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
+ 75     src.partition_high_value, src.subpartition_high_value,
+ 76     src.prev_partition_high_value, 'Y', 'Y',
+ 77     'Y', 0, 0);
 
 2 rows merged.
 
@@ -6659,33 +6647,35 @@ SQL> MERGE INTO TW_ARCHIVE_TABLES dst
   9           'TRUNCATE' AS truncate_mode,
  10           4 AS parallel_degree,
  11           'USERS' AS tablespace_name,
- 12           'SELECT dat.fn_eod-90 FROM DUAL' AS retention_rule,
- 13           'Y' AS enabled_flag
- 14      FROM dual
- 15  ) src
- 16  ON (
- 17    dst.source_db_link = src.source_db_link
- 18    AND dst.source_owner = src.source_owner
- 19    AND dst.source_table_name = src.source_table_name
- 20  )
- 21  WHEN MATCHED THEN UPDATE SET
- 22    dst.source_agent_schema = src.source_agent_schema,
- 23    dst.target_owner = src.target_owner,
- 24    dst.target_table_name = src.target_table_name,
- 25    dst.truncate_mode = src.truncate_mode,
- 26    dst.parallel_degree = src.parallel_degree,
- 27    dst.tablespace_name = src.tablespace_name,
- 28    dst.retention_rule = src.retention_rule,
- 29    dst.enabled_flag = src.enabled_flag,
- 30    dst.updated_at = SYSTIMESTAMP
- 31  WHEN NOT MATCHED THEN INSERT
- 32    (source_db_link, source_owner, source_table_name, source_agent_schema,
- 33     target_owner, target_table_name, truncate_mode, parallel_degree, tablespace_name,
- 34     retention_rule, enabled_flag)
- 35  VALUES
- 36    (src.source_db_link, src.source_owner, src.source_table_name, src.source_agent_schema,
- 37     src.target_owner, src.target_table_name, src.truncate_mode, src.parallel_degree, src.tablespace_name,
- 38     src.retention_rule, src.enabled_flag);
+ 12            'SELECT dat.fn_eod-90 FROM DUAL' AS retention_rule,
+ 13            'SELECT dat.fn_boy FROM DUAL UNION ALL SELECT dat.fn_eoy FROM DUAL' AS preserve_rule,
+ 14           'Y' AS enabled_flag
+ 15      FROM dual
+ 16  ) src
+ 17  ON (
+ 18    dst.source_db_link = src.source_db_link
+ 19    AND dst.source_owner = src.source_owner
+ 20    AND dst.source_table_name = src.source_table_name
+ 21  )
+ 22  WHEN MATCHED THEN UPDATE SET
+ 23    dst.source_agent_schema = src.source_agent_schema,
+ 24    dst.target_owner = src.target_owner,
+ 25    dst.target_table_name = src.target_table_name,
+ 26    dst.truncate_mode = src.truncate_mode,
+ 27    dst.parallel_degree = src.parallel_degree,
+ 28    dst.tablespace_name = src.tablespace_name,
+ 29    dst.retention_rule = src.retention_rule,
+ 30    dst.preserve_rule = src.preserve_rule,
+ 31    dst.enabled_flag = src.enabled_flag,
+ 32    dst.updated_at = SYSTIMESTAMP
+ 33  WHEN NOT MATCHED THEN INSERT
+ 34    (source_db_link, source_owner, source_table_name, source_agent_schema,
+ 35     target_owner, target_table_name, truncate_mode, parallel_degree, tablespace_name,
+ 36     retention_rule, preserve_rule, enabled_flag)
+ 37  VALUES
+ 38    (src.source_db_link, src.source_owner, src.source_table_name, src.source_agent_schema,
+ 39     src.target_owner, src.target_table_name, src.truncate_mode, src.parallel_degree, src.tablespace_name,
+ 40     src.retention_rule, src.preserve_rule, src.enabled_flag);
 
 1 row merged.
 
@@ -6703,45 +6693,43 @@ SQL> MERGE INTO TW_ARCHIVE_PARTITIONS dst
  11           'P_ERROR' AS partition_name,
  12           '#' AS subpartition_name,
  13           'TO_DATE('' 1800-01-01 00:00:00'', ''SYYYY-MM-DD HH24:MI:SS'', ''NLS_CALENDAR=GREGORIAN'')' AS partition_high_value,
- 14           '#' AS subpartition_high_value,
- 15           1 AS partition_position,
- 16           NULL AS subpartition_position
- 17      FROM dual
- 18  ) src
- 19  ON (
- 20    dst.source_db_link = src.source_db_link
- 21    AND dst.source_owner = src.source_owner
- 22    AND dst.source_table_name = src.source_table_name
- 23    AND dst.partition_high_value = src.partition_high_value
- 24    AND dst.subpartition_high_value = src.subpartition_high_value
- 25  )
- 26  WHEN MATCHED THEN UPDATE SET
- 27    dst.target_owner = src.target_owner,
- 28    dst.target_table_name = src.target_table_name,
- 29    dst.archive_unit_type = src.archive_unit_type,
- 30    dst.source_partition_name = src.source_partition_name,
- 31    dst.source_subpartition_name = src.source_subpartition_name,
- 32    dst.partition_position = src.partition_position,
- 33    dst.subpartition_position = src.subpartition_position,
- 34    dst.archive_status = 'Y',
- 35    dst.quality_status = 'Y',
- 36    dst.truncate_status = 'Y',
- 37    dst.source_row_count = 0,
- 38    dst.target_row_count = 0,
- 39    dst.error_message = NULL,
- 40    dst.updated_at = SYSTIMESTAMP
- 41  WHEN NOT MATCHED THEN INSERT
- 42    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
- 43     archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
- 44     partition_high_value, subpartition_high_value,
- 45     partition_position, subpartition_position, archive_status, quality_status,
- 46     truncate_status, source_row_count, target_row_count)
- 47  VALUES
- 48    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
- 49     src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
- 50     src.partition_high_value, src.subpartition_high_value,
- 51     src.partition_position, src.subpartition_position, 'Y', 'Y',
- 52     'Y', 0, 0);
+ 14            '#' AS subpartition_high_value,
+ 15            NULL AS prev_partition_high_value
+ 16      FROM dual
+ 17  ) src
+ 18  ON (
+ 19    dst.source_db_link = src.source_db_link
+ 20    AND dst.source_owner = src.source_owner
+ 21    AND dst.source_table_name = src.source_table_name
+ 22    AND dst.partition_high_value = src.partition_high_value
+ 23    AND dst.subpartition_high_value = src.subpartition_high_value
+ 24  )
+ 25  WHEN MATCHED THEN UPDATE SET
+ 26    dst.target_owner = src.target_owner,
+ 27    dst.target_table_name = src.target_table_name,
+ 28    dst.archive_unit_type = src.archive_unit_type,
+ 29    dst.source_partition_name = src.source_partition_name,
+ 30    dst.source_subpartition_name = src.source_subpartition_name,
+ 31    dst.prev_partition_high_value = src.prev_partition_high_value,
+ 32    dst.archive_status = 'Y',
+ 33    dst.quality_status = 'Y',
+ 34    dst.truncate_status = 'Y',
+ 35    dst.source_row_count = 0,
+ 36    dst.target_row_count = 0,
+ 37    dst.error_message = NULL,
+ 38    dst.updated_at = SYSTIMESTAMP
+ 39  WHEN NOT MATCHED THEN INSERT
+ 40    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
+ 41     archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
+ 42     partition_high_value, subpartition_high_value,
+ 43     prev_partition_high_value, archive_status, quality_status,
+ 44     truncate_status, source_row_count, target_row_count)
+ 45  VALUES
+ 46    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
+ 47     src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
+ 48     src.partition_high_value, src.subpartition_high_value,
+ 49     src.prev_partition_high_value, 'Y', 'Y',
+ 50     'Y', 0, 0);
 
 1 row merged.
 
@@ -6773,33 +6761,35 @@ SQL> MERGE INTO TW_ARCHIVE_TABLES dst
   9           'TRUNCATE' AS truncate_mode,
  10           4 AS parallel_degree,
  11           'USERS' AS tablespace_name,
- 12           'SELECT dat.fn_eod-90 FROM DUAL' AS retention_rule,
- 13           'Y' AS enabled_flag
- 14      FROM dual
- 15  ) src
- 16  ON (
- 17    dst.source_db_link = src.source_db_link
- 18    AND dst.source_owner = src.source_owner
- 19    AND dst.source_table_name = src.source_table_name
- 20  )
- 21  WHEN MATCHED THEN UPDATE SET
- 22    dst.source_agent_schema = src.source_agent_schema,
- 23    dst.target_owner = src.target_owner,
- 24    dst.target_table_name = src.target_table_name,
- 25    dst.truncate_mode = src.truncate_mode,
- 26    dst.parallel_degree = src.parallel_degree,
- 27    dst.tablespace_name = src.tablespace_name,
- 28    dst.retention_rule = src.retention_rule,
- 29    dst.enabled_flag = src.enabled_flag,
- 30    dst.updated_at = SYSTIMESTAMP
- 31  WHEN NOT MATCHED THEN INSERT
- 32    (source_db_link, source_owner, source_table_name, source_agent_schema,
- 33     target_owner, target_table_name, truncate_mode, parallel_degree, tablespace_name,
- 34     retention_rule, enabled_flag)
- 35  VALUES
- 36    (src.source_db_link, src.source_owner, src.source_table_name, src.source_agent_schema,
- 37     src.target_owner, src.target_table_name, src.truncate_mode, src.parallel_degree, src.tablespace_name,
- 38     src.retention_rule, src.enabled_flag);
+ 12            'SELECT dat.fn_eod-90 FROM DUAL' AS retention_rule,
+ 13            'SELECT dat.fn_boy FROM DUAL UNION ALL SELECT dat.fn_eoy FROM DUAL' AS preserve_rule,
+ 14           'Y' AS enabled_flag
+ 15      FROM dual
+ 16  ) src
+ 17  ON (
+ 18    dst.source_db_link = src.source_db_link
+ 19    AND dst.source_owner = src.source_owner
+ 20    AND dst.source_table_name = src.source_table_name
+ 21  )
+ 22  WHEN MATCHED THEN UPDATE SET
+ 23    dst.source_agent_schema = src.source_agent_schema,
+ 24    dst.target_owner = src.target_owner,
+ 25    dst.target_table_name = src.target_table_name,
+ 26    dst.truncate_mode = src.truncate_mode,
+ 27    dst.parallel_degree = src.parallel_degree,
+ 28    dst.tablespace_name = src.tablespace_name,
+ 29    dst.retention_rule = src.retention_rule,
+ 30    dst.preserve_rule = src.preserve_rule,
+ 31    dst.enabled_flag = src.enabled_flag,
+ 32    dst.updated_at = SYSTIMESTAMP
+ 33  WHEN NOT MATCHED THEN INSERT
+ 34    (source_db_link, source_owner, source_table_name, source_agent_schema,
+ 35     target_owner, target_table_name, truncate_mode, parallel_degree, tablespace_name,
+ 36     retention_rule, preserve_rule, enabled_flag)
+ 37  VALUES
+ 38    (src.source_db_link, src.source_owner, src.source_table_name, src.source_agent_schema,
+ 39     src.target_owner, src.target_table_name, src.truncate_mode, src.parallel_degree, src.tablespace_name,
+ 40     src.retention_rule, src.preserve_rule, src.enabled_flag);
 
 1 row merged.
 
@@ -6816,75 +6806,71 @@ SQL> MERGE INTO TW_ARCHIVE_PARTITIONS dst
  10           s.subpartition_name AS source_subpartition_name,
  11           p.partition_name,
  12           s.subpartition_name,
- 13           p.partition_high_value,
- 14           s.subpartition_high_value,
- 15           p.partition_position,
- 16           s.subpartition_position
- 17      FROM XMLTABLE(
- 18             '/ROWSET/ROW'
- 19             PASSING DBMS_XMLGEN.GETXMLTYPE(
- 20                'SELECT table_name, partition_name, high_value, partition_position ' ||
- 21                'FROM all_tab_partitions ' ||
- 22                'WHERE table_owner = ''CARCH'' ' ||
- 23                'AND table_name = ''ORDERS_SUBPART_SRC_2'' ' ||
- 24                'AND partition_name = ''P_ERROR'''
- 25             )
- 26             COLUMNS
- 27               partition_name       VARCHAR2(128)  PATH 'PARTITION_NAME',
- 28               partition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE',
- 29               partition_position   NUMBER         PATH 'PARTITION_POSITION'
- 30           ) p
- 31      JOIN XMLTABLE(
- 32             '/ROWSET/ROW'
- 33             PASSING DBMS_XMLGEN.GETXMLTYPE(
- 34                'SELECT table_name, partition_name, subpartition_name, high_value, subpartition_position ' ||
- 35                'FROM all_tab_subpartitions ' ||
- 36                'WHERE table_owner = ''CARCH'' ' ||
- 37                'AND table_name = ''ORDERS_SUBPART_SRC_2'' ' ||
- 38                'AND partition_name = ''P_ERROR'''
- 39             )
- 40             COLUMNS
- 41               partition_name          VARCHAR2(128)  PATH 'PARTITION_NAME',
- 42               subpartition_name       VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
- 43               subpartition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE',
- 44               subpartition_position   NUMBER         PATH 'SUBPARTITION_POSITION'
- 45           ) s
- 46        ON s.partition_name = p.partition_name
- 47  ) src
- 48  ON (
- 49    dst.source_db_link = src.source_db_link
- 50    AND dst.source_owner = src.source_owner
- 51    AND dst.source_table_name = src.source_table_name
- 52    AND dst.partition_high_value = src.partition_high_value
- 53    AND dst.subpartition_high_value = src.subpartition_high_value
- 54  )
- 55  WHEN MATCHED THEN UPDATE SET
- 56    dst.target_owner = src.target_owner,
- 57    dst.target_table_name = src.target_table_name,
- 58    dst.archive_unit_type = src.archive_unit_type,
- 59    dst.source_partition_name = src.source_partition_name,
- 60    dst.source_subpartition_name = src.source_subpartition_name,
- 61    dst.partition_position = src.partition_position,
- 62    dst.subpartition_position = src.subpartition_position,
- 63    dst.archive_status = 'Y',
- 64    dst.quality_status = 'Y',
- 65    dst.truncate_status = 'Y',
- 66    dst.source_row_count = 0,
- 67    dst.target_row_count = 0,
- 68    dst.error_message = NULL,
- 69    dst.updated_at = SYSTIMESTAMP
- 70  WHEN NOT MATCHED THEN INSERT
- 71    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
- 72     archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
- 73     partition_high_value, subpartition_high_value,
- 74     partition_position, subpartition_position, archive_status, quality_status,
- 75     truncate_status, source_row_count, target_row_count)
- 76  VALUES
- 77    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
- 78     src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
- 79     src.partition_high_value, src.subpartition_high_value,
- 80     src.partition_position, src.subpartition_position, 'Y', 'Y',
- 81     'Y', 0, 0);
+ 13            p.partition_high_value,
+ 14            s.subpartition_high_value,
+ 15            NULL AS prev_partition_high_value
+ 16      FROM XMLTABLE(
+ 17             '/ROWSET/ROW'
+ 18             PASSING DBMS_XMLGEN.GETXMLTYPE(
+ 19                'SELECT table_name, partition_name, high_value, partition_position ' ||
+ 20                'FROM all_tab_partitions ' ||
+ 21                'WHERE table_owner = ''CARCH'' ' ||
+ 22                'AND table_name = ''ORDERS_SUBPART_SRC_2'' ' ||
+ 23                'AND partition_name = ''P_ERROR'''
+ 24             )
+ 25              COLUMNS
+ 26                partition_name       VARCHAR2(128)  PATH 'PARTITION_NAME',
+ 27                partition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE'
+ 28            ) p
+ 29      JOIN XMLTABLE(
+ 30             '/ROWSET/ROW'
+ 31             PASSING DBMS_XMLGEN.GETXMLTYPE(
+ 32                'SELECT table_name, partition_name, subpartition_name, high_value, subpartition_position ' ||
+ 33                'FROM all_tab_subpartitions ' ||
+ 34                'WHERE table_owner = ''CARCH'' ' ||
+ 35                'AND table_name = ''ORDERS_SUBPART_SRC_2'' ' ||
+ 36                'AND partition_name = ''P_ERROR'''
+ 37             )
+ 38              COLUMNS
+ 39                partition_name          VARCHAR2(128)  PATH 'PARTITION_NAME',
+ 40                subpartition_name       VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
+ 41                subpartition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE'
+ 42            ) s
+ 43        ON s.partition_name = p.partition_name
+ 44  ) src
+ 45  ON (
+ 46    dst.source_db_link = src.source_db_link
+ 47    AND dst.source_owner = src.source_owner
+ 48    AND dst.source_table_name = src.source_table_name
+ 49    AND dst.partition_high_value = src.partition_high_value
+ 50    AND dst.subpartition_high_value = src.subpartition_high_value
+ 51  )
+ 52  WHEN MATCHED THEN UPDATE SET
+ 53    dst.target_owner = src.target_owner,
+ 54    dst.target_table_name = src.target_table_name,
+ 55    dst.archive_unit_type = src.archive_unit_type,
+ 56    dst.source_partition_name = src.source_partition_name,
+ 57    dst.source_subpartition_name = src.source_subpartition_name,
+ 58    dst.prev_partition_high_value = src.prev_partition_high_value,
+ 59    dst.archive_status = 'Y',
+ 60    dst.quality_status = 'Y',
+ 61    dst.truncate_status = 'Y',
+ 62    dst.source_row_count = 0,
+ 63    dst.target_row_count = 0,
+ 64    dst.error_message = NULL,
+ 65    dst.updated_at = SYSTIMESTAMP
+ 66  WHEN NOT MATCHED THEN INSERT
+ 67    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
+ 68     archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
+ 69     partition_high_value, subpartition_high_value,
+ 70     prev_partition_high_value, archive_status, quality_status,
+ 71     truncate_status, source_row_count, target_row_count)
+ 72  VALUES
+ 73    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
+ 74     src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
+ 75     src.partition_high_value, src.subpartition_high_value,
+ 76     src.prev_partition_high_value, 'Y', 'Y',
+ 77     'Y', 0, 0);
 
 2 rows merged.
 
@@ -6916,33 +6902,35 @@ SQL> MERGE INTO TW_ARCHIVE_TABLES dst
   9           'TRUNCATE' AS truncate_mode,
  10           4 AS parallel_degree,
  11           'USERS' AS tablespace_name,
- 12           'SELECT dat.fn_eod-90 FROM DUAL' AS retention_rule,
- 13           'Y' AS enabled_flag
- 14      FROM dual
- 15  ) src
- 16  ON (
- 17    dst.source_db_link = src.source_db_link
- 18    AND dst.source_owner = src.source_owner
- 19    AND dst.source_table_name = src.source_table_name
- 20  )
- 21  WHEN MATCHED THEN UPDATE SET
- 22    dst.source_agent_schema = src.source_agent_schema,
- 23    dst.target_owner = src.target_owner,
- 24    dst.target_table_name = src.target_table_name,
- 25    dst.truncate_mode = src.truncate_mode,
- 26    dst.parallel_degree = src.parallel_degree,
- 27    dst.tablespace_name = src.tablespace_name,
- 28    dst.retention_rule = src.retention_rule,
- 29    dst.enabled_flag = src.enabled_flag,
- 30    dst.updated_at = SYSTIMESTAMP
- 31  WHEN NOT MATCHED THEN INSERT
- 32    (source_db_link, source_owner, source_table_name, source_agent_schema,
- 33     target_owner, target_table_name, truncate_mode, parallel_degree, tablespace_name,
- 34     retention_rule, enabled_flag)
- 35  VALUES
- 36    (src.source_db_link, src.source_owner, src.source_table_name, src.source_agent_schema,
- 37     src.target_owner, src.target_table_name, src.truncate_mode, src.parallel_degree, src.tablespace_name,
- 38     src.retention_rule, src.enabled_flag);
+ 12            'SELECT dat.fn_eod-90 FROM DUAL' AS retention_rule,
+ 13            'SELECT dat.fn_boy FROM DUAL UNION ALL SELECT dat.fn_eoy FROM DUAL' AS preserve_rule,
+ 14           'Y' AS enabled_flag
+ 15      FROM dual
+ 16  ) src
+ 17  ON (
+ 18    dst.source_db_link = src.source_db_link
+ 19    AND dst.source_owner = src.source_owner
+ 20    AND dst.source_table_name = src.source_table_name
+ 21  )
+ 22  WHEN MATCHED THEN UPDATE SET
+ 23    dst.source_agent_schema = src.source_agent_schema,
+ 24    dst.target_owner = src.target_owner,
+ 25    dst.target_table_name = src.target_table_name,
+ 26    dst.truncate_mode = src.truncate_mode,
+ 27    dst.parallel_degree = src.parallel_degree,
+ 28    dst.tablespace_name = src.tablespace_name,
+ 29    dst.retention_rule = src.retention_rule,
+ 30    dst.preserve_rule = src.preserve_rule,
+ 31    dst.enabled_flag = src.enabled_flag,
+ 32    dst.updated_at = SYSTIMESTAMP
+ 33  WHEN NOT MATCHED THEN INSERT
+ 34    (source_db_link, source_owner, source_table_name, source_agent_schema,
+ 35     target_owner, target_table_name, truncate_mode, parallel_degree, tablespace_name,
+ 36     retention_rule, preserve_rule, enabled_flag)
+ 37  VALUES
+ 38    (src.source_db_link, src.source_owner, src.source_table_name, src.source_agent_schema,
+ 39     src.target_owner, src.target_table_name, src.truncate_mode, src.parallel_degree, src.tablespace_name,
+ 40     src.retention_rule, src.preserve_rule, src.enabled_flag);
 
 1 row merged.
 
@@ -6959,75 +6947,71 @@ SQL> MERGE INTO TW_ARCHIVE_PARTITIONS dst
  10           s.subpartition_name AS source_subpartition_name,
  11           p.partition_name,
  12           s.subpartition_name,
- 13           p.partition_high_value,
- 14           s.subpartition_high_value,
- 15           p.partition_position,
- 16           s.subpartition_position
- 17      FROM XMLTABLE(
- 18             '/ROWSET/ROW'
- 19             PASSING DBMS_XMLGEN.GETXMLTYPE(
- 20                'SELECT table_name, partition_name, high_value, partition_position ' ||
- 21                'FROM all_tab_partitions ' ||
- 22                'WHERE table_owner = ''CARCH'' ' ||
- 23                'AND table_name = ''ORDERS_DAILY_INT_SRC_2'' ' ||
- 24                'AND partition_name = ''P_ERROR'''
- 25             )
- 26             COLUMNS
- 27               partition_name       VARCHAR2(128)  PATH 'PARTITION_NAME',
- 28               partition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE',
- 29               partition_position   NUMBER         PATH 'PARTITION_POSITION'
- 30           ) p
- 31      JOIN XMLTABLE(
- 32             '/ROWSET/ROW'
- 33             PASSING DBMS_XMLGEN.GETXMLTYPE(
- 34                'SELECT table_name, partition_name, subpartition_name, high_value, subpartition_position ' ||
- 35                'FROM all_tab_subpartitions ' ||
- 36                'WHERE table_owner = ''CARCH'' ' ||
- 37                'AND table_name = ''ORDERS_DAILY_INT_SRC_2'' ' ||
- 38                'AND partition_name = ''P_ERROR'''
- 39             )
- 40             COLUMNS
- 41               partition_name          VARCHAR2(128)  PATH 'PARTITION_NAME',
- 42               subpartition_name       VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
- 43               subpartition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE',
- 44               subpartition_position   NUMBER         PATH 'SUBPARTITION_POSITION'
- 45           ) s
- 46        ON s.partition_name = p.partition_name
- 47  ) src
- 48  ON (
- 49    dst.source_db_link = src.source_db_link
- 50    AND dst.source_owner = src.source_owner
- 51    AND dst.source_table_name = src.source_table_name
- 52    AND dst.partition_high_value = src.partition_high_value
- 53    AND dst.subpartition_high_value = src.subpartition_high_value
- 54  )
- 55  WHEN MATCHED THEN UPDATE SET
- 56    dst.target_owner = src.target_owner,
- 57    dst.target_table_name = src.target_table_name,
- 58    dst.archive_unit_type = src.archive_unit_type,
- 59    dst.source_partition_name = src.source_partition_name,
- 60    dst.source_subpartition_name = src.source_subpartition_name,
- 61    dst.partition_position = src.partition_position,
- 62    dst.subpartition_position = src.subpartition_position,
- 63    dst.archive_status = 'Y',
- 64    dst.quality_status = 'Y',
- 65    dst.truncate_status = 'Y',
- 66    dst.source_row_count = 0,
- 67    dst.target_row_count = 0,
- 68    dst.error_message = NULL,
- 69    dst.updated_at = SYSTIMESTAMP
- 70  WHEN NOT MATCHED THEN INSERT
- 71    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
- 72     archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
- 73     partition_high_value, subpartition_high_value,
- 74     partition_position, subpartition_position, archive_status, quality_status,
- 75     truncate_status, source_row_count, target_row_count)
- 76  VALUES
- 77    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
- 78     src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
- 79     src.partition_high_value, src.subpartition_high_value,
- 80     src.partition_position, src.subpartition_position, 'Y', 'Y',
- 81     'Y', 0, 0);
+ 13            p.partition_high_value,
+ 14            s.subpartition_high_value,
+ 15            NULL AS prev_partition_high_value
+ 16      FROM XMLTABLE(
+ 17             '/ROWSET/ROW'
+ 18             PASSING DBMS_XMLGEN.GETXMLTYPE(
+ 19                'SELECT table_name, partition_name, high_value, partition_position ' ||
+ 20                'FROM all_tab_partitions ' ||
+ 21                'WHERE table_owner = ''CARCH'' ' ||
+ 22                'AND table_name = ''ORDERS_DAILY_INT_SRC_2'' ' ||
+ 23                'AND partition_name = ''P_ERROR'''
+ 24             )
+ 25              COLUMNS
+ 26                partition_name       VARCHAR2(128)  PATH 'PARTITION_NAME',
+ 27                partition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE'
+ 28            ) p
+ 29      JOIN XMLTABLE(
+ 30             '/ROWSET/ROW'
+ 31             PASSING DBMS_XMLGEN.GETXMLTYPE(
+ 32                'SELECT table_name, partition_name, subpartition_name, high_value, subpartition_position ' ||
+ 33                'FROM all_tab_subpartitions ' ||
+ 34                'WHERE table_owner = ''CARCH'' ' ||
+ 35                'AND table_name = ''ORDERS_DAILY_INT_SRC_2'' ' ||
+ 36                'AND partition_name = ''P_ERROR'''
+ 37             )
+ 38              COLUMNS
+ 39                partition_name          VARCHAR2(128)  PATH 'PARTITION_NAME',
+ 40                subpartition_name       VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
+ 41                subpartition_high_value VARCHAR2(4000) PATH 'HIGH_VALUE'
+ 42            ) s
+ 43        ON s.partition_name = p.partition_name
+ 44  ) src
+ 45  ON (
+ 46    dst.source_db_link = src.source_db_link
+ 47    AND dst.source_owner = src.source_owner
+ 48    AND dst.source_table_name = src.source_table_name
+ 49    AND dst.partition_high_value = src.partition_high_value
+ 50    AND dst.subpartition_high_value = src.subpartition_high_value
+ 51  )
+ 52  WHEN MATCHED THEN UPDATE SET
+ 53    dst.target_owner = src.target_owner,
+ 54    dst.target_table_name = src.target_table_name,
+ 55    dst.archive_unit_type = src.archive_unit_type,
+ 56    dst.source_partition_name = src.source_partition_name,
+ 57    dst.source_subpartition_name = src.source_subpartition_name,
+ 58    dst.prev_partition_high_value = src.prev_partition_high_value,
+ 59    dst.archive_status = 'Y',
+ 60    dst.quality_status = 'Y',
+ 61    dst.truncate_status = 'Y',
+ 62    dst.source_row_count = 0,
+ 63    dst.target_row_count = 0,
+ 64    dst.error_message = NULL,
+ 65    dst.updated_at = SYSTIMESTAMP
+ 66  WHEN NOT MATCHED THEN INSERT
+ 67    (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
+ 68     archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
+ 69     partition_high_value, subpartition_high_value,
+ 70     prev_partition_high_value, archive_status, quality_status,
+ 71     truncate_status, source_row_count, target_row_count)
+ 72  VALUES
+ 73    (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
+ 74     src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
+ 75     src.partition_high_value, src.subpartition_high_value,
+ 76     src.prev_partition_high_value, 'Y', 'Y',
+ 77     'Y', 0, 0);
 
 2 rows merged.
 

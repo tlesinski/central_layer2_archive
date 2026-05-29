@@ -56,7 +56,7 @@ BEGIN
       FROM dba_objects
      WHERE owner = 'CARCH'
        AND object_type = 'FUNCTION'
-       AND object_name IN ('FN_ARCHIVE_HIGH_VALUE_DATE', 'FN_CALCULATE_RETENTION_RULE')
+       AND object_name IN ('FN_ARCHIVE_HIGH_VALUE_DATE', 'FN_CALCULATE_RETENTION_RULE','FN_VALIDATE_PRESERVE_RULE')
   ) LOOP
     BEGIN
       EXECUTE IMMEDIATE 'DROP FUNCTION CARCH.' || r.object_name;
@@ -165,21 +165,21 @@ BEGIN
   END LOOP;
 
   -- database link (must be connected as the owner to drop)
-  FOR r IN (
-    SELECT db_link
-      FROM dba_db_links
-     WHERE owner = 'CARCH'
-       AND db_link = 'CLIENT1_LOOPBACK_LINK'
-  ) LOOP
-    BEGIN
-      EXECUTE IMMEDIATE 'DROP DATABASE LINK CARCH.' || r.db_link;
-      DBMS_OUTPUT.PUT_LINE('Dropped DATABASE LINK CARCH.' || r.db_link);
-    EXCEPTION
-      WHEN OTHERS THEN
-        DBMS_OUTPUT.PUT_LINE('Could not drop DATABASE LINK ' ||
-                             r.db_link || ': ' || SQLERRM);
-    END;
-  END LOOP;
+--  FOR r IN (
+--    SELECT db_link
+--      FROM dba_db_links
+--     WHERE owner = 'CARCH'
+--       AND db_link = 'CLIENT1_LOOPBACK_LINK'
+--  ) LOOP
+--    BEGIN
+--      EXECUTE IMMEDIATE 'DROP DATABASE LINK CARCH.' || r.db_link;
+--      DBMS_OUTPUT.PUT_LINE('Dropped DATABASE LINK CARCH.' || r.db_link);
+--    EXCEPTION
+--      WHEN OTHERS THEN
+--        DBMS_OUTPUT.PUT_LINE('Could not drop DATABASE LINK ' ||
+--                             r.db_link || ': ' || SQLERRM);
+--    END;
+--  END LOOP;
 END;
 /
 
@@ -459,3 +459,24 @@ SELECT 'CLIENT2: ' || COUNT(*) || ' objects remaining' FROM dba_objects
    AND object_name NOT LIKE 'TMP$%';
 
 SPOOL OFF
+
+purge dba_recyclebin;
+
+set serveroutput on
+DECLARE
+  v_result CLOB;
+BEGIN
+  DBMS_SPACE.SHRINK_TABLESPACE(
+    ts_name       => 'USERS',
+    shrink_mode   => DBMS_SPACE.TS_MODE_SHRINK,
+    shrink_result => v_result
+  );
+  -- Opcjonalnie wyświetlamy raport z wykonanej operacji
+  DBMS_OUTPUT.PUT_LINE(v_result);
+END;
+/
+
+commit;
+
+select owner, object_name from dba_objects
+where owner in ('CARCH', 'CAGENT1', 'CLIENT1', 'CLIENT2');

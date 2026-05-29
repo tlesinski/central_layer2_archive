@@ -51,7 +51,7 @@ SQL> BEGIN
  36        FROM dba_objects
  37       WHERE owner = 'CARCH'
  38         AND object_type = 'FUNCTION'
- 39         AND object_name IN ('FN_ARCHIVE_HIGH_VALUE_DATE', 'FN_CALCULATE_RETENTION_RULE')
+ 39         AND object_name IN ('FN_ARCHIVE_HIGH_VALUE_DATE', 'FN_CALCULATE_RETENTION_RULE','FN_VALIDATE_PRESERVE_RULE')
  40    ) LOOP
  41      BEGIN
  42        EXECUTE IMMEDIATE 'DROP FUNCTION CARCH.' || r.object_name;
@@ -160,21 +160,21 @@ SQL> BEGIN
 145    END LOOP;
 146  
 147    -- database link (must be connected as the owner to drop)
-148    FOR r IN (
-149      SELECT db_link
-150        FROM dba_db_links
-151       WHERE owner = 'CARCH'
-152         AND db_link = 'CLIENT1_LOOPBACK_LINK'
-153    ) LOOP
-154      BEGIN
-155        EXECUTE IMMEDIATE 'DROP DATABASE LINK CARCH.' || r.db_link;
-156        DBMS_OUTPUT.PUT_LINE('Dropped DATABASE LINK CARCH.' || r.db_link);
-157      EXCEPTION
-158        WHEN OTHERS THEN
-159          DBMS_OUTPUT.PUT_LINE('Could not drop DATABASE LINK ' ||
-160                               r.db_link || ': ' || SQLERRM);
-161      END;
-162    END LOOP;
+148  --  FOR r IN (
+149  --    SELECT db_link
+150  --      FROM dba_db_links
+151  --     WHERE owner = 'CARCH'
+152  --       AND db_link = 'CLIENT1_LOOPBACK_LINK'
+153  --  ) LOOP
+154  --    BEGIN
+155  --      EXECUTE IMMEDIATE 'DROP DATABASE LINK CARCH.' || r.db_link;
+156  --      DBMS_OUTPUT.PUT_LINE('Dropped DATABASE LINK CARCH.' || r.db_link);
+157  --    EXCEPTION
+158  --      WHEN OTHERS THEN
+159  --        DBMS_OUTPUT.PUT_LINE('Could not drop DATABASE LINK ' ||
+160  --                             r.db_link || ': ' || SQLERRM);
+161  --    END;
+162  --  END LOOP;
 163  END;
 164  /
 Dropped PACKAGE BODY CARCH.DAT
@@ -199,6 +199,7 @@ Dropped PACKAGE CARCH.PKG_ARCHIVE_QUALITY
 Dropped PACKAGE CARCH.PKG_ARCHIVE_RUNNER
 Dropped FUNCTION CARCH.FN_ARCHIVE_HIGH_VALUE_DATE
 Dropped FUNCTION CARCH.FN_CALCULATE_RETENTION_RULE
+Dropped FUNCTION CARCH.FN_VALIDATE_PRESERVE_RULE
 Dropped TRIGGER CARCH.TRG_ARCHIVE_TABLES_RETENTION_CALC
 Dropped VIEW CARCH.TW_ARCHIVE_DISCOVERY_PARTITIONS_VW
 Dropped VIEW CARCH.TW_ARCHIVE_IMPORT_PARTITIONS_VW
@@ -217,7 +218,6 @@ Dropped TABLE CARCH.TW_ARCHIVE_RUNS
 Dropped TABLE CARCH.TW_ARCHIVE_TABLES
 Dropped SEQUENCE CARCH.MD_PROCESS_LOG_SEQ
 Dropped SEQUENCE CARCH.STG_TMP_ARCH_SEQ
-Could not drop DATABASE LINK CLIENT1_LOOPBACK_LINK: ORA-01031: niewystarczające uprawnienia
 
 
 PL/SQL procedure successfully completed.
@@ -261,12 +261,12 @@ Revoked ALTER ON CLIENT1.ORDERS_SUBPART_SRC FROM CAGENT1
 Revoked DELETE ON CLIENT1.ORDERS_ARCH_SRC FROM CAGENT1
 Revoked DELETE ON CLIENT1.ORDERS_DAILY_INT_SRC FROM CAGENT1
 Revoked DELETE ON CLIENT1.ORDERS_SUBPART_SRC FROM CAGENT1
-Revoked SELECT ON CLIENT1.ORDERS_ARCH_SRC FROM CARCH
 Revoked SELECT ON CLIENT1.ORDERS_ARCH_SRC FROM CAGENT1
-Revoked SELECT ON CLIENT1.ORDERS_DAILY_INT_SRC FROM CARCH
 Revoked SELECT ON CLIENT1.ORDERS_DAILY_INT_SRC FROM CAGENT1
-Revoked SELECT ON CLIENT1.ORDERS_SUBPART_SRC FROM CARCH
 Revoked SELECT ON CLIENT1.ORDERS_SUBPART_SRC FROM CAGENT1
+Revoked SELECT ON CLIENT1.ORDERS_ARCH_SRC FROM CARCH
+Revoked SELECT ON CLIENT1.ORDERS_DAILY_INT_SRC FROM CARCH
+Revoked SELECT ON CLIENT1.ORDERS_SUBPART_SRC FROM CARCH
 
 
 PL/SQL procedure successfully completed.
@@ -581,7 +581,6 @@ SQL> BEGIN
  22  END;
  23  /
 CARCH     DATABASE LINK       1
-  CARCH     FUNCTION            1
 
 
 PL/SQL procedure successfully completed.
@@ -609,7 +608,7 @@ SQL> SELECT 'CARCH: ' || COUNT(*) || ' objects remaining' AS summary FROM dba_ob
 
 SUMMARY                                                            
 -------------------------------------------------------------------
-CARCH: 2 objects remaining
+CARCH: 1 objects remaining
 CAGENT1: 0 objects remaining
 CLIENT1: 0 objects remaining
 CLIENT2: 0 objects remaining

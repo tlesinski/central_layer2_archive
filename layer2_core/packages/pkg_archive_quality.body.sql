@@ -119,7 +119,7 @@ AS
            AND p.source_table_name = t.source_table_name
            AND p.target_owner = t.target_owner
            AND p.target_table_name = t.target_table_name
-         ORDER BY p.partition_position, p.subpartition_position
+          ORDER BY p.partition_high_value, p.subpartition_high_value
       ) LOOP
         l_units := l_units + 1;
 
