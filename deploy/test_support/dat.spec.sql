@@ -1,9 +1,11 @@
-CREATE OR REPLACE PACKAGE PKG_DATE AS
+CREATE OR REPLACE PACKAGE DAT
+AS
   /*
-    Package      : PKG_DATE
+    Package      : DAT
     Developer    : Tomasz Lesinski
     Date         : 2026-05-28
-    Purpose      : Business date utilities — EOD, BOY, EOY
+    Purpose      : Fake business date provider for archive tests.
+                   This package is intentionally test support, not archiver core.
 
     Change History:
     ------------------------------------------------------------------------------
@@ -11,8 +13,8 @@ CREATE OR REPLACE PACKAGE PKG_DATE AS
     ------------------------------------------------------------------------------
     1.0        2026-05-28   Tomasz Lesinski    Initial version
   */
-  FUNCTION fn_eod RETURN DATE;  -- bieżący biznesowy dzień
-  FUNCTION fn_boy RETURN DATE;  -- pierwszy dzień roku (nie weekend)
-  FUNCTION fn_eoy RETURN DATE;  -- ostatni dzień poprzedniego roku (nie weekend)
-END PKG_DATE;
+  FUNCTION fn_eod RETURN DATE;
+  FUNCTION fn_boy RETURN DATE;
+  FUNCTION fn_eoy RETURN DATE;
+END DAT;
 /

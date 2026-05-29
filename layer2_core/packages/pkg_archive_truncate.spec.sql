@@ -5,7 +5,7 @@ AS
     Developer    : Tomasz Lesinski
     Date         : 2026-05-28
     Purpose      : Source truncate - request source truncate through layer 1 agent
-                   after quality success, respecting RETENTION_DAYS
+                   after quality success, respecting RETENTION_RULE
 
     Prerequisite : PKG_SQL, PKG_ARCHIVE_LOG, PKG_ARCHIVE_AGENT,
                    TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
@@ -22,5 +22,11 @@ AS
     p_target_owner      IN VARCHAR2 DEFAULT NULL,
     p_target_table_name IN VARCHAR2 DEFAULT NULL
   );
+
+  FUNCTION fnc_calculate_retention_rule
+  (
+    p_retention_rule IN VARCHAR2
+  ) 
+  RETURN DATE;
 END PKG_ARCHIVE_TRUNCATE;
 /

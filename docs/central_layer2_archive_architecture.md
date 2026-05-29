@@ -51,7 +51,7 @@ SOURCE_AGENT_SCHEMA   VARCHAR2(128) NOT NULL,
 TARGET_OWNER          VARCHAR2(128) NOT NULL,
 TARGET_TABLE_NAME     VARCHAR2(128) NOT NULL,
 TRUNCATE_MODE         VARCHAR2(20) DEFAULT 'TRUNCATE' NOT NULL,
-RETENTION_DAYS        NUMBER,
+RETENTION_RULE        VARCHAR2(30),
 ENABLED_FLAG          VARCHAR2(1) DEFAULT 'Y' NOT NULL,
 CREATED_AT            TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
 UPDATED_AT            TIMESTAMP
@@ -213,7 +213,7 @@ Minimalny flow:
    Opcjonalne parametry TARGET_OWNER/TARGET_TABLE_NAME moga zawezic run
    do jednej target tabeli.
    Layer 2 zleca layer 1 agentowi truncate tylko dla QUALITY_STATUS = Y.
-   Retencja jest sprawdzana tutaj przez RETENTION_DAYS.
+   Retencja jest sprawdzana tutaj przez RETENTION_RULE.
    Data high-value jest liczona przez FN_ARCHIVE_HIGH_VALUE_DATE na podstawie
    tekstowego HIGH_VALUE z dictionary.
    Ustawia TRUNCATE_STATUS = Y.

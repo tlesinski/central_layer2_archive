@@ -125,6 +125,8 @@ ALTER SESSION SET CURRENT_SCHEMA = CARCH;
 @layer2_core/tables/tw_archive_runs.sql
 @layer2_core/tables/tw_archive_partitions.sql
 @layer2_core/functions/fn_archive_high_value_date.sql
+@deploy/test_support/dat.spec.sql
+@deploy/test_support/dat.body.sql
 @layer2_core/views/tw_archive_source_partitions_vw.sql
 @layer2_core/views/tw_archive_discovery_partitions_vw.sql
 @layer2_core/views/tw_archive_import_partitions_vw.sql
@@ -134,8 +136,6 @@ ALTER SESSION SET CURRENT_SCHEMA = CARCH;
 @layer2_core/packages/pkg_tl_logging.body.sql
 @layer2_core/packages/pkg_sql.spec.sql
 @layer2_core/packages/pkg_sql.body.sql
-@layer2_core/packages/pkg_date.spec.sql
-@layer2_core/packages/pkg_date.body.sql
 @layer2_core/packages/pkg_archive_log.spec.sql
 @layer2_core/packages/pkg_archive_log.body.sql
 @layer2_core/packages/pkg_archive_partition.spec.sql
@@ -161,8 +161,8 @@ SHOW ERRORS VIEW TW_ARCHIVE_QUALITY_PARTITIONS_VW
 SHOW ERRORS VIEW TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
 SHOW ERRORS PACKAGE PKG_SQL
 SHOW ERRORS PACKAGE BODY PKG_SQL
-SHOW ERRORS PACKAGE PKG_DATE
-SHOW ERRORS PACKAGE BODY PKG_DATE
+SHOW ERRORS PACKAGE DAT
+SHOW ERRORS PACKAGE BODY DAT
 SHOW ERRORS PACKAGE PKG_ARCHIVE_LOG
 SHOW ERRORS PACKAGE BODY PKG_ARCHIVE_LOG
 SHOW ERRORS PACKAGE PKG_ARCHIVE_PARTITION

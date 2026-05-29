@@ -16,7 +16,7 @@ USING (
          'TRUNCATE' AS truncate_mode,
          4 AS parallel_degree,
          'USERS' AS tablespace_name,
-         90 AS retention_days,
+         'dat.fn_eod-90' AS retention_rule,
          'Y' AS enabled_flag
     FROM dual
 ) src
@@ -32,17 +32,17 @@ WHEN MATCHED THEN UPDATE SET
   dst.truncate_mode = src.truncate_mode,
   dst.parallel_degree = src.parallel_degree,
   dst.tablespace_name = src.tablespace_name,
-  dst.retention_days = src.retention_days,
+  dst.retention_rule = src.retention_rule,
   dst.enabled_flag = src.enabled_flag,
   dst.updated_at = SYSTIMESTAMP
 WHEN NOT MATCHED THEN INSERT
   (source_db_link, source_owner, source_table_name, source_agent_schema,
    target_owner, target_table_name, truncate_mode, parallel_degree, tablespace_name,
-   retention_days, enabled_flag)
+   retention_rule, enabled_flag)
 VALUES
   (src.source_db_link, src.source_owner, src.source_table_name, src.source_agent_schema,
    src.target_owner, src.target_table_name, src.truncate_mode, src.parallel_degree, src.tablespace_name,
-   src.retention_days, src.enabled_flag);
+   src.retention_rule, src.enabled_flag);
 
 MERGE INTO TW_ARCHIVE_PARTITIONS dst
 USING (

@@ -35,7 +35,8 @@ BEGIN
          'PKG_ARCHIVE_LOG',
          'PKG_SQL',
          'PKG_TL_LOGGING',
-         'PKG_DATE'
+         'PKG_DATE',
+         'DAT'
        )
      ORDER BY object_type DESC
   ) LOOP

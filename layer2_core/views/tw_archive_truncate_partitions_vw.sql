@@ -1,4 +1,4 @@
-CREATE OR REPLACE VIEW TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
+CREATE OR REPLACE FORCE VIEW TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
 AS
 WITH candidate_partitions AS (
 SELECT p.source_db_link,
@@ -21,8 +21,8 @@ SELECT p.source_db_link,
        p.truncate_status,
        p.source_row_count,
        p.target_row_count,
-       t.retention_days,
-       TRUNC(SYSDATE) - NVL(t.retention_days, 0) AS cutoff_date,
+       t.retention_rule,
+       pkg_archive_truncate.fnc_calculate_retention_rule(t.retention_rule) AS cutoff_date,
        FN_ARCHIVE_HIGH_VALUE_DATE(p.partition_high_value) AS partition_high_value_date
   FROM tw_archive_partitions p
   JOIN tw_archive_tables t
@@ -55,7 +55,7 @@ SELECT source_db_link,
        truncate_status,
        source_row_count,
        target_row_count,
-       retention_days,
+       retention_rule,
        cutoff_date,
        partition_high_value_date
   FROM candidate_partitions

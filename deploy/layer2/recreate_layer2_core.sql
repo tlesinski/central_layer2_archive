@@ -22,6 +22,7 @@ BEGIN
        'PKG_ARCHIVE_LOG',
        'PKG_SQL',
        'PKG_TL_LOGGING',
+       'PKG_DATE',
        'FN_ARCHIVE_HIGH_VALUE_DATE'
      )
        AND object_type IN ('PACKAGE', 'PACKAGE BODY', 'FUNCTION')
@@ -74,6 +75,9 @@ BEGIN
        'ORDERS_ARCH_SRC',
        'ORDERS_SUBPART_SRC',
        'ORDERS_DAILY_INT_SRC',
+       'ORDERS_ARCH_SRC_2',
+       'ORDERS_SUBPART_SRC_2',
+       'ORDERS_DAILY_INT_SRC_2',
        'ORDERS_ARCHIVE',
        'ORDERS_SUBPART_ARCHIVE'
      )
@@ -96,7 +100,7 @@ BEGIN
   FOR r IN (
     SELECT sequence_name
       FROM user_sequences
-     WHERE sequence_name = 'MD_PROCESS_LOG_SEQ'
+     WHERE sequence_name IN ('MD_PROCESS_LOG_SEQ', 'STG_TMP_ARCH_SEQ')
   ) LOOP
     EXECUTE IMMEDIATE 'DROP SEQUENCE ' || r.sequence_name;
   END LOOP;

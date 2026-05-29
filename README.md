@@ -314,7 +314,8 @@ CARCH.PKG_ARCHIVE_TRUNCATE
   opens one TRUNCATE run and can be narrowed to one target table with optional
   target owner/table parameters
   requests source truncate through the layer 1 agent only after quality success
-  applies RETENTION_DAYS before truncating source partitions/subpartitions
+  applies RETENTION_RULE before truncating source partitions/subpartitions;
+  test installs provide a fake DAT package with fn_eod, fn_boy, fn_eoy
 
 CARCH.PKG_ARCHIVE_RUNNER
   runs DISCOVER -> ARCHIVE -> QUALITY -> TRUNCATE with stop-after-step control
