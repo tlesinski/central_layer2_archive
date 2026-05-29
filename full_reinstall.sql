@@ -126,9 +126,11 @@ ALTER SESSION SET CURRENT_SCHEMA = CARCH;
 @layer2_core/tables/tw_archive_partitions.sql
 @layer2_core/functions/fn_archive_high_value_date.sql
 @layer2_core/functions/fn_calculate_retention_rule.sql
+@layer2_core/functions/fn_validate_preserve_rule.sql
 @deploy/test_support/dat.spec.sql
 @deploy/test_support/dat.body.sql
 @layer2_core/triggers/trg_archive_tables_retention_calc.sql
+@layer2_core/triggers/trg_archive_tables_preserve_calc.sql
 @layer2_core/views/tw_archive_source_partitions_vw.sql
 @layer2_core/views/tw_archive_discovery_partitions_vw.sql
 @layer2_core/views/tw_archive_import_partitions_vw.sql
@@ -157,6 +159,7 @@ SHOW ERRORS PACKAGE PKG_TL_LOGGING
 SHOW ERRORS PACKAGE BODY PKG_TL_LOGGING
 SHOW ERRORS FUNCTION FN_ARCHIVE_HIGH_VALUE_DATE
 SHOW ERRORS FUNCTION FN_CALCULATE_RETENTION_RULE
+SHOW ERRORS FUNCTION FN_VALIDATE_PRESERVE_RULE
 SHOW ERRORS VIEW TW_ARCHIVE_SOURCE_PARTITIONS_VW
 SHOW ERRORS VIEW TW_ARCHIVE_DISCOVERY_PARTITIONS_VW
 SHOW ERRORS VIEW TW_ARCHIVE_IMPORT_PARTITIONS_VW
