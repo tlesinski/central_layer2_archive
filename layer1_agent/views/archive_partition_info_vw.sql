@@ -17,6 +17,18 @@ SELECT p.table_owner AS schema_name,
          ),
          '/ROWSET/ROW/HIGH_VALUE'
        ) AS partition_high_value,
+       EXTRACTVALUE
+       (
+         DBMS_XMLGEN.GETXMLTYPE
+         (
+           'select high_value from all_tab_partitions where table_owner = ''' ||
+           p.table_owner ||
+           ''' and table_name = ''' ||
+           p.table_name ||
+           ''' and partition_position = '||(p.partition_position-1)
+         ),
+         '/ROWSET/ROW/HIGH_VALUE'
+       ) AS prev_partition_high_value,
        CASE
          WHEN s.subpartition_name IS NULL THEN NULL
          ELSE EXTRACTVALUE
