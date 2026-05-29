@@ -16,6 +16,7 @@ AS
     ------------------------------------------------------------------------------
     1.0        2026-05-28   Tomasz Lesinski    Initial version
     1.1        2026-05-28   Tomasz Lesinski    Add process summary logging
+    1.2        2026-05-29   Tomasz Lesinski    Abort on invalid RETENTION_RULE
   */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
@@ -61,6 +62,7 @@ AS
     l_tables          NUMBER := 0;
     l_sql_rows        NUMBER;
     l_summary         CLOB := NULL;
+    l_bad_tables      NUMBER := 0;
     l_summary_columns VARCHAR2(1000) :=
       'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
   BEGIN
@@ -78,6 +80,32 @@ AS
                    '  p_target_owner      => ' || NVL(l_target_owner, '<ALL>') || CHR(10) ||
                    '  p_target_table_name => ' || NVL(l_target_table, '<ALL>')
     );
+
+    FOR bad IN (
+      SELECT source_db_link, source_owner, source_table_name, retention_rule, retention_calc
+        FROM tw_archive_tables
+       WHERE retention_calc LIKE 'ERROR:%'
+         AND (l_target_owner IS NULL OR target_owner = l_target_owner)
+         AND (l_target_table IS NULL OR target_table_name = l_target_table)
+    ) LOOP
+      PKG_ARCHIVE_LOG.prc_log_message
+      (
+        p_run_id  => l_run_id,
+        p_log_msg => 'ERROR: table ' || bad.source_owner || '.' || bad.source_table_name ||
+                     ' retention_rule "' || bad.retention_rule || '" - ' || bad.retention_calc
+      );
+      l_bad_tables := l_bad_tables + 1;
+    END LOOP;
+
+    IF l_bad_tables > 0 THEN
+      PKG_ARCHIVE_LOG.prc_log_message
+      (
+        p_run_id  => l_run_id,
+        p_log_msg => 'ERROR: ' || l_bad_tables || ' table(s) with invalid retention rule - aborting TRUNCATE'
+      );
+      PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', l_bad_tables || ' table(s) with invalid retention rule');
+      RAISE_APPLICATION_ERROR(-20001, l_bad_tables || ' table(s) with invalid retention rule. Fix RETENTION_RULE before retrying.');
+    END IF;
 
     l_sql :=
       'SELECT COUNT(*) ' ||
