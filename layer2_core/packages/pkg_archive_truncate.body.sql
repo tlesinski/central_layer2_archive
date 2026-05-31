@@ -237,11 +237,8 @@ AS
           TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell(CASE WHEN r.preserve_date IS NOT NULL THEN
             'PRESERVED per MAX_preserve_date=' || TO_CHAR(r.preserve_date, 'YYYY-MM-DD')
           ELSE
-            'source=' || r.source_owner || '.' || r.source_table_name ||
-            ' ' || r.source_partition_name ||
-            CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.source_subpartition_name END ||
-            ', mode=TRUNCATE, execute=' || l_execute_flag ||
-            ', cutoff=' || TO_CHAR(r.cutoff_date, 'YYYY-MM-DD')
+            r.partition_name ||
+            CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END
 END)) || '|' ||
           PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
           PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
@@ -262,10 +259,11 @@ END)) || '|' ||
         l_summary := l_summary ||
           '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
           PKG_SQL.fn_format_table(
-            p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|LAST_BUSINESS_DATE|DAYS_ONLINE|CUTOFF_DATE',
+            p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE|LAST_BUSINESS_DATE|DAYS_ONLINE|CUTOFF_DATE',
             p_rows    => PKG_ARCHIVE_LOG.fn_summary_cell(t.source_db_link) || '|' ||
                          PKG_ARCHIVE_LOG.fn_summary_cell(t.source_owner) || '|' ||
                          PKG_ARCHIVE_LOG.fn_summary_cell(t.source_table_name) || '|' ||
+                         PKG_ARCHIVE_LOG.fn_summary_cell(l_execute_flag) || '|' ||
                          PKG_ARCHIVE_LOG.fn_summary_cell(l_last_business_date_calc) || '|' ||
                          PKG_ARCHIVE_LOG.fn_summary_cell(l_days_online) || '|' ||
                          PKG_ARCHIVE_LOG.fn_summary_cell(l_cutoff_date) || CHR(10)

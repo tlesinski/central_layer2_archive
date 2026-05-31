@@ -302,3 +302,5 @@ UNION ALL
 SELECT 'CLIENT2: ' || COUNT(*) || ' objects installed' FROM dba_objects WHERE owner = 'CLIENT2' AND object_name NOT LIKE 'SYS_P%' AND object_name NOT LIKE 'TMP$%';
 
 SPOOL OFF
+
+commit;

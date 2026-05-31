@@ -239,10 +239,8 @@ AS
             l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
 
             l_table_summary := l_table_summary ||
-              TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell('target=' || s.target_owner || '.' || s.target_table_name ||
-                                              ' ' || s.partition_name ||
-                                              CASE WHEN s.archive_unit_type = 'SUBPARTITION' THEN '.' || l_target_subpart END ||
-                                              ', execute=' || l_execute_flag)) || '|' ||
+              TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell(s.partition_name ||
+                                              CASE WHEN s.archive_unit_type = 'SUBPARTITION' THEN '.' || l_target_subpart END)) || '|' ||
               PKG_ARCHIVE_LOG.fn_summary_cell(s.source_partition_name) || '|' ||
               PKG_ARCHIVE_LOG.fn_summary_cell(s.source_subpartition_name) || '|' ||
               PKG_ARCHIVE_LOG.fn_summary_cell(s.partition_high_value) || '|' ||
@@ -266,10 +264,11 @@ AS
         l_summary := l_summary ||
           '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
           PKG_SQL.fn_format_table(
-            p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME',
+            p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE',
             p_rows    => PKG_ARCHIVE_LOG.fn_summary_cell(t.source_db_link) || '|' ||
                          PKG_ARCHIVE_LOG.fn_summary_cell(t.source_owner) || '|' ||
-                         PKG_ARCHIVE_LOG.fn_summary_cell(t.source_table_name) || CHR(10)
+                         PKG_ARCHIVE_LOG.fn_summary_cell(t.source_table_name) || '|' ||
+                         PKG_ARCHIVE_LOG.fn_summary_cell(l_execute_flag) || CHR(10)
           ) || CHR(10) ||
           PKG_SQL.fn_format_table(
             p_columns    => l_partition_columns,

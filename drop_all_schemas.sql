@@ -141,10 +141,6 @@ BEGIN
     BEGIN
       EXECUTE IMMEDIATE 'DROP TABLE CARCH.' || r.table_name || ' PURGE';
       DBMS_OUTPUT.PUT_LINE('Dropped TABLE CARCH.' || r.table_name);
-    EXCEPTION
-      WHEN OTHERS THEN
-        DBMS_OUTPUT.PUT_LINE('Could not drop TABLE ' ||
-                             r.table_name || ': ' || SQLERRM);
     END;
   END LOOP;
 
