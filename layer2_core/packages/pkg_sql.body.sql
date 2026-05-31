@@ -13,7 +13,8 @@ AS
     ------------------------------------------------------------------------------
     Version    Date         Programmer         Description
     ------------------------------------------------------------------------------
-    1.0        2026-05-28   Tomasz Lesinski    Initial version
+     1.0        2026-05-28   Tomasz Lesinski    Initial version
+     1.1        2026-05-31   Tomasz Lesinski    ORA-40478 fix in fn_format_table (TO_CLOB guard)
   */
   FUNCTION fn_normalize_execute
   (
@@ -494,7 +495,7 @@ AS
     END LOOP;
 
     -- pass 2: build output
-    l_result := 'FORMAT_TABLE:' || CHR(10);
+    l_result := TO_CLOB('FORMAT_TABLE:' || CHR(10));
     l_result := l_result || 'Columns : ' || l_col_count || CHR(10);
     l_result := l_result || 'Rows    : ' || l_rows_count || CHR(10) || CHR(10);
 

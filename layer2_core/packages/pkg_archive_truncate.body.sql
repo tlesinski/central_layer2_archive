@@ -18,8 +18,9 @@ AS
     1.1        2026-05-28   Tomasz Lesinski    Add process summary logging
     1.2        2026-05-29   Tomasz Lesinski    Abort on invalid RETENTION_RULE
     1.3        2026-05-29   Tomasz Lesinski    Abort on invalid PRESERVE_RULE
-    1.4        2026-05-31   Tomasz Lesinski    Skip truncate when preserve_date IS NOT NULL;
-                                                log as PRESERVED in summary with MAX_PRESERVE_DATE
+     1.4        2026-05-31   Tomasz Lesinski    Skip truncate when preserve_date IS NOT NULL;
+                                                 log as PRESERVED in summary with MAX_PRESERVE_DATE
+     1.5        2026-05-31   Tomasz Lesinski    Compact per-table summary, ORA-40478 fix
   */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
@@ -66,9 +67,11 @@ AS
     l_tables          NUMBER := 0;
     l_sql_rows        NUMBER;
     l_summary         CLOB := NULL;
+    l_table_summary   CLOB;
     l_bad_tables      NUMBER := 0;
-    l_summary_columns VARCHAR2(1000) :=
-      'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|LAST_BUSINESS_DATE|DAYS_ONLINE|CUTOFF_DATE|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|MAX_PRESERVE_DATE|NOTE';
+    l_last_business_date_calc VARCHAR2(30);
+    l_days_online             VARCHAR2(30);
+    l_cutoff_date             VARCHAR2(30);
   BEGIN
     l_execute_flag := fn_normalize_execute(p_execute);
     l_target_owner := fn_normalize_name(p_target_owner);
@@ -154,8 +157,18 @@ AS
        ORDER BY source_db_link, source_owner, source_table_name
     ) LOOP
       l_tables := l_tables + 1;
+      l_table_summary := NULL;
       l_agent_procedure := fn_qualified_agent_procedure(t.source_agent_schema, t.source_db_link);
       l_sql := 'BEGIN ' || l_agent_procedure || '(:1, :2, :3, :4, :5, :6); END;';
+
+      SELECT TO_CHAR(FN_ARCHIVE_HIGH_VALUE_DATE(a.last_business_date)),
+             TO_CHAR(a.days_online),
+             TO_CHAR(FN_ARCHIVE_HIGH_VALUE_DATE(a.last_business_date) - a.days_online)
+        INTO l_last_business_date_calc, l_days_online, l_cutoff_date
+        FROM tw_archive_tables a
+       WHERE a.source_db_link = t.source_db_link
+         AND a.source_owner = t.source_owner
+         AND a.source_table_name = t.source_table_name;
 
       FOR r IN (
         SELECT p.*
@@ -220,26 +233,8 @@ AS
           END IF;
         END IF;
 
-        l_summary := l_summary ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.source_db_link) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.source_owner) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.source_table_name) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_name) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_name) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.last_business_date_calc) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.days_online) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.cutoff_date) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_high_value) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_high_value) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.archive_status) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(r.quality_status) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(CASE WHEN l_execute_flag = 'Y' THEN 'Y' ELSE 'N' END) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.source_row_count)) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.target_row_count)) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.preserve_date, 'YYYY-MM-DD')) || '|' ||
-          PKG_ARCHIVE_LOG.fn_summary_cell(CASE WHEN r.preserve_date IS NOT NULL THEN
+        l_table_summary := l_table_summary ||
+          TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell(CASE WHEN r.preserve_date IS NOT NULL THEN
             'PRESERVED per MAX_preserve_date=' || TO_CHAR(r.preserve_date, 'YYYY-MM-DD')
           ELSE
             'source=' || r.source_owner || '.' || r.source_table_name ||
@@ -247,10 +242,40 @@ AS
             CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.source_subpartition_name END ||
             ', mode=TRUNCATE, execute=' || l_execute_flag ||
             ', cutoff=' || TO_CHAR(r.cutoff_date, 'YYYY-MM-DD')
-          END) ||
+END)) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_name) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_name) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_high_value) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_high_value) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.archive_status) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.quality_status) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(CASE WHEN l_execute_flag = 'Y' THEN 'Y' ELSE 'N' END) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.source_row_count)) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.target_row_count)) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.preserve_date, 'YYYY-MM-DD')) ||
           CHR(10);
-      END LOOP;
-    END LOOP;
+      END LOOP; -- FOR r
+
+      IF l_table_summary IS NOT NULL THEN
+        l_summary := l_summary ||
+          '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
+          PKG_SQL.fn_format_table(
+            p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|LAST_BUSINESS_DATE|DAYS_ONLINE|CUTOFF_DATE',
+            p_rows    => PKG_ARCHIVE_LOG.fn_summary_cell(t.source_db_link) || '|' ||
+                         PKG_ARCHIVE_LOG.fn_summary_cell(t.source_owner) || '|' ||
+                         PKG_ARCHIVE_LOG.fn_summary_cell(t.source_table_name) || '|' ||
+                         PKG_ARCHIVE_LOG.fn_summary_cell(l_last_business_date_calc) || '|' ||
+                         PKG_ARCHIVE_LOG.fn_summary_cell(l_days_online) || '|' ||
+                         PKG_ARCHIVE_LOG.fn_summary_cell(l_cutoff_date) || CHR(10)
+          ) || CHR(10) ||
+          PKG_SQL.fn_format_table(
+            p_columns    => 'NOTE|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|MAX_PRESERVE_DATE',
+            p_rows       => l_table_summary
+          ) || CHR(10);
+      END IF;
+    END LOOP; -- FOR t
 
     DBMS_OUTPUT.PUT_LINE(
       'TRUNCATE tables=' || l_tables ||
@@ -264,13 +289,7 @@ AS
     );
 
     IF l_summary IS NOT NULL THEN
-      PKG_ARCHIVE_LOG.prc_log_summary
-      (
-        p_run_id       => l_run_id,
-        p_process_name => 'TRUNCATE',
-        p_columns      => l_summary_columns,
-        p_rows         => l_summary
-      );
+      PKG_ARCHIVE_LOG.prc_log_message(l_run_id, l_summary, 'SUMMARY');
     END IF;
 
     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');

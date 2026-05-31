@@ -2,6 +2,7 @@ SET DEFINE OFF
 SET SERVEROUTPUT ON
 SET FEEDBACK ON
 SET ECHO ON
+WHENEVER SQLERROR EXIT
 
 PROMPT ============================================================
 PROMPT Dropping all Central Layer 2 Archive schema objects
@@ -462,19 +463,19 @@ SPOOL OFF
 
 purge dba_recyclebin;
 
-set serveroutput on
-DECLARE
-  v_result CLOB;
-BEGIN
-  DBMS_SPACE.SHRINK_TABLESPACE(
-    ts_name       => 'USERS',
-    shrink_mode   => DBMS_SPACE.TS_MODE_SHRINK,
-    shrink_result => v_result
-  );
-  -- Opcjonalnie wyświetlamy raport z wykonanej operacji
-  DBMS_OUTPUT.PUT_LINE(v_result);
-END;
-/
+--set serveroutput on
+--DECLARE
+--  v_result CLOB;
+--BEGIN
+--  DBMS_SPACE.SHRINK_TABLESPACE(
+--    ts_name       => 'USERS',
+--    shrink_mode   => DBMS_SPACE.TS_MODE_SHRINK,
+--    shrink_result => v_result
+--  );
+--  -- Opcjonalnie wyświetlamy raport z wykonanej operacji
+--  DBMS_OUTPUT.PUT_LINE(v_result);
+--END;
+--/
 
 commit;
 

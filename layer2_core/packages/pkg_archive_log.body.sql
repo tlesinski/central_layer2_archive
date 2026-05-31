@@ -13,7 +13,8 @@ AS
     ------------------------------------------------------------------------------
     Version    Date         Programmer         Description
     ------------------------------------------------------------------------------
-    1.0        2026-05-28   Tomasz Lesinski    Initial version
+     1.0        2026-05-28   Tomasz Lesinski    Initial version
+     1.1        2026-05-31   Tomasz Lesinski    NOTE-first in fn_summary_row, fn_summary_cell added
   */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
@@ -133,39 +134,39 @@ AS
     RETURN fn_sanitize_summary_cell(p_value);
   END fn_summary_cell;
 
-  FUNCTION fn_summary_row
-  (
-    p_source_db_link          IN VARCHAR2,
-    p_table_owner             IN VARCHAR2,
-    p_table_name              IN VARCHAR2,
-    p_partition_name          IN VARCHAR2,
-    p_subpartition_name       IN VARCHAR2,
-    p_partition_high_value    IN VARCHAR2,
-    p_subpartition_high_value IN VARCHAR2,
-    p_archive_status          IN VARCHAR2,
-    p_quality_status          IN VARCHAR2,
-    p_truncate_status         IN VARCHAR2,
-    p_source_row_count        IN NUMBER DEFAULT NULL,
-    p_target_row_count        IN NUMBER DEFAULT NULL,
-    p_note                    IN VARCHAR2 DEFAULT NULL
-  )
-  RETURN CLOB
-  IS
-  BEGIN
-    RETURN fn_sanitize_summary_cell(p_source_db_link) || '|' ||
-           fn_sanitize_summary_cell(p_table_owner) || '|' ||
-           fn_sanitize_summary_cell(p_table_name) || '|' ||
-           fn_sanitize_summary_cell(p_partition_name) || '|' ||
-           fn_sanitize_summary_cell(p_subpartition_name) || '|' ||
-           fn_sanitize_summary_cell(p_partition_high_value) || '|' ||
-           fn_sanitize_summary_cell(p_subpartition_high_value) || '|' ||
-           fn_sanitize_summary_cell(p_archive_status) || '|' ||
-           fn_sanitize_summary_cell(p_quality_status) || '|' ||
-           fn_sanitize_summary_cell(p_truncate_status) || '|' ||
-           fn_sanitize_summary_cell(TO_CHAR(p_source_row_count)) || '|' ||
-           fn_sanitize_summary_cell(TO_CHAR(p_target_row_count)) || '|' ||
-           fn_sanitize_summary_cell(p_note) || CHR(10);
-  END fn_summary_row;
+   FUNCTION fn_summary_row
+   (
+     p_note                    IN VARCHAR2 DEFAULT NULL,
+     p_source_db_link          IN VARCHAR2,
+     p_table_owner             IN VARCHAR2,
+     p_table_name              IN VARCHAR2,
+     p_partition_name          IN VARCHAR2,
+     p_subpartition_name       IN VARCHAR2,
+     p_partition_high_value    IN VARCHAR2,
+     p_subpartition_high_value IN VARCHAR2,
+     p_archive_status          IN VARCHAR2,
+     p_quality_status          IN VARCHAR2,
+     p_truncate_status         IN VARCHAR2,
+     p_source_row_count        IN NUMBER DEFAULT NULL,
+     p_target_row_count        IN NUMBER DEFAULT NULL
+   )
+   RETURN CLOB
+   IS
+   BEGIN
+     RETURN fn_sanitize_summary_cell(p_note) || '|' ||
+            fn_sanitize_summary_cell(p_source_db_link) || '|' ||
+            fn_sanitize_summary_cell(p_table_owner) || '|' ||
+            fn_sanitize_summary_cell(p_table_name) || '|' ||
+            fn_sanitize_summary_cell(p_partition_name) || '|' ||
+            fn_sanitize_summary_cell(p_subpartition_name) || '|' ||
+            fn_sanitize_summary_cell(p_partition_high_value) || '|' ||
+            fn_sanitize_summary_cell(p_subpartition_high_value) || '|' ||
+            fn_sanitize_summary_cell(p_archive_status) || '|' ||
+            fn_sanitize_summary_cell(p_quality_status) || '|' ||
+            fn_sanitize_summary_cell(p_truncate_status) || '|' ||
+            fn_sanitize_summary_cell(TO_CHAR(p_source_row_count)) || '|' ||
+            fn_sanitize_summary_cell(TO_CHAR(p_target_row_count)) || CHR(10);
+   END fn_summary_row;
 
   PROCEDURE prc_log_summary
   (

@@ -15,7 +15,8 @@ AS
     Version    Date         Programmer         Description
     ------------------------------------------------------------------------------
     1.0        2026-05-28   Tomasz Lesinski    Initial version
-    1.1        2026-05-28   Tomasz Lesinski    Add process summary logging
+     1.1        2026-05-28   Tomasz Lesinski    Add process summary logging
+     1.2        2026-05-31   Tomasz Lesinski    Compact per-table summary, ORA-40478 fix
   */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
@@ -63,8 +64,9 @@ AS
     l_failed          NUMBER := 0;
     l_quality_status  VARCHAR2(1);
     l_summary         CLOB := NULL;
-    l_summary_columns VARCHAR2(1000) :=
-      'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|NOTE';
+    l_table_summary   CLOB;
+    l_partition_columns VARCHAR2(1000) :=
+      'NOTE|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT';
   BEGIN
     l_execute_flag := fn_normalize_execute(p_execute);
     l_target_owner := fn_normalize_name(p_target_owner);
@@ -108,6 +110,7 @@ AS
        ORDER BY source_db_link, source_owner, source_table_name
     ) LOOP
       l_tables := l_tables + 1;
+      l_table_summary := NULL;
       l_agent_function := fn_qualified_agent_function(t.source_agent_schema, t.source_db_link);
       l_sql := 'SELECT ' || l_agent_function || '(:1, :2, :3, :4) FROM dual';
 
@@ -173,28 +176,37 @@ AS
           COMMIT;
         END IF;
 
+        l_table_summary := l_table_summary ||
+          TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell('target=' || r.target_owner || '.' || r.target_table_name ||
+                                          ' ' || r.partition_name ||
+                                          CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END ||
+                                          ', execute=' || l_execute_flag)) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_high_value) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_high_value) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.archive_status) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(l_quality_status) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(r.truncate_status) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(l_source_rows)) || '|' ||
+          PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.target_row_count)) || CHR(10);
+      END LOOP; -- FOR r
+
+      IF l_table_summary IS NOT NULL THEN
         l_summary := l_summary ||
-          PKG_ARCHIVE_LOG.fn_summary_row
-          (
-            p_source_db_link          => r.source_db_link,
-            p_table_owner             => r.source_owner,
-            p_table_name              => r.source_table_name,
-            p_partition_name          => r.source_partition_name,
-            p_subpartition_name       => r.source_subpartition_name,
-            p_partition_high_value    => r.partition_high_value,
-            p_subpartition_high_value => r.subpartition_high_value,
-            p_archive_status          => r.archive_status,
-            p_quality_status          => l_quality_status,
-            p_truncate_status         => r.truncate_status,
-            p_source_row_count        => l_source_rows,
-            p_target_row_count        => r.target_row_count,
-            p_note                    => 'target=' || r.target_owner || '.' || r.target_table_name ||
-                                         ' ' || r.partition_name ||
-                                         CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END ||
-                                         ', execute=' || l_execute_flag
-          );
-      END LOOP;
-    END LOOP;
+          '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
+          PKG_SQL.fn_format_table(
+            p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME',
+            p_rows    => PKG_ARCHIVE_LOG.fn_summary_cell(t.source_db_link) || '|' ||
+                         PKG_ARCHIVE_LOG.fn_summary_cell(t.source_owner) || '|' ||
+                         PKG_ARCHIVE_LOG.fn_summary_cell(t.source_table_name) || CHR(10)
+          ) || CHR(10) ||
+          PKG_SQL.fn_format_table(
+            p_columns    => l_partition_columns,
+            p_rows       => l_table_summary
+          ) || CHR(10);
+      END IF;
+    END LOOP; -- FOR t
 
     DBMS_OUTPUT.PUT_LINE(
       'QUALITY tables=' || l_tables ||
@@ -208,13 +220,7 @@ AS
     );
 
     IF l_summary IS NOT NULL THEN
-      PKG_ARCHIVE_LOG.prc_log_summary
-      (
-        p_run_id       => l_run_id,
-        p_process_name => 'QUALITY',
-        p_columns      => l_summary_columns,
-        p_rows         => l_summary
-      );
+      PKG_ARCHIVE_LOG.prc_log_message(l_run_id, l_summary, 'SUMMARY');
     END IF;
 
     PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, CASE WHEN l_failed > 0 THEN 'WARNING' ELSE 'SUCCESS' END);

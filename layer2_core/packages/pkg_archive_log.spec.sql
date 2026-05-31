@@ -13,7 +13,8 @@ AS
     ------------------------------------------------------------------------------
     Version    Date         Programmer         Description
     ------------------------------------------------------------------------------
-    1.0        2026-05-28   Tomasz Lesinski    Initial version
+     1.0        2026-05-28   Tomasz Lesinski    Initial version
+     1.1        2026-05-31   Tomasz Lesinski    NOTE-first in fn_summary_row, fn_summary_cell added
   */
   FUNCTION fn_create_run
   (
@@ -50,23 +51,23 @@ AS
   )
   RETURN VARCHAR2;
 
-  FUNCTION fn_summary_row
-  (
-    p_source_db_link          IN VARCHAR2,
-    p_table_owner             IN VARCHAR2,
-    p_table_name              IN VARCHAR2,
-    p_partition_name          IN VARCHAR2,
-    p_subpartition_name       IN VARCHAR2,
-    p_partition_high_value    IN VARCHAR2,
-    p_subpartition_high_value IN VARCHAR2,
-    p_archive_status          IN VARCHAR2,
-    p_quality_status          IN VARCHAR2,
-    p_truncate_status         IN VARCHAR2,
-    p_source_row_count        IN NUMBER DEFAULT NULL,
-    p_target_row_count        IN NUMBER DEFAULT NULL,
-    p_note                    IN VARCHAR2 DEFAULT NULL
-  )
-  RETURN CLOB;
+   FUNCTION fn_summary_row
+   (
+     p_note                    IN VARCHAR2 DEFAULT NULL,
+     p_source_db_link          IN VARCHAR2,
+     p_table_owner             IN VARCHAR2,
+     p_table_name              IN VARCHAR2,
+     p_partition_name          IN VARCHAR2,
+     p_subpartition_name       IN VARCHAR2,
+     p_partition_high_value    IN VARCHAR2,
+     p_subpartition_high_value IN VARCHAR2,
+     p_archive_status          IN VARCHAR2,
+     p_quality_status          IN VARCHAR2,
+     p_truncate_status         IN VARCHAR2,
+     p_source_row_count        IN NUMBER DEFAULT NULL,
+     p_target_row_count        IN NUMBER DEFAULT NULL
+   )
+   RETURN CLOB;
 
   PROCEDURE prc_log_summary
   (
