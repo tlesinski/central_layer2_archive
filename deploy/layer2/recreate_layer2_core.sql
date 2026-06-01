@@ -9,23 +9,23 @@ BEGIN
   FOR r IN (
     SELECT object_name, object_type
       FROM user_objects
-     WHERE object_name IN (
+      WHERE object_name IN (
        'PKG_ARCHIVE_RUNNER',
        'PKG_ARCHIVE_TRUNCATE',
-       'PKG_ARCHIVE_CLEANUP',
        'PKG_ARCHIVE_QUALITY',
        'PKG_ARCHIVE_IMPORT',
-       'PKG_ARCHIVE_SOURCE_COUNT',
-       'PKG_ARCHIVE_PLAN',
        'PKG_ARCHIVE_DISCOVERY',
        'PKG_ARCHIVE_PARTITION',
        'PKG_ARCHIVE_LOG',
        'PKG_SQL',
        'PKG_TL_LOGGING',
-       'PKG_DATE',
-       'FN_ARCHIVE_HIGH_VALUE_DATE'
+       'FN_ARCHIVE_HIGH_VALUE_DATE',
+        'FN_CALCULATE_RETENTION_RULE',
+        'FN_VALIDATE_PRESERVE_RULE',
+        'TRG_ARCHIVE_TABLES_RETENTION_CALC',
+        'TRG_ARCHIVE_TABLES_PRESERVE_CALC'
      )
-       AND object_type IN ('PACKAGE', 'PACKAGE BODY', 'FUNCTION')
+       AND        object_type IN ('PACKAGE', 'PACKAGE BODY', 'FUNCTION', 'TRIGGER')
      ORDER BY CASE object_type WHEN 'PACKAGE BODY' THEN 1 ELSE 2 END
   ) LOOP
     BEGIN
@@ -41,16 +41,13 @@ BEGIN
   FOR r IN (
     SELECT view_name
       FROM user_views
-     WHERE view_name IN (
+      WHERE view_name IN (
        'TW_ARCHIVE_TRUNCATE_PARTITIONS_VW',
        'TW_ARCHIVE_QUALITY_PARTITIONS_VW',
        'TW_ARCHIVE_IMPORT_PARTITIONS_VW',
        'TW_ARCHIVE_DISCOVERY_PARTITIONS_VW',
-       'TW_ARCHIVE_SOURCE_PARTITIONS_VW',
-       'TW_ARCHIVE_CANDIDATE_UNITS_VW',
-       'TW_ARCHIVE_SOURCE_UNITS_VW',
-       'ARCHIVE_CANDIDATE_PARTITIONS_VW'
-     )
+       'TW_ARCHIVE_SOURCE_PARTITIONS_VW'
+      )
      ORDER BY CASE view_name
                 WHEN 'TW_ARCHIVE_TRUNCATE_PARTITIONS_VW' THEN 1
                 WHEN 'TW_ARCHIVE_QUALITY_PARTITIONS_VW' THEN 2
@@ -66,21 +63,18 @@ BEGIN
   FOR r IN (
     SELECT table_name
       FROM user_tables
-     WHERE table_name IN (
+      WHERE table_name IN (
        'TW_ARCHIVE_PARTITIONS',
        'TW_ARCHIVE_RUNS',
        'TW_ARCHIVE_TABLES',
-       'TW_ARCHIVE_SOURCES',
        'MD_PROCESS_LOG',
        'ORDERS_ARCH_SRC',
        'ORDERS_SUBPART_SRC',
        'ORDERS_DAILY_INT_SRC',
        'ORDERS_ARCH_SRC_2',
        'ORDERS_SUBPART_SRC_2',
-       'ORDERS_DAILY_INT_SRC_2',
-       'ORDERS_ARCHIVE',
-       'ORDERS_SUBPART_ARCHIVE'
-     )
+       'ORDERS_DAILY_INT_SRC_2'
+      )
      ORDER BY CASE table_name
                 WHEN 'TW_ARCHIVE_PARTITIONS' THEN 1
                 WHEN 'TW_ARCHIVE_RUNS' THEN 2
@@ -107,6 +101,6 @@ BEGIN
 END;
 /
 
-@@install_layer2_core.sql
+@deploy/layer2/install_layer2_core.sql
 
 PROMPT Central Layer 2 Archive core objects recreated

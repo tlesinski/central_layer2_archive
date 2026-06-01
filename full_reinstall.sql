@@ -2,13 +2,14 @@ SET DEFINE OFF
 SET SERVEROUTPUT ON
 SET FEEDBACK ON
 SET ECHO ON
+WHENEVER SQLERROR EXIT
 
 PROMPT ============================================================
 PROMPT Full reinstall of Central Layer 2 Archive
 PROMPT
 PROMPT Prerequisites:
 PROMPT   - Users CARCH, CAGENT1, CLIENT1 must exist
-PROMPT   - Run deploy/drop_all_schemas.sql first for a clean slate
+PROMPT   - Run drop_all_schemas.sql first for a clean slate
 PROMPT   - This script connects as SYS for most steps, then as CARCH
 PROMPT     for DB link creation (uses CarchDev2026_42 convention)
 PROMPT   - CLIENT2 is created automatically if not present
@@ -119,14 +120,18 @@ PROMPT ============================================================
 ALTER SESSION SET CURRENT_SCHEMA = CARCH;
 
 @layer2_core/sequences/md_process_log_seq.sql
-@deploy/layer2/sequences/stg_tmp_arch_seq.sql
+@layer2_core/sequences/stg_tmp_arch_seq.sql
 @layer2_core/tables/md_process_log.sql
 @layer2_core/tables/tw_archive_tables.sql
 @layer2_core/tables/tw_archive_runs.sql
 @layer2_core/tables/tw_archive_partitions.sql
 @layer2_core/functions/fn_archive_high_value_date.sql
+@layer2_core/functions/fn_calculate_retention_rule.sql
+@layer2_core/functions/fn_validate_preserve_rule.sql
 @deploy/test_support/dat.spec.sql
 @deploy/test_support/dat.body.sql
+@layer2_core/triggers/trg_archive_tables_retention_calc.sql
+@layer2_core/triggers/trg_archive_tables_preserve_calc.sql
 @layer2_core/views/tw_archive_source_partitions_vw.sql
 @layer2_core/views/tw_archive_discovery_partitions_vw.sql
 @layer2_core/views/tw_archive_import_partitions_vw.sql
@@ -154,6 +159,8 @@ ALTER SESSION SET CURRENT_SCHEMA = CARCH;
 SHOW ERRORS PACKAGE PKG_TL_LOGGING
 SHOW ERRORS PACKAGE BODY PKG_TL_LOGGING
 SHOW ERRORS FUNCTION FN_ARCHIVE_HIGH_VALUE_DATE
+SHOW ERRORS FUNCTION FN_CALCULATE_RETENTION_RULE
+SHOW ERRORS FUNCTION FN_VALIDATE_PRESERVE_RULE
 SHOW ERRORS VIEW TW_ARCHIVE_SOURCE_PARTITIONS_VW
 SHOW ERRORS VIEW TW_ARCHIVE_DISCOVERY_PARTITIONS_VW
 SHOW ERRORS VIEW TW_ARCHIVE_IMPORT_PARTITIONS_VW
@@ -258,4 +265,42 @@ PROMPT Full reinstall completed.
 PROMPT Check full_reinstall.log for details.
 PROMPT ============================================================
 
+PROMPT
+PROMPT ============================================================
+PROMPT Installed objects per schema:
+PROMPT ============================================================
+BEGIN
+  FOR r IN (
+    SELECT owner, object_type, COUNT(*) AS cnt
+      FROM dba_objects
+     WHERE owner IN ('CARCH','CAGENT1','CLIENT1','CLIENT2')
+       AND object_name NOT LIKE 'SYS_P%'
+       AND object_name NOT LIKE 'TMP$%'
+     GROUP BY owner, object_type
+     ORDER BY owner, object_type
+  ) LOOP
+    DBMS_OUTPUT.PUT_LINE('  ' || RPAD(r.owner, 10) || RPAD(r.object_type, 20) || r.cnt);
+  END LOOP;
+
+  FOR r IN (
+    SELECT 'CARCH' AS owner, COUNT(*) AS cnt FROM dba_sequences WHERE sequence_owner = 'CARCH'
+      AND sequence_name NOT LIKE 'ISEQ$$_%'
+  ) LOOP
+    IF r.cnt > 0 THEN
+      DBMS_OUTPUT.PUT_LINE('  SEQUENCE     ' || r.cnt || ' in CARCH');
+    END IF;
+  END LOOP;
+END;
+/
+
+SELECT 'CARCH: '   || COUNT(*) || ' objects installed' AS summary FROM dba_objects WHERE owner = 'CARCH'   AND object_name NOT LIKE 'SYS_P%' AND object_name NOT LIKE 'TMP$%'
+UNION ALL
+SELECT 'CAGENT1: ' || COUNT(*) || ' objects installed' FROM dba_objects WHERE owner = 'CAGENT1' AND object_name NOT LIKE 'SYS_P%' AND object_name NOT LIKE 'TMP$%'
+UNION ALL
+SELECT 'CLIENT1: ' || COUNT(*) || ' objects installed' FROM dba_objects WHERE owner = 'CLIENT1' AND object_name NOT LIKE 'SYS_P%' AND object_name NOT LIKE 'TMP$%'
+UNION ALL
+SELECT 'CLIENT2: ' || COUNT(*) || ' objects installed' FROM dba_objects WHERE owner = 'CLIENT2' AND object_name NOT LIKE 'SYS_P%' AND object_name NOT LIKE 'TMP$%';
+
 SPOOL OFF
+
+commit;

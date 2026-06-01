@@ -16,8 +16,8 @@ USING (
          'TRUNCATE' AS truncate_mode,
          4 AS parallel_degree,
          'USERS' AS tablespace_name,
-         'dat.fn_eod-90' AS retention_rule,
-         'Y' AS enabled_flag
+          'SELECT dat.fn_boy FROM DUAL UNION ALL SELECT dat.fn_eoy FROM DUAL' AS preserve_rule,
+          'Y' AS enabled_flag
     FROM dual
 ) src
 ON (
@@ -32,17 +32,17 @@ WHEN MATCHED THEN UPDATE SET
   dst.truncate_mode = src.truncate_mode,
   dst.parallel_degree = src.parallel_degree,
   dst.tablespace_name = src.tablespace_name,
-  dst.retention_rule = src.retention_rule,
+  dst.preserve_rule = src.preserve_rule,
   dst.enabled_flag = src.enabled_flag,
   dst.updated_at = SYSTIMESTAMP
 WHEN NOT MATCHED THEN INSERT
   (source_db_link, source_owner, source_table_name, source_agent_schema,
    target_owner, target_table_name, truncate_mode, parallel_degree, tablespace_name,
-   retention_rule, enabled_flag)
+   preserve_rule, enabled_flag)
 VALUES
   (src.source_db_link, src.source_owner, src.source_table_name, src.source_agent_schema,
    src.target_owner, src.target_table_name, src.truncate_mode, src.parallel_degree, src.tablespace_name,
-   src.retention_rule, src.enabled_flag);
+   src.preserve_rule, src.enabled_flag);
 
 MERGE INTO TW_ARCHIVE_PARTITIONS dst
 USING (
@@ -57,9 +57,8 @@ USING (
          'P_ERROR' AS partition_name,
          '#' AS subpartition_name,
          'TO_DATE('' 1800-01-01 00:00:00'', ''SYYYY-MM-DD HH24:MI:SS'', ''NLS_CALENDAR=GREGORIAN'')' AS partition_high_value,
-         '#' AS subpartition_high_value,
-         1 AS partition_position,
-         NULL AS subpartition_position
+          '#' AS subpartition_high_value,
+          NULL AS prev_partition_high_value
     FROM dual
 ) src
 ON (
@@ -74,27 +73,26 @@ WHEN MATCHED THEN UPDATE SET
   dst.target_table_name = src.target_table_name,
   dst.archive_unit_type = src.archive_unit_type,
   dst.source_partition_name = src.source_partition_name,
-  dst.source_subpartition_name = src.source_subpartition_name,
-  dst.partition_position = src.partition_position,
-  dst.subpartition_position = src.subpartition_position,
-  dst.archive_status = 'Y',
-  dst.quality_status = 'Y',
-  dst.truncate_status = 'Y',
-  dst.source_row_count = 0,
-  dst.target_row_count = 0,
-  dst.error_message = NULL,
-  dst.updated_at = SYSTIMESTAMP
+   dst.source_subpartition_name = src.source_subpartition_name,
+   dst.prev_partition_high_value = src.prev_partition_high_value,
+   dst.archive_status = 'Y',
+   dst.quality_status = 'Y',
+   dst.truncate_status = 'Y',
+   dst.source_row_count = 0,
+   dst.target_row_count = 0,
+   dst.error_message = NULL,
+   dst.updated_at = SYSTIMESTAMP
 WHEN NOT MATCHED THEN INSERT
   (source_db_link, source_owner, source_table_name, target_owner, target_table_name,
    archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name,
    partition_high_value, subpartition_high_value,
-   partition_position, subpartition_position, archive_status, quality_status,
+   prev_partition_high_value, archive_status, quality_status,
    truncate_status, source_row_count, target_row_count)
 VALUES
   (src.source_db_link, src.source_owner, src.source_table_name, src.target_owner, src.target_table_name,
    src.archive_unit_type, src.source_partition_name, src.source_subpartition_name, src.partition_name, src.subpartition_name,
    src.partition_high_value, src.subpartition_high_value,
-   src.partition_position, src.subpartition_position, 'Y', 'Y',
+   src.prev_partition_high_value, 'Y', 'Y',
    'Y', 0, 0);
 
 COMMIT;

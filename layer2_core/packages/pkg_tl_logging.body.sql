@@ -14,7 +14,8 @@ CREATE OR REPLACE EDITIONABLE PACKAGE BODY PKG_TL_LOGGING AS
     ------------------------------------------------------------------------------
     1.0        2020-02-20   Tomasz Lesinski    Initial version
     2.0        2021-12-01   Tomasz Lesinski    Simplification
-    2.1        2022-11-04   Tomasz Lesinski    JSON column support
+     2.1        2022-11-04   Tomasz Lesinski    JSON column support
+     2.2        2026-05-31   Tomasz Lesinski    ORA-40478 fix: manual JSON for large CLOB messages
   */
 
 --Procedure prc_init_log just pre declaration
@@ -36,11 +37,13 @@ RETURN CLOB
 IS
   l_json_entry CLOB;
 BEGIN
-  l_json_entry := JSON_OBJECT(
-    'type' VALUE p_log_type,
-    'timestamp' VALUE p_log_date,
-    'message' VALUE p_log_msg
-  );
+  -- JSON_OBJECT does not accept CLOB values larger than 32767.
+  -- Build JSON manually via CLOB concatenation for safety.
+  l_json_entry := TO_CLOB('{"type":"') || p_log_type ||
+                  TO_CLOB('","timestamp":"') || p_log_date ||
+                  TO_CLOB('","message":"') ||
+                  REPLACE(REPLACE(REPLACE(p_log_msg, '\', '\\'), '"', '\"'), CHR(10), '\n') ||
+                  TO_CLOB('"}');
 
   -- Wrap log entry within "log_entries" array to support multiple entries
   RETURN l_json_entry;

@@ -14,7 +14,8 @@ AS
     ------------------------------------------------------------------------------
     Version    Date         Programmer         Description
     ------------------------------------------------------------------------------
-    1.0        2026-05-28   Tomasz Lesinski    Initial version
+     1.0        2026-05-28   Tomasz Lesinski    Initial version
+     1.1        2026-05-31   Tomasz Lesinski    Compact per-table summary, ORA-40478 fix
   */
   PROCEDURE prc_quality
   (

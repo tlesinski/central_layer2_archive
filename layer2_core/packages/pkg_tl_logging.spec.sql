@@ -16,7 +16,8 @@ AS
     ------------------------------------------------------------------------------
     1.0        2020-02-20   Tomasz Lesinski    Initial version
     2.0        2021-12-01   Tomasz Lesinski    Simplification
-    2.1        2022-11-04   Tomasz Lesinski    JSON column support
+     2.1        2022-11-04   Tomasz Lesinski    JSON column support
+     2.2        2026-05-31   Tomasz Lesinski    ORA-40478 fix: manual JSON for large CLOB messages
   */
 
 -- global variables

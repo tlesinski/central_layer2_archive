@@ -13,8 +13,7 @@ SELECT s.source_db_link,
        s.subpartition_name,
        s.partition_high_value,
        s.subpartition_high_value,
-       s.partition_position,
-       s.subpartition_position
+       s.prev_partition_high_value
   FROM tw_archive_source_partitions_vw s
  WHERE NOT EXISTS (
        SELECT 1

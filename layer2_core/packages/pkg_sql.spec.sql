@@ -13,7 +13,8 @@ AS
     ------------------------------------------------------------------------------
     Version    Date         Programmer         Description
     ------------------------------------------------------------------------------
-    1.0        2026-05-28   Tomasz Lesinski    Initial version
+     1.0        2026-05-28   Tomasz Lesinski    Initial version
+     1.1        2026-05-31   Tomasz Lesinski    ORA-40478 fix in fn_format_table (TO_CLOB guard)
   */
   FUNCTION fn_assert_simple_name
   (

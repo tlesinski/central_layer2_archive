@@ -78,7 +78,7 @@ layer2_core/
     pkg_archive_runner.spec.sql / body.sql
 
 deploy/
-  drop_all_schemas.sql                     schema-level drop script
+  drop_all_schemas.sql                     schema-level drop script (root)
   client1/
     install_client1_test_source.sql
     install_client1_subpart_test_source.sql
@@ -382,7 +382,7 @@ Remote compatibility notes:
 Connect as SYS and run in sequence:
 
 ```text
-1. @deploy/drop_all_schemas.sql
+1. @drop_all_schemas.sql
 2. @full_reinstall.sql
 ```
 

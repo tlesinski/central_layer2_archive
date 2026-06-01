@@ -2,6 +2,7 @@ SET DEFINE OFF
 SET SERVEROUTPUT ON
 SET FEEDBACK ON
 SET ECHO ON
+WHENEVER SQLERROR EXIT
 
 PROMPT ============================================================
 PROMPT Dropping all Central Layer 2 Archive schema objects
@@ -56,7 +57,7 @@ BEGIN
       FROM dba_objects
      WHERE owner = 'CARCH'
        AND object_type = 'FUNCTION'
-       AND object_name = 'FN_ARCHIVE_HIGH_VALUE_DATE'
+       AND object_name IN ('FN_ARCHIVE_HIGH_VALUE_DATE', 'FN_CALCULATE_RETENTION_RULE','FN_VALIDATE_PRESERVE_RULE')
   ) LOOP
     BEGIN
       EXECUTE IMMEDIATE 'DROP FUNCTION CARCH.' || r.object_name;
@@ -65,6 +66,23 @@ BEGIN
       WHEN OTHERS THEN
         DBMS_OUTPUT.PUT_LINE('Could not drop FUNCTION ' ||
                              r.object_name || ': ' || SQLERRM);
+    END;
+  END LOOP;
+
+  -- trigger
+  FOR r IN (
+    SELECT trigger_name
+      FROM dba_triggers
+     WHERE owner = 'CARCH'
+       AND trigger_name = 'TRG_ARCHIVE_TABLES_RETENTION_CALC'
+  ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'DROP TRIGGER CARCH.' || r.trigger_name;
+      DBMS_OUTPUT.PUT_LINE('Dropped TRIGGER CARCH.' || r.trigger_name);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Could not drop TRIGGER ' ||
+                             r.trigger_name || ': ' || SQLERRM);
     END;
   END LOOP;
 
@@ -123,10 +141,6 @@ BEGIN
     BEGIN
       EXECUTE IMMEDIATE 'DROP TABLE CARCH.' || r.table_name || ' PURGE';
       DBMS_OUTPUT.PUT_LINE('Dropped TABLE CARCH.' || r.table_name);
-    EXCEPTION
-      WHEN OTHERS THEN
-        DBMS_OUTPUT.PUT_LINE('Could not drop TABLE ' ||
-                             r.table_name || ': ' || SQLERRM);
     END;
   END LOOP;
 
@@ -148,21 +162,21 @@ BEGIN
   END LOOP;
 
   -- database link (must be connected as the owner to drop)
-  FOR r IN (
-    SELECT db_link
-      FROM dba_db_links
-     WHERE owner = 'CARCH'
-       AND db_link = 'CLIENT1_LOOPBACK_LINK'
-  ) LOOP
-    BEGIN
-      EXECUTE IMMEDIATE 'DROP DATABASE LINK CARCH.' || r.db_link;
-      DBMS_OUTPUT.PUT_LINE('Dropped DATABASE LINK CARCH.' || r.db_link);
-    EXCEPTION
-      WHEN OTHERS THEN
-        DBMS_OUTPUT.PUT_LINE('Could not drop DATABASE LINK ' ||
-                             r.db_link || ': ' || SQLERRM);
-    END;
-  END LOOP;
+--  FOR r IN (
+--    SELECT db_link
+--      FROM dba_db_links
+--     WHERE owner = 'CARCH'
+--       AND db_link = 'CLIENT1_LOOPBACK_LINK'
+--  ) LOOP
+--    BEGIN
+--      EXECUTE IMMEDIATE 'DROP DATABASE LINK CARCH.' || r.db_link;
+--      DBMS_OUTPUT.PUT_LINE('Dropped DATABASE LINK CARCH.' || r.db_link);
+--    EXCEPTION
+--      WHEN OTHERS THEN
+--        DBMS_OUTPUT.PUT_LINE('Could not drop DATABASE LINK ' ||
+--                             r.db_link || ': ' || SQLERRM);
+--    END;
+--  END LOOP;
 END;
 /
 
@@ -393,4 +407,73 @@ PROMPT All Central Layer 2 Archive objects have been dropped.
 PROMPT Check drop_all_schemas.log for details.
 PROMPT ============================================================
 
+PROMPT
+PROMPT ============================================================
+PROMPT Remaining objects per schema:
+PROMPT ============================================================
+BEGIN
+  FOR r IN (
+    SELECT owner, object_type, COUNT(*) AS cnt
+      FROM dba_objects
+     WHERE owner IN ('CARCH','CAGENT1','CLIENT1','CLIENT2')
+       AND object_name NOT LIKE 'SYS_P%'
+       AND object_name NOT LIKE 'TMP$%'
+     GROUP BY owner, object_type
+     ORDER BY owner, object_type
+  ) LOOP
+    DBMS_OUTPUT.PUT_LINE('  ' || RPAD(r.owner, 10) || RPAD(r.object_type, 20) || r.cnt);
+  END LOOP;
+
+  FOR r IN (
+    SELECT 'CARCH' AS owner, COUNT(*) AS cnt FROM dba_sequences WHERE sequence_owner = 'CARCH'
+      AND sequence_name NOT LIKE 'ISEQ$$_%'
+  ) LOOP
+    IF r.cnt > 0 THEN
+      DBMS_OUTPUT.PUT_LINE('  SEQUENCE     ' || r.cnt || ' remaining in CARCH');
+    END IF;
+  END LOOP;
+END;
+/
+
+SELECT 'CARCH: ' || COUNT(*) || ' objects remaining' AS summary FROM dba_objects
+ WHERE owner = 'CARCH'
+   AND object_name NOT LIKE 'SYS_P%'
+   AND object_name NOT LIKE 'TMP$%'
+UNION ALL
+SELECT 'CAGENT1: ' || COUNT(*) || ' objects remaining' FROM dba_objects
+ WHERE owner = 'CAGENT1'
+   AND object_name NOT LIKE 'SYS_P%'
+   AND object_name NOT LIKE 'TMP$%'
+UNION ALL
+SELECT 'CLIENT1: ' || COUNT(*) || ' objects remaining' FROM dba_objects
+ WHERE owner = 'CLIENT1'
+   AND object_name NOT LIKE 'SYS_P%'
+   AND object_name NOT LIKE 'TMP$%'
+UNION ALL
+SELECT 'CLIENT2: ' || COUNT(*) || ' objects remaining' FROM dba_objects
+ WHERE owner = 'CLIENT2'
+   AND object_name NOT LIKE 'SYS_P%'
+   AND object_name NOT LIKE 'TMP$%';
+
 SPOOL OFF
+
+purge dba_recyclebin;
+
+--set serveroutput on
+--DECLARE
+--  v_result CLOB;
+--BEGIN
+--  DBMS_SPACE.SHRINK_TABLESPACE(
+--    ts_name       => 'USERS',
+--    shrink_mode   => DBMS_SPACE.TS_MODE_SHRINK,
+--    shrink_result => v_result
+--  );
+--  -- Opcjonalnie wyświetlamy raport z wykonanej operacji
+--  DBMS_OUTPUT.PUT_LINE(v_result);
+--END;
+--/
+
+commit;
+
+select owner, object_name from dba_objects
+where owner in ('CARCH', 'CAGENT1', 'CLIENT1', 'CLIENT2');
