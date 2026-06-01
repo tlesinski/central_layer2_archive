@@ -3,6 +3,184 @@ SQL> PROMPT
 
 SQL> PROMPT ============================================================
 ============================================================
+SQL> PROMPT Section 0: Dropping CREPL (layer 3 replica) objects
+Section 0: Dropping CREPL (layer 3 replica) objects
+SQL> PROMPT ============================================================
+============================================================
+SQL> 
+SQL> BEGIN
+  2    -- packages (body first)
+  3    FOR r IN (
+  4  	 SELECT object_name, object_type
+  5  	   FROM dba_objects
+  6  	  WHERE owner = 'CREPL'
+  7  	    AND object_type IN ('PACKAGE', 'PACKAGE BODY')
+  8  	    AND object_name IN (
+  9  	      'PKG_REPLICA_RUNNER',
+ 10  	      'PKG_REPLICA_PURGE',
+ 11  	      'PKG_REPLICA_QUALITY',
+ 12  	      'PKG_REPLICA_REPLICATE',
+ 13  	      'PKG_REPLICA_DISCOVERY',
+ 14  	      'PKG_REPLICA_LOG',
+ 15  	      'PKG_SQL',
+ 16  	      'PKG_TL_LOGGING'
+ 17  	    )
+ 18  	  ORDER BY object_type DESC
+ 19    ) LOOP
+ 20  	 BEGIN
+ 21  	   EXECUTE IMMEDIATE 'DROP ' || r.object_type || ' CREPL.' || r.object_name;
+ 22  	   DBMS_OUTPUT.PUT_LINE('Dropped ' || r.object_type || ' CREPL.' || r.object_name);
+ 23  	 EXCEPTION
+ 24  	   WHEN OTHERS THEN
+ 25  	     DBMS_OUTPUT.PUT_LINE('Could not drop ' || r.object_type || ' ' ||
+ 26  				  r.object_name || ': ' || SQLERRM);
+ 27  	 END;
+ 28    END LOOP;
+ 29  
+ 30    -- views
+ 31    FOR r IN (
+ 32  	 SELECT view_name
+ 33  	   FROM dba_views
+ 34  	  WHERE owner = 'CREPL'
+ 35  	    AND view_name LIKE 'TW\_REPLICA\_%' ESCAPE '\'
+ 36    ) LOOP
+ 37  	 BEGIN
+ 38  	   EXECUTE IMMEDIATE 'DROP VIEW CREPL.' || r.view_name;
+ 39  	   DBMS_OUTPUT.PUT_LINE('Dropped VIEW CREPL.' || r.view_name);
+ 40  	 EXCEPTION
+ 41  	   WHEN OTHERS THEN
+ 42  	     DBMS_OUTPUT.PUT_LINE('Could not drop VIEW ' ||
+ 43  				  r.view_name || ': ' || SQLERRM);
+ 44  	 END;
+ 45    END LOOP;
+ 46  
+ 47    -- synonyms to layer 2
+ 48    FOR r IN (
+ 49  	 SELECT synonym_name
+ 50  	   FROM dba_synonyms
+ 51  	  WHERE owner = 'CREPL'
+ 52  	    AND synonym_name IN (
+ 53  	      'TW_ARCHIVE_TABLES',
+ 54  	      'TW_ARCHIVE_PARTITIONS',
+ 55  	      'ORDERS_ARCH_SRC_L2',
+ 56  	      'ORDERS_SUBPART_SRC_L2'
+ 57  	    )
+ 58    ) LOOP
+ 59  	 BEGIN
+ 60  	   EXECUTE IMMEDIATE 'DROP SYNONYM CREPL.' || r.synonym_name;
+ 61  	   DBMS_OUTPUT.PUT_LINE('Dropped SYNONYM CREPL.' || r.synonym_name);
+ 62  	 EXCEPTION
+ 63  	   WHEN OTHERS THEN
+ 64  	     DBMS_OUTPUT.PUT_LINE('Could not drop SYNONYM ' ||
+ 65  				  r.synonym_name || ': ' || SQLERRM);
+ 66  	 END;
+ 67    END LOOP;
+ 68  
+ 69    -- tables
+ 70    FOR r IN (
+ 71  	 SELECT table_name
+ 72  	   FROM dba_tables
+ 73  	  WHERE owner = 'CREPL'
+ 74  	    AND table_name IN (
+ 75  	      'TW_REPLICA_PARTITIONS',
+ 76  	      'TW_REPLICA_RUNS',
+ 77  	      'TW_REPLICA_TABLES',
+ 78  	      'MD_PROCESS_LOG',
+ 79  	      'ORDERS_ARCH_SRC',
+ 80  	      'ORDERS_SUBPART_SRC'
+ 81  	    )
+ 82  	  ORDER BY CASE table_name
+ 83  		     WHEN 'TW_REPLICA_PARTITIONS' THEN 1
+ 84  		     WHEN 'TW_REPLICA_RUNS' THEN 2
+ 85  		     WHEN 'TW_REPLICA_TABLES' THEN 3
+ 86  		     WHEN 'MD_PROCESS_LOG' THEN 4
+ 87  		     ELSE 5
+ 88  		   END
+ 89    ) LOOP
+ 90  	 BEGIN
+ 91  	   EXECUTE IMMEDIATE 'DROP TABLE CREPL.' || r.table_name || ' PURGE';
+ 92  	   DBMS_OUTPUT.PUT_LINE('Dropped TABLE CREPL.' || r.table_name);
+ 93  	 EXCEPTION
+ 94  	   WHEN OTHERS THEN
+ 95  	     DBMS_OUTPUT.PUT_LINE('Could not drop TABLE ' ||
+ 96  				  r.table_name || ': ' || SQLERRM);
+ 97  	 END;
+ 98    END LOOP;
+ 99  
+100    -- function
+101    FOR r IN (
+102  	 SELECT object_name
+103  	   FROM dba_objects
+104  	  WHERE owner = 'CREPL'
+105  	    AND object_type = 'FUNCTION'
+106  	    AND object_name = 'FN_ARCHIVE_HIGH_VALUE_DATE'
+107    ) LOOP
+108  	 BEGIN
+109  	   EXECUTE IMMEDIATE 'DROP FUNCTION CREPL.' || r.object_name;
+110  	   DBMS_OUTPUT.PUT_LINE('Dropped FUNCTION CREPL.' || r.object_name);
+111  	 EXCEPTION
+112  	   WHEN OTHERS THEN
+113  	     DBMS_OUTPUT.PUT_LINE('Could not drop FUNCTION ' ||
+114  				  r.object_name || ': ' || SQLERRM);
+115  	 END;
+116    END LOOP;
+117  
+118    -- sequence
+119    FOR r IN (
+120  	 SELECT sequence_name
+121  	   FROM dba_sequences
+122  	  WHERE sequence_owner = 'CREPL'
+123  	     AND sequence_name = 'MD_PROCESS_LOG_SEQ'
+124    ) LOOP
+125  	 BEGIN
+126  	   EXECUTE IMMEDIATE 'DROP SEQUENCE CREPL.' || r.sequence_name;
+127  	   DBMS_OUTPUT.PUT_LINE('Dropped SEQUENCE CREPL.' || r.sequence_name);
+128  	 EXCEPTION
+129  	   WHEN OTHERS THEN
+130  	     DBMS_OUTPUT.PUT_LINE('Could not drop SEQUENCE ' ||
+131  				  r.sequence_name || ': ' || SQLERRM);
+132  	 END;
+133    END LOOP;
+134  END;
+135  /
+Dropped PACKAGE BODY CREPL.PKG_REPLICA_LOG                                      
+Dropped PACKAGE BODY CREPL.PKG_SQL                                              
+Dropped PACKAGE BODY CREPL.PKG_REPLICA_DISCOVERY                                
+Dropped PACKAGE BODY CREPL.PKG_REPLICA_REPLICATE                                
+Dropped PACKAGE BODY CREPL.PKG_TL_LOGGING                                       
+Dropped PACKAGE CREPL.PKG_TL_LOGGING                                            
+Dropped PACKAGE CREPL.PKG_SQL                                                   
+Dropped PACKAGE CREPL.PKG_REPLICA_LOG                                           
+Dropped PACKAGE CREPL.PKG_REPLICA_DISCOVERY                                     
+Dropped PACKAGE CREPL.PKG_REPLICA_REPLICATE                                     
+Dropped VIEW CREPL.TW_REPLICA_DISCOVERY_PARTITIONS_VW                           
+Dropped VIEW CREPL.TW_REPLICA_PURGE_PARTITIONS_VW                               
+Dropped VIEW CREPL.TW_REPLICA_QUALITY_PARTITIONS_VW                             
+Dropped VIEW CREPL.TW_REPLICA_REPLICATE_PARTITIONS_VW                           
+Dropped VIEW CREPL.TW_REPLICA_SOURCE_PARTITIONS_VW                              
+Dropped SYNONYM CREPL.ORDERS_ARCH_SRC_L2                                        
+Dropped SYNONYM CREPL.ORDERS_SUBPART_SRC_L2                                     
+Dropped SYNONYM CREPL.TW_ARCHIVE_PARTITIONS                                     
+Dropped SYNONYM CREPL.TW_ARCHIVE_TABLES                                         
+Dropped TABLE CREPL.TW_REPLICA_PARTITIONS                                       
+Dropped TABLE CREPL.TW_REPLICA_RUNS                                             
+Dropped TABLE CREPL.TW_REPLICA_TABLES                                           
+Dropped TABLE CREPL.MD_PROCESS_LOG                                              
+Dropped TABLE CREPL.ORDERS_ARCH_SRC                                             
+Dropped TABLE CREPL.ORDERS_SUBPART_SRC                                          
+Dropped FUNCTION CREPL.FN_ARCHIVE_HIGH_VALUE_DATE                               
+Dropped SEQUENCE CREPL.MD_PROCESS_LOG_SEQ                                       
+
+PL/SQL procedure successfully completed.
+
+SQL> 
+SQL> PROMPT CREPL objects dropped.
+CREPL objects dropped.
+SQL> 
+SQL> PROMPT
+
+SQL> PROMPT ============================================================
+============================================================
 SQL> PROMPT Section 1: Dropping CARCH (layer 2 core) objects
 Section 1: Dropping CARCH (layer 2 core) objects
 SQL> PROMPT ============================================================
@@ -16,143 +194,143 @@ SQL>
 SQL> BEGIN
   2    -- packages (body first)
   3    FOR r IN (
-  4      SELECT object_name, object_type
-  5        FROM dba_objects
-  6       WHERE owner = 'CARCH'
-  7         AND object_type IN ('PACKAGE', 'PACKAGE BODY')
-  8         AND object_name IN (
-  9           'PKG_ARCHIVE_RUNNER',
- 10           'PKG_ARCHIVE_TRUNCATE',
- 11           'PKG_ARCHIVE_QUALITY',
- 12           'PKG_ARCHIVE_IMPORT',
- 13           'PKG_ARCHIVE_DISCOVERY',
- 14           'PKG_ARCHIVE_PARTITION',
- 15           'PKG_ARCHIVE_LOG',
- 16           'PKG_SQL',
- 17           'PKG_TL_LOGGING',
- 18           'PKG_DATE',
- 19           'DAT'
- 20         )
- 21       ORDER BY object_type DESC
+  4  	 SELECT object_name, object_type
+  5  	   FROM dba_objects
+  6  	  WHERE owner = 'CARCH'
+  7  	    AND object_type IN ('PACKAGE', 'PACKAGE BODY')
+  8  	    AND object_name IN (
+  9  	      'PKG_ARCHIVE_RUNNER',
+ 10  	      'PKG_ARCHIVE_TRUNCATE',
+ 11  	      'PKG_ARCHIVE_QUALITY',
+ 12  	      'PKG_ARCHIVE_IMPORT',
+ 13  	      'PKG_ARCHIVE_DISCOVERY',
+ 14  	      'PKG_ARCHIVE_PARTITION',
+ 15  	      'PKG_ARCHIVE_LOG',
+ 16  	      'PKG_SQL',
+ 17  	      'PKG_TL_LOGGING',
+ 18  	      'PKG_DATE',
+ 19  	      'DAT'
+ 20  	    )
+ 21  	  ORDER BY object_type DESC
  22    ) LOOP
- 23      BEGIN
- 24        EXECUTE IMMEDIATE 'DROP ' || r.object_type || ' CARCH.' || r.object_name;
- 25        DBMS_OUTPUT.PUT_LINE('Dropped ' || r.object_type || ' CARCH.' || r.object_name);
- 26      EXCEPTION
- 27        WHEN OTHERS THEN
- 28          DBMS_OUTPUT.PUT_LINE('Could not drop ' || r.object_type || ' ' ||
- 29                               r.object_name || ': ' || SQLERRM);
- 30      END;
+ 23  	 BEGIN
+ 24  	   EXECUTE IMMEDIATE 'DROP ' || r.object_type || ' CARCH.' || r.object_name;
+ 25  	   DBMS_OUTPUT.PUT_LINE('Dropped ' || r.object_type || ' CARCH.' || r.object_name);
+ 26  	 EXCEPTION
+ 27  	   WHEN OTHERS THEN
+ 28  	     DBMS_OUTPUT.PUT_LINE('Could not drop ' || r.object_type || ' ' ||
+ 29  				  r.object_name || ': ' || SQLERRM);
+ 30  	 END;
  31    END LOOP;
  32  
  33    -- function
  34    FOR r IN (
- 35      SELECT object_name
- 36        FROM dba_objects
- 37       WHERE owner = 'CARCH'
- 38         AND object_type = 'FUNCTION'
- 39         AND object_name IN ('FN_ARCHIVE_HIGH_VALUE_DATE', 'FN_CALCULATE_RETENTION_RULE','FN_VALIDATE_PRESERVE_RULE')
+ 35  	 SELECT object_name
+ 36  	   FROM dba_objects
+ 37  	  WHERE owner = 'CARCH'
+ 38  	    AND object_type = 'FUNCTION'
+ 39  	    AND object_name IN ('FN_ARCHIVE_HIGH_VALUE_DATE', 'FN_CALCULATE_RETENTION_RULE','FN_VALIDATE_PRESERVE_RULE')
  40    ) LOOP
- 41      BEGIN
- 42        EXECUTE IMMEDIATE 'DROP FUNCTION CARCH.' || r.object_name;
- 43        DBMS_OUTPUT.PUT_LINE('Dropped FUNCTION CARCH.' || r.object_name);
- 44      EXCEPTION
- 45        WHEN OTHERS THEN
- 46          DBMS_OUTPUT.PUT_LINE('Could not drop FUNCTION ' ||
- 47                               r.object_name || ': ' || SQLERRM);
- 48      END;
+ 41  	 BEGIN
+ 42  	   EXECUTE IMMEDIATE 'DROP FUNCTION CARCH.' || r.object_name;
+ 43  	   DBMS_OUTPUT.PUT_LINE('Dropped FUNCTION CARCH.' || r.object_name);
+ 44  	 EXCEPTION
+ 45  	   WHEN OTHERS THEN
+ 46  	     DBMS_OUTPUT.PUT_LINE('Could not drop FUNCTION ' ||
+ 47  				  r.object_name || ': ' || SQLERRM);
+ 48  	 END;
  49    END LOOP;
  50  
  51    -- trigger
  52    FOR r IN (
- 53      SELECT trigger_name
- 54        FROM dba_triggers
- 55       WHERE owner = 'CARCH'
- 56         AND trigger_name = 'TRG_ARCHIVE_TABLES_RETENTION_CALC'
+ 53  	 SELECT trigger_name
+ 54  	   FROM dba_triggers
+ 55  	  WHERE owner = 'CARCH'
+ 56  	    AND trigger_name = 'TRG_ARCHIVE_TABLES_RETENTION_CALC'
  57    ) LOOP
- 58      BEGIN
- 59        EXECUTE IMMEDIATE 'DROP TRIGGER CARCH.' || r.trigger_name;
- 60        DBMS_OUTPUT.PUT_LINE('Dropped TRIGGER CARCH.' || r.trigger_name);
- 61      EXCEPTION
- 62        WHEN OTHERS THEN
- 63          DBMS_OUTPUT.PUT_LINE('Could not drop TRIGGER ' ||
- 64                               r.trigger_name || ': ' || SQLERRM);
- 65      END;
+ 58  	 BEGIN
+ 59  	   EXECUTE IMMEDIATE 'DROP TRIGGER CARCH.' || r.trigger_name;
+ 60  	   DBMS_OUTPUT.PUT_LINE('Dropped TRIGGER CARCH.' || r.trigger_name);
+ 61  	 EXCEPTION
+ 62  	   WHEN OTHERS THEN
+ 63  	     DBMS_OUTPUT.PUT_LINE('Could not drop TRIGGER ' ||
+ 64  				  r.trigger_name || ': ' || SQLERRM);
+ 65  	 END;
  66    END LOOP;
  67  
  68    -- views
  69    FOR r IN (
- 70      SELECT view_name
- 71        FROM dba_views
- 72       WHERE owner = 'CARCH'
- 73         AND view_name LIKE 'TW\_ARCHIVE\_%' ESCAPE '\'
+ 70  	 SELECT view_name
+ 71  	   FROM dba_views
+ 72  	  WHERE owner = 'CARCH'
+ 73  	    AND view_name LIKE 'TW\_ARCHIVE\_%' ESCAPE '\'
  74    ) LOOP
- 75      BEGIN
- 76        EXECUTE IMMEDIATE 'DROP VIEW CARCH.' || r.view_name;
- 77        DBMS_OUTPUT.PUT_LINE('Dropped VIEW CARCH.' || r.view_name);
- 78      EXCEPTION
- 79        WHEN OTHERS THEN
- 80          DBMS_OUTPUT.PUT_LINE('Could not drop VIEW ' ||
- 81                               r.view_name || ': ' || SQLERRM);
- 82      END;
+ 75  	 BEGIN
+ 76  	   EXECUTE IMMEDIATE 'DROP VIEW CARCH.' || r.view_name;
+ 77  	   DBMS_OUTPUT.PUT_LINE('Dropped VIEW CARCH.' || r.view_name);
+ 78  	 EXCEPTION
+ 79  	   WHEN OTHERS THEN
+ 80  	     DBMS_OUTPUT.PUT_LINE('Could not drop VIEW ' ||
+ 81  				  r.view_name || ': ' || SQLERRM);
+ 82  	 END;
  83    END LOOP;
  84  
  85    -- drop orphan staging tables
  86    FOR r IN (
- 87      SELECT table_name
- 88        FROM dba_tables
- 89       WHERE owner = 'CARCH'
- 90         AND table_name LIKE 'STG\_TMP\_ARCH\_%' ESCAPE '\'
+ 87  	 SELECT table_name
+ 88  	   FROM dba_tables
+ 89  	  WHERE owner = 'CARCH'
+ 90  	    AND table_name LIKE 'STG\_TMP\_ARCH\_%' ESCAPE '\'
  91    ) LOOP
- 92      BEGIN
- 93        EXECUTE IMMEDIATE 'DROP TABLE CARCH.' || r.table_name || ' PURGE';
- 94        DBMS_OUTPUT.PUT_LINE('Dropped staging TABLE CARCH.' || r.table_name);
- 95      EXCEPTION
- 96        WHEN OTHERS THEN
- 97          DBMS_OUTPUT.PUT_LINE('Could not drop staging TABLE ' ||
- 98                               r.table_name || ': ' || SQLERRM);
- 99      END;
+ 92  	 BEGIN
+ 93  	   EXECUTE IMMEDIATE 'DROP TABLE CARCH.' || r.table_name || ' PURGE';
+ 94  	   DBMS_OUTPUT.PUT_LINE('Dropped staging TABLE CARCH.' || r.table_name);
+ 95  	 EXCEPTION
+ 96  	   WHEN OTHERS THEN
+ 97  	     DBMS_OUTPUT.PUT_LINE('Could not drop staging TABLE ' ||
+ 98  				  r.table_name || ': ' || SQLERRM);
+ 99  	 END;
 100    END LOOP;
 101  
 102    -- tables
 103    FOR r IN (
-104      SELECT table_name
-105        FROM dba_tables
-106       WHERE owner = 'CARCH'
-107         AND table_name IN (
-108           'TW_ARCHIVE_PARTITIONS',
-109           'TW_ARCHIVE_RUNS',
-110           'TW_ARCHIVE_TABLES',
-111           'MD_PROCESS_LOG',
-112            'ORDERS_ARCH_SRC',
-113            'ORDERS_SUBPART_SRC',
-114            'ORDERS_DAILY_INT_SRC',
-115            'ORDERS_ARCH_SRC_2',
-116            'ORDERS_SUBPART_SRC_2',
-117            'ORDERS_DAILY_INT_SRC_2'
-118          )
+104  	 SELECT table_name
+105  	   FROM dba_tables
+106  	  WHERE owner = 'CARCH'
+107  	    AND table_name IN (
+108  	      'TW_ARCHIVE_PARTITIONS',
+109  	      'TW_ARCHIVE_RUNS',
+110  	      'TW_ARCHIVE_TABLES',
+111  	      'MD_PROCESS_LOG',
+112  	       'ORDERS_ARCH_SRC',
+113  	       'ORDERS_SUBPART_SRC',
+114  	       'ORDERS_DAILY_INT_SRC',
+115  	       'ORDERS_ARCH_SRC_2',
+116  	       'ORDERS_SUBPART_SRC_2',
+117  	       'ORDERS_DAILY_INT_SRC_2'
+118  	     )
 119    ) LOOP
-120      BEGIN
-121        EXECUTE IMMEDIATE 'DROP TABLE CARCH.' || r.table_name || ' PURGE';
-122        DBMS_OUTPUT.PUT_LINE('Dropped TABLE CARCH.' || r.table_name);
-123      END;
+120  	 BEGIN
+121  	   EXECUTE IMMEDIATE 'DROP TABLE CARCH.' || r.table_name || ' PURGE';
+122  	   DBMS_OUTPUT.PUT_LINE('Dropped TABLE CARCH.' || r.table_name);
+123  	 END;
 124    END LOOP;
 125  
 126    -- sequence
 127    FOR r IN (
-128      SELECT sequence_name
-129        FROM dba_sequences
-130       WHERE sequence_owner = 'CARCH'
-131          AND sequence_name IN ('MD_PROCESS_LOG_SEQ', 'STG_TMP_ARCH_SEQ')
+128  	 SELECT sequence_name
+129  	   FROM dba_sequences
+130  	  WHERE sequence_owner = 'CARCH'
+131  	     AND sequence_name IN ('MD_PROCESS_LOG_SEQ', 'STG_TMP_ARCH_SEQ')
 132    ) LOOP
-133      BEGIN
-134        EXECUTE IMMEDIATE 'DROP SEQUENCE CARCH.' || r.sequence_name;
-135        DBMS_OUTPUT.PUT_LINE('Dropped SEQUENCE CARCH.' || r.sequence_name);
-136      EXCEPTION
-137        WHEN OTHERS THEN
-138          DBMS_OUTPUT.PUT_LINE('Could not drop SEQUENCE ' ||
-139                               r.sequence_name || ': ' || SQLERRM);
-140      END;
+133  	 BEGIN
+134  	   EXECUTE IMMEDIATE 'DROP SEQUENCE CARCH.' || r.sequence_name;
+135  	   DBMS_OUTPUT.PUT_LINE('Dropped SEQUENCE CARCH.' || r.sequence_name);
+136  	 EXCEPTION
+137  	   WHEN OTHERS THEN
+138  	     DBMS_OUTPUT.PUT_LINE('Could not drop SEQUENCE ' ||
+139  				  r.sequence_name || ': ' || SQLERRM);
+140  	 END;
 141    END LOOP;
 142  
 143    -- database link (must be connected as the owner to drop)
@@ -168,52 +346,51 @@ SQL> BEGIN
 153  --    EXCEPTION
 154  --      WHEN OTHERS THEN
 155  --        DBMS_OUTPUT.PUT_LINE('Could not drop DATABASE LINK ' ||
-156  --                             r.db_link || ': ' || SQLERRM);
+156  -- 			    r.db_link || ': ' || SQLERRM);
 157  --    END;
 158  --  END LOOP;
 159  END;
 160  /
-Dropped PACKAGE BODY CARCH.DAT
-Dropped PACKAGE BODY CARCH.PKG_SQL
-Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_TRUNCATE
-Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_RUNNER
-Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_QUALITY
-Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_PARTITION
-Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_LOG
-Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_IMPORT
-Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_DISCOVERY
-Dropped PACKAGE BODY CARCH.PKG_TL_LOGGING
-Dropped PACKAGE CARCH.PKG_ARCHIVE_TRUNCATE
-Dropped PACKAGE CARCH.PKG_ARCHIVE_PARTITION
-Dropped PACKAGE CARCH.PKG_SQL
-Dropped PACKAGE CARCH.PKG_ARCHIVE_LOG
-Dropped PACKAGE CARCH.DAT
-Dropped PACKAGE CARCH.PKG_ARCHIVE_IMPORT
-Dropped PACKAGE CARCH.PKG_TL_LOGGING
-Dropped PACKAGE CARCH.PKG_ARCHIVE_DISCOVERY
-Dropped PACKAGE CARCH.PKG_ARCHIVE_QUALITY
-Dropped PACKAGE CARCH.PKG_ARCHIVE_RUNNER
-Dropped FUNCTION CARCH.FN_ARCHIVE_HIGH_VALUE_DATE
-Dropped FUNCTION CARCH.FN_CALCULATE_RETENTION_RULE
-Dropped FUNCTION CARCH.FN_VALIDATE_PRESERVE_RULE
-Dropped VIEW CARCH.TW_ARCHIVE_DISCOVERY_PARTITIONS_VW
-Dropped VIEW CARCH.TW_ARCHIVE_IMPORT_PARTITIONS_VW
-Dropped VIEW CARCH.TW_ARCHIVE_QUALITY_PARTITIONS_VW
-Dropped VIEW CARCH.TW_ARCHIVE_SOURCE_PARTITIONS_VW
-Dropped VIEW CARCH.TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
-Dropped TABLE CARCH.MD_PROCESS_LOG
-Dropped TABLE CARCH.ORDERS_ARCH_SRC
-Dropped TABLE CARCH.ORDERS_ARCH_SRC_2
-Dropped TABLE CARCH.ORDERS_DAILY_INT_SRC
-Dropped TABLE CARCH.ORDERS_DAILY_INT_SRC_2
-Dropped TABLE CARCH.ORDERS_SUBPART_SRC
-Dropped TABLE CARCH.ORDERS_SUBPART_SRC_2
-Dropped TABLE CARCH.TW_ARCHIVE_PARTITIONS
-Dropped TABLE CARCH.TW_ARCHIVE_RUNS
-Dropped TABLE CARCH.TW_ARCHIVE_TABLES
-Dropped SEQUENCE CARCH.MD_PROCESS_LOG_SEQ
-Dropped SEQUENCE CARCH.STG_TMP_ARCH_SEQ
-
+Dropped PACKAGE BODY CARCH.DAT                                                  
+Dropped PACKAGE BODY CARCH.PKG_SQL                                              
+Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_TRUNCATE                                 
+Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_RUNNER                                   
+Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_QUALITY                                  
+Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_PARTITION                                
+Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_LOG                                      
+Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_IMPORT                                   
+Dropped PACKAGE BODY CARCH.PKG_ARCHIVE_DISCOVERY                                
+Dropped PACKAGE BODY CARCH.PKG_TL_LOGGING                                       
+Dropped PACKAGE CARCH.PKG_ARCHIVE_TRUNCATE                                      
+Dropped PACKAGE CARCH.PKG_ARCHIVE_PARTITION                                     
+Dropped PACKAGE CARCH.PKG_SQL                                                   
+Dropped PACKAGE CARCH.PKG_ARCHIVE_LOG                                           
+Dropped PACKAGE CARCH.DAT                                                       
+Dropped PACKAGE CARCH.PKG_ARCHIVE_IMPORT                                        
+Dropped PACKAGE CARCH.PKG_TL_LOGGING                                            
+Dropped PACKAGE CARCH.PKG_ARCHIVE_DISCOVERY                                     
+Dropped PACKAGE CARCH.PKG_ARCHIVE_QUALITY                                       
+Dropped PACKAGE CARCH.PKG_ARCHIVE_RUNNER                                        
+Dropped FUNCTION CARCH.FN_ARCHIVE_HIGH_VALUE_DATE                               
+Dropped FUNCTION CARCH.FN_CALCULATE_RETENTION_RULE                              
+Dropped FUNCTION CARCH.FN_VALIDATE_PRESERVE_RULE                                
+Dropped VIEW CARCH.TW_ARCHIVE_DISCOVERY_PARTITIONS_VW                           
+Dropped VIEW CARCH.TW_ARCHIVE_IMPORT_PARTITIONS_VW                              
+Dropped VIEW CARCH.TW_ARCHIVE_QUALITY_PARTITIONS_VW                             
+Dropped VIEW CARCH.TW_ARCHIVE_SOURCE_PARTITIONS_VW                              
+Dropped VIEW CARCH.TW_ARCHIVE_TRUNCATE_PARTITIONS_VW                            
+Dropped TABLE CARCH.MD_PROCESS_LOG                                              
+Dropped TABLE CARCH.ORDERS_ARCH_SRC                                             
+Dropped TABLE CARCH.ORDERS_ARCH_SRC_2                                           
+Dropped TABLE CARCH.ORDERS_DAILY_INT_SRC                                        
+Dropped TABLE CARCH.ORDERS_DAILY_INT_SRC_2                                      
+Dropped TABLE CARCH.ORDERS_SUBPART_SRC                                          
+Dropped TABLE CARCH.ORDERS_SUBPART_SRC_2                                        
+Dropped TABLE CARCH.TW_ARCHIVE_PARTITIONS                                       
+Dropped TABLE CARCH.TW_ARCHIVE_RUNS                                             
+Dropped TABLE CARCH.TW_ARCHIVE_TABLES                                           
+Dropped SEQUENCE CARCH.MD_PROCESS_LOG_SEQ                                       
+Dropped SEQUENCE CARCH.STG_TMP_ARCH_SEQ                                         
 
 PL/SQL procedure successfully completed.
 
@@ -232,37 +409,36 @@ SQL> PROMPT ============================================================
 SQL> 
 SQL> BEGIN
   2    FOR r IN (
-  3      SELECT owner, table_name, grantee, privilege
-  4        FROM dba_tab_privs
-  5       WHERE owner = 'CLIENT1'
-  6         AND table_name IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
-  7         AND grantee IN ('CAGENT1', 'CARCH')
+  3  	 SELECT owner, table_name, grantee, privilege
+  4  	   FROM dba_tab_privs
+  5  	  WHERE owner = 'CLIENT1'
+  6  	    AND table_name IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
+  7  	    AND grantee IN ('CAGENT1', 'CARCH')
   8    ) LOOP
-  9      BEGIN
- 10        EXECUTE IMMEDIATE 'REVOKE ' || r.privilege || ' ON CLIENT1.' ||
- 11                          r.table_name || ' FROM ' || r.grantee;
- 12        DBMS_OUTPUT.PUT_LINE('Revoked ' || r.privilege || ' ON CLIENT1.' ||
- 13                             r.table_name || ' FROM ' || r.grantee);
- 14      EXCEPTION
- 15        WHEN OTHERS THEN
- 16          DBMS_OUTPUT.PUT_LINE('Could not revoke: ' || SQLERRM);
- 17      END;
+  9  	 BEGIN
+ 10  	   EXECUTE IMMEDIATE 'REVOKE ' || r.privilege || ' ON CLIENT1.' ||
+ 11  			     r.table_name || ' FROM ' || r.grantee;
+ 12  	   DBMS_OUTPUT.PUT_LINE('Revoked ' || r.privilege || ' ON CLIENT1.' ||
+ 13  				r.table_name || ' FROM ' || r.grantee);
+ 14  	 EXCEPTION
+ 15  	   WHEN OTHERS THEN
+ 16  	     DBMS_OUTPUT.PUT_LINE('Could not revoke: ' || SQLERRM);
+ 17  	 END;
  18    END LOOP;
  19  END;
  20  /
-Revoked ALTER ON CLIENT1.ORDERS_ARCH_SRC FROM CAGENT1
-Revoked ALTER ON CLIENT1.ORDERS_SUBPART_SRC FROM CAGENT1
-Revoked ALTER ON CLIENT1.ORDERS_DAILY_INT_SRC FROM CAGENT1
-Revoked DELETE ON CLIENT1.ORDERS_ARCH_SRC FROM CAGENT1
-Revoked DELETE ON CLIENT1.ORDERS_SUBPART_SRC FROM CAGENT1
-Revoked DELETE ON CLIENT1.ORDERS_DAILY_INT_SRC FROM CAGENT1
-Revoked SELECT ON CLIENT1.ORDERS_ARCH_SRC FROM CAGENT1
-Revoked SELECT ON CLIENT1.ORDERS_SUBPART_SRC FROM CAGENT1
-Revoked SELECT ON CLIENT1.ORDERS_DAILY_INT_SRC FROM CAGENT1
-Revoked SELECT ON CLIENT1.ORDERS_ARCH_SRC FROM CARCH
-Revoked SELECT ON CLIENT1.ORDERS_SUBPART_SRC FROM CARCH
-Revoked SELECT ON CLIENT1.ORDERS_DAILY_INT_SRC FROM CARCH
-
+Revoked ALTER ON CLIENT1.ORDERS_ARCH_SRC FROM CAGENT1                           
+Revoked ALTER ON CLIENT1.ORDERS_SUBPART_SRC FROM CAGENT1                        
+Revoked ALTER ON CLIENT1.ORDERS_DAILY_INT_SRC FROM CAGENT1                      
+Revoked DELETE ON CLIENT1.ORDERS_ARCH_SRC FROM CAGENT1                          
+Revoked DELETE ON CLIENT1.ORDERS_SUBPART_SRC FROM CAGENT1                       
+Revoked DELETE ON CLIENT1.ORDERS_DAILY_INT_SRC FROM CAGENT1                     
+Revoked SELECT ON CLIENT1.ORDERS_ARCH_SRC FROM CAGENT1                          
+Revoked SELECT ON CLIENT1.ORDERS_SUBPART_SRC FROM CAGENT1                       
+Revoked SELECT ON CLIENT1.ORDERS_DAILY_INT_SRC FROM CAGENT1                     
+Revoked SELECT ON CLIENT1.ORDERS_ARCH_SRC FROM CARCH                            
+Revoked SELECT ON CLIENT1.ORDERS_SUBPART_SRC FROM CARCH                         
+Revoked SELECT ON CLIENT1.ORDERS_DAILY_INT_SRC FROM CARCH                       
 
 PL/SQL procedure successfully completed.
 
@@ -281,37 +457,36 @@ SQL> PROMPT ============================================================
 SQL> 
 SQL> BEGIN
   2    FOR r IN (
-  3      SELECT owner, table_name, grantee, privilege
-  4        FROM dba_tab_privs
-  5       WHERE owner = 'CLIENT2'
-  6         AND table_name IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
-  7         AND grantee IN ('CAGENT1', 'CARCH')
+  3  	 SELECT owner, table_name, grantee, privilege
+  4  	   FROM dba_tab_privs
+  5  	  WHERE owner = 'CLIENT2'
+  6  	    AND table_name IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
+  7  	    AND grantee IN ('CAGENT1', 'CARCH')
   8    ) LOOP
-  9      BEGIN
- 10        EXECUTE IMMEDIATE 'REVOKE ' || r.privilege || ' ON CLIENT2.' ||
- 11                          r.table_name || ' FROM ' || r.grantee;
- 12        DBMS_OUTPUT.PUT_LINE('Revoked ' || r.privilege || ' ON CLIENT2.' ||
- 13                             r.table_name || ' FROM ' || r.grantee);
- 14      EXCEPTION
- 15        WHEN OTHERS THEN
- 16          DBMS_OUTPUT.PUT_LINE('Could not revoke: ' || SQLERRM);
- 17      END;
+  9  	 BEGIN
+ 10  	   EXECUTE IMMEDIATE 'REVOKE ' || r.privilege || ' ON CLIENT2.' ||
+ 11  			     r.table_name || ' FROM ' || r.grantee;
+ 12  	   DBMS_OUTPUT.PUT_LINE('Revoked ' || r.privilege || ' ON CLIENT2.' ||
+ 13  				r.table_name || ' FROM ' || r.grantee);
+ 14  	 EXCEPTION
+ 15  	   WHEN OTHERS THEN
+ 16  	     DBMS_OUTPUT.PUT_LINE('Could not revoke: ' || SQLERRM);
+ 17  	 END;
  18    END LOOP;
  19  END;
  20  /
-Revoked ALTER ON CLIENT2.ORDERS_ARCH_SRC FROM CAGENT1
-Revoked ALTER ON CLIENT2.ORDERS_DAILY_INT_SRC FROM CAGENT1
-Revoked ALTER ON CLIENT2.ORDERS_SUBPART_SRC FROM CAGENT1
-Revoked DELETE ON CLIENT2.ORDERS_ARCH_SRC FROM CAGENT1
-Revoked DELETE ON CLIENT2.ORDERS_DAILY_INT_SRC FROM CAGENT1
-Revoked DELETE ON CLIENT2.ORDERS_SUBPART_SRC FROM CAGENT1
-Revoked SELECT ON CLIENT2.ORDERS_ARCH_SRC FROM CAGENT1
-Revoked SELECT ON CLIENT2.ORDERS_DAILY_INT_SRC FROM CAGENT1
-Revoked SELECT ON CLIENT2.ORDERS_SUBPART_SRC FROM CAGENT1
-Revoked SELECT ON CLIENT2.ORDERS_ARCH_SRC FROM CARCH
-Revoked SELECT ON CLIENT2.ORDERS_DAILY_INT_SRC FROM CARCH
-Revoked SELECT ON CLIENT2.ORDERS_SUBPART_SRC FROM CARCH
-
+Revoked ALTER ON CLIENT2.ORDERS_ARCH_SRC FROM CAGENT1                           
+Revoked ALTER ON CLIENT2.ORDERS_DAILY_INT_SRC FROM CAGENT1                      
+Revoked ALTER ON CLIENT2.ORDERS_SUBPART_SRC FROM CAGENT1                        
+Revoked DELETE ON CLIENT2.ORDERS_ARCH_SRC FROM CAGENT1                          
+Revoked DELETE ON CLIENT2.ORDERS_DAILY_INT_SRC FROM CAGENT1                     
+Revoked DELETE ON CLIENT2.ORDERS_SUBPART_SRC FROM CAGENT1                       
+Revoked SELECT ON CLIENT2.ORDERS_ARCH_SRC FROM CAGENT1                          
+Revoked SELECT ON CLIENT2.ORDERS_DAILY_INT_SRC FROM CAGENT1                     
+Revoked SELECT ON CLIENT2.ORDERS_SUBPART_SRC FROM CAGENT1                       
+Revoked SELECT ON CLIENT2.ORDERS_ARCH_SRC FROM CARCH                            
+Revoked SELECT ON CLIENT2.ORDERS_DAILY_INT_SRC FROM CARCH                       
+Revoked SELECT ON CLIENT2.ORDERS_SUBPART_SRC FROM CARCH                         
 
 PL/SQL procedure successfully completed.
 
@@ -330,26 +505,25 @@ SQL> PROMPT ============================================================
 SQL> 
 SQL> BEGIN
   2    FOR r IN (
-  3      SELECT table_name
-  4        FROM dba_tables
-  5       WHERE owner = 'CLIENT1'
-  6         AND table_name IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
+  3  	 SELECT table_name
+  4  	   FROM dba_tables
+  5  	  WHERE owner = 'CLIENT1'
+  6  	    AND table_name IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
   7    ) LOOP
-  8      BEGIN
-  9        EXECUTE IMMEDIATE 'DROP TABLE CLIENT1.' || r.table_name || ' PURGE';
- 10        DBMS_OUTPUT.PUT_LINE('Dropped TABLE CLIENT1.' || r.table_name);
- 11      EXCEPTION
- 12        WHEN OTHERS THEN
- 13          DBMS_OUTPUT.PUT_LINE('Could not drop TABLE ' ||
- 14                               r.table_name || ': ' || SQLERRM);
- 15      END;
+  8  	 BEGIN
+  9  	   EXECUTE IMMEDIATE 'DROP TABLE CLIENT1.' || r.table_name || ' PURGE';
+ 10  	   DBMS_OUTPUT.PUT_LINE('Dropped TABLE CLIENT1.' || r.table_name);
+ 11  	 EXCEPTION
+ 12  	   WHEN OTHERS THEN
+ 13  	     DBMS_OUTPUT.PUT_LINE('Could not drop TABLE ' ||
+ 14  				  r.table_name || ': ' || SQLERRM);
+ 15  	 END;
  16    END LOOP;
  17  END;
  18  /
-Dropped TABLE CLIENT1.ORDERS_ARCH_SRC
-Dropped TABLE CLIENT1.ORDERS_DAILY_INT_SRC
-Dropped TABLE CLIENT1.ORDERS_SUBPART_SRC
-
+Dropped TABLE CLIENT1.ORDERS_ARCH_SRC                                           
+Dropped TABLE CLIENT1.ORDERS_DAILY_INT_SRC                                      
+Dropped TABLE CLIENT1.ORDERS_SUBPART_SRC                                        
 
 PL/SQL procedure successfully completed.
 
@@ -368,26 +542,25 @@ SQL> PROMPT ============================================================
 SQL> 
 SQL> BEGIN
   2    FOR r IN (
-  3      SELECT table_name
-  4        FROM dba_tables
-  5       WHERE owner = 'CLIENT2'
-  6         AND table_name IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
+  3  	 SELECT table_name
+  4  	   FROM dba_tables
+  5  	  WHERE owner = 'CLIENT2'
+  6  	    AND table_name IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
   7    ) LOOP
-  8      BEGIN
-  9        EXECUTE IMMEDIATE 'DROP TABLE CLIENT2.' || r.table_name || ' PURGE';
- 10        DBMS_OUTPUT.PUT_LINE('Dropped TABLE CLIENT2.' || r.table_name);
- 11      EXCEPTION
- 12        WHEN OTHERS THEN
- 13          DBMS_OUTPUT.PUT_LINE('Could not drop TABLE ' ||
- 14                               r.table_name || ': ' || SQLERRM);
- 15      END;
+  8  	 BEGIN
+  9  	   EXECUTE IMMEDIATE 'DROP TABLE CLIENT2.' || r.table_name || ' PURGE';
+ 10  	   DBMS_OUTPUT.PUT_LINE('Dropped TABLE CLIENT2.' || r.table_name);
+ 11  	 EXCEPTION
+ 12  	   WHEN OTHERS THEN
+ 13  	     DBMS_OUTPUT.PUT_LINE('Could not drop TABLE ' ||
+ 14  				  r.table_name || ': ' || SQLERRM);
+ 15  	 END;
  16    END LOOP;
  17  END;
  18  /
-Dropped TABLE CLIENT2.ORDERS_ARCH_SRC
-Dropped TABLE CLIENT2.ORDERS_DAILY_INT_SRC
-Dropped TABLE CLIENT2.ORDERS_SUBPART_SRC
-
+Dropped TABLE CLIENT2.ORDERS_ARCH_SRC                                           
+Dropped TABLE CLIENT2.ORDERS_DAILY_INT_SRC                                      
+Dropped TABLE CLIENT2.ORDERS_SUBPART_SRC                                        
 
 PL/SQL procedure successfully completed.
 
@@ -406,18 +579,18 @@ SQL> PROMPT ============================================================
 SQL> 
 SQL> BEGIN
   2    FOR r IN (
-  3      SELECT owner, table_name, grantee, privilege
-  4        FROM dba_tab_privs
-  5       WHERE owner = 'CAGENT1'
-  6         AND grantee = 'CARCH'
+  3  	 SELECT owner, table_name, grantee, privilege
+  4  	   FROM dba_tab_privs
+  5  	  WHERE owner = 'CAGENT1'
+  6  	    AND grantee = 'CARCH'
   7    ) LOOP
-  8      BEGIN
-  9        EXECUTE IMMEDIATE 'REVOKE ' || r.privilege || ' ON ' || r.owner || '.' ||
- 10                          r.table_name || ' FROM ' || r.grantee;
- 11      EXCEPTION
- 12        WHEN OTHERS THEN
- 13          NULL;
- 14      END;
+  8  	 BEGIN
+  9  	   EXECUTE IMMEDIATE 'REVOKE ' || r.privilege || ' ON ' || r.owner || '.' ||
+ 10  			     r.table_name || ' FROM ' || r.grantee;
+ 11  	 EXCEPTION
+ 12  	   WHEN OTHERS THEN
+ 13  	     NULL;
+ 14  	 END;
  15    END LOOP;
  16  END;
  17  /
@@ -427,23 +600,22 @@ PL/SQL procedure successfully completed.
 SQL> 
 SQL> BEGIN
   2    FOR r IN (
-  3      SELECT grantee
-  4        FROM dba_sys_privs
-  5       WHERE grantee = 'CAGENT1'
-  6         AND privilege = 'DROP ANY TABLE'
+  3  	 SELECT grantee
+  4  	   FROM dba_sys_privs
+  5  	  WHERE grantee = 'CAGENT1'
+  6  	    AND privilege = 'DROP ANY TABLE'
   7    ) LOOP
-  8      BEGIN
-  9        EXECUTE IMMEDIATE 'REVOKE DROP ANY TABLE FROM CAGENT1';
- 10        DBMS_OUTPUT.PUT_LINE('Revoked DROP ANY TABLE FROM CAGENT1');
- 11      EXCEPTION
- 12        WHEN OTHERS THEN
- 13          DBMS_OUTPUT.PUT_LINE('Could not revoke DROP ANY TABLE: ' || SQLERRM);
- 14      END;
+  8  	 BEGIN
+  9  	   EXECUTE IMMEDIATE 'REVOKE DROP ANY TABLE FROM CAGENT1';
+ 10  	   DBMS_OUTPUT.PUT_LINE('Revoked DROP ANY TABLE FROM CAGENT1');
+ 11  	 EXCEPTION
+ 12  	   WHEN OTHERS THEN
+ 13  	     DBMS_OUTPUT.PUT_LINE('Could not revoke DROP ANY TABLE: ' || SQLERRM);
+ 14  	 END;
  15    END LOOP;
  16  END;
  17  /
-Revoked DROP ANY TABLE FROM CAGENT1
-
+Revoked DROP ANY TABLE FROM CAGENT1                                             
 
 PL/SQL procedure successfully completed.
 
@@ -463,69 +635,68 @@ SQL>
 SQL> BEGIN
   2    -- package body + spec
   3    FOR r IN (
-  4      SELECT object_name, object_type
-  5        FROM dba_objects
-  6       WHERE owner = 'CAGENT1'
-  7         AND object_type IN ('PACKAGE', 'PACKAGE BODY')
-  8         AND object_name = 'PKG_ARCHIVE_AGENT'
-  9       ORDER BY object_type DESC
+  4  	 SELECT object_name, object_type
+  5  	   FROM dba_objects
+  6  	  WHERE owner = 'CAGENT1'
+  7  	    AND object_type IN ('PACKAGE', 'PACKAGE BODY')
+  8  	    AND object_name = 'PKG_ARCHIVE_AGENT'
+  9  	  ORDER BY object_type DESC
  10    ) LOOP
- 11      BEGIN
- 12        EXECUTE IMMEDIATE 'DROP ' || r.object_type || ' CAGENT1.' || r.object_name;
- 13        DBMS_OUTPUT.PUT_LINE('Dropped ' || r.object_type || ' CAGENT1.' || r.object_name);
- 14      EXCEPTION
- 15        WHEN OTHERS THEN
- 16          DBMS_OUTPUT.PUT_LINE('Could not drop ' || r.object_type || ' ' ||
- 17                               r.object_name || ': ' || SQLERRM);
- 18      END;
+ 11  	 BEGIN
+ 12  	   EXECUTE IMMEDIATE 'DROP ' || r.object_type || ' CAGENT1.' || r.object_name;
+ 13  	   DBMS_OUTPUT.PUT_LINE('Dropped ' || r.object_type || ' CAGENT1.' || r.object_name);
+ 14  	 EXCEPTION
+ 15  	   WHEN OTHERS THEN
+ 16  	     DBMS_OUTPUT.PUT_LINE('Could not drop ' || r.object_type || ' ' ||
+ 17  				  r.object_name || ': ' || SQLERRM);
+ 18  	 END;
  19    END LOOP;
  20  
  21    -- view
  22    FOR r IN (
- 23      SELECT view_name
- 24        FROM dba_views
- 25       WHERE owner = 'CAGENT1'
- 26         AND view_name = 'ARCHIVE_PARTITION_INFO_VW'
+ 23  	 SELECT view_name
+ 24  	   FROM dba_views
+ 25  	  WHERE owner = 'CAGENT1'
+ 26  	    AND view_name = 'ARCHIVE_PARTITION_INFO_VW'
  27    ) LOOP
- 28      BEGIN
- 29        EXECUTE IMMEDIATE 'DROP VIEW CAGENT1.' || r.view_name;
- 30        DBMS_OUTPUT.PUT_LINE('Dropped VIEW CAGENT1.' || r.view_name);
- 31      EXCEPTION
- 32        WHEN OTHERS THEN
- 33          DBMS_OUTPUT.PUT_LINE('Could not drop VIEW ' ||
- 34                               r.view_name || ': ' || SQLERRM);
- 35      END;
+ 28  	 BEGIN
+ 29  	   EXECUTE IMMEDIATE 'DROP VIEW CAGENT1.' || r.view_name;
+ 30  	   DBMS_OUTPUT.PUT_LINE('Dropped VIEW CAGENT1.' || r.view_name);
+ 31  	 EXCEPTION
+ 32  	   WHEN OTHERS THEN
+ 33  	     DBMS_OUTPUT.PUT_LINE('Could not drop VIEW ' ||
+ 34  				  r.view_name || ': ' || SQLERRM);
+ 35  	 END;
  36    END LOOP;
  37  
  38    -- types (tab first, then obj)
  39    FOR r IN (
- 40      SELECT object_name
- 41        FROM dba_objects
- 42       WHERE owner = 'CAGENT1'
- 43         AND object_type = 'TYPE'
- 44         AND object_name IN (
- 45           'ARCHIVE_PARTITION_INFO_TAB',
- 46           'ARCHIVE_PARTITION_INFO_OBJ'
- 47         )
- 48       ORDER BY object_name DESC
+ 40  	 SELECT object_name
+ 41  	   FROM dba_objects
+ 42  	  WHERE owner = 'CAGENT1'
+ 43  	    AND object_type = 'TYPE'
+ 44  	    AND object_name IN (
+ 45  	      'ARCHIVE_PARTITION_INFO_TAB',
+ 46  	      'ARCHIVE_PARTITION_INFO_OBJ'
+ 47  	    )
+ 48  	  ORDER BY object_name DESC
  49    ) LOOP
- 50      BEGIN
- 51        EXECUTE IMMEDIATE 'DROP TYPE CAGENT1.' || r.object_name;
- 52        DBMS_OUTPUT.PUT_LINE('Dropped TYPE CAGENT1.' || r.object_name);
- 53      EXCEPTION
- 54        WHEN OTHERS THEN
- 55          DBMS_OUTPUT.PUT_LINE('Could not drop TYPE ' ||
- 56                               r.object_name || ': ' || SQLERRM);
- 57      END;
+ 50  	 BEGIN
+ 51  	   EXECUTE IMMEDIATE 'DROP TYPE CAGENT1.' || r.object_name;
+ 52  	   DBMS_OUTPUT.PUT_LINE('Dropped TYPE CAGENT1.' || r.object_name);
+ 53  	 EXCEPTION
+ 54  	   WHEN OTHERS THEN
+ 55  	     DBMS_OUTPUT.PUT_LINE('Could not drop TYPE ' ||
+ 56  				  r.object_name || ': ' || SQLERRM);
+ 57  	 END;
  58    END LOOP;
  59  END;
  60  /
-Dropped PACKAGE BODY CAGENT1.PKG_ARCHIVE_AGENT
-Dropped PACKAGE CAGENT1.PKG_ARCHIVE_AGENT
-Dropped VIEW CAGENT1.ARCHIVE_PARTITION_INFO_VW
-Dropped TYPE CAGENT1.ARCHIVE_PARTITION_INFO_TAB
-Dropped TYPE CAGENT1.ARCHIVE_PARTITION_INFO_OBJ
-
+Dropped PACKAGE BODY CAGENT1.PKG_ARCHIVE_AGENT                                  
+Dropped PACKAGE CAGENT1.PKG_ARCHIVE_AGENT                                       
+Dropped VIEW CAGENT1.ARCHIVE_PARTITION_INFO_VW                                  
+Dropped TYPE CAGENT1.ARCHIVE_PARTITION_INFO_TAB                                 
+Dropped TYPE CAGENT1.ARCHIVE_PARTITION_INFO_OBJ                                 
 
 PL/SQL procedure successfully completed.
 
@@ -554,61 +725,66 @@ SQL> PROMPT ============================================================
 ============================================================
 SQL> BEGIN
   2    FOR r IN (
-  3      SELECT owner, object_type, COUNT(*) AS cnt
-  4        FROM dba_objects
-  5       WHERE owner IN ('CARCH','CAGENT1','CLIENT1','CLIENT2')
-  6         AND object_name NOT LIKE 'SYS_P%'
-  7         AND object_name NOT LIKE 'TMP$%'
-  8       GROUP BY owner, object_type
-  9       ORDER BY owner, object_type
+  3  	 SELECT owner, object_type, COUNT(*) AS cnt
+  4  	   FROM dba_objects
+  5  	  WHERE owner IN ('CARCH','CAGENT1','CLIENT1','CLIENT2','CREPL')
+  6  	    AND object_name NOT LIKE 'SYS_P%'
+  7  	    AND object_name NOT LIKE 'TMP$%'
+  8  	  GROUP BY owner, object_type
+  9  	  ORDER BY owner, object_type
  10    ) LOOP
- 11      DBMS_OUTPUT.PUT_LINE('  ' || RPAD(r.owner, 10) || RPAD(r.object_type, 20) || r.cnt);
+ 11  	 DBMS_OUTPUT.PUT_LINE('  ' || RPAD(r.owner, 10) || RPAD(r.object_type, 20) || r.cnt);
  12    END LOOP;
  13  
  14    FOR r IN (
- 15      SELECT 'CARCH' AS owner, COUNT(*) AS cnt FROM dba_sequences WHERE sequence_owner = 'CARCH'
- 16        AND sequence_name NOT LIKE 'ISEQ$$_%'
+ 15  	 SELECT 'CARCH' AS owner, COUNT(*) AS cnt FROM dba_sequences WHERE sequence_owner = 'CARCH'
+ 16  	   AND sequence_name NOT LIKE 'ISEQ$$_%'
  17    ) LOOP
- 18      IF r.cnt > 0 THEN
- 19        DBMS_OUTPUT.PUT_LINE('  SEQUENCE     ' || r.cnt || ' remaining in CARCH');
- 20      END IF;
+ 18  	 IF r.cnt > 0 THEN
+ 19  	   DBMS_OUTPUT.PUT_LINE('  SEQUENCE	' || r.cnt || ' remaining in CARCH');
+ 20  	 END IF;
  21    END LOOP;
  22  END;
  23  /
-CARCH     DATABASE LINK       1
-
+CARCH     DATABASE LINK       1                                                 
 
 PL/SQL procedure successfully completed.
 
 SQL> 
 SQL> SELECT 'CARCH: ' || COUNT(*) || ' objects remaining' AS summary FROM dba_objects
   2   WHERE owner = 'CARCH'
-  3     AND object_name NOT LIKE 'SYS_P%'
-  4     AND object_name NOT LIKE 'TMP$%'
+  3  	AND object_name NOT LIKE 'SYS_P%'
+  4  	AND object_name NOT LIKE 'TMP$%'
   5  UNION ALL
   6  SELECT 'CAGENT1: ' || COUNT(*) || ' objects remaining' FROM dba_objects
   7   WHERE owner = 'CAGENT1'
-  8     AND object_name NOT LIKE 'SYS_P%'
-  9     AND object_name NOT LIKE 'TMP$%'
+  8  	AND object_name NOT LIKE 'SYS_P%'
+  9  	AND object_name NOT LIKE 'TMP$%'
  10  UNION ALL
  11  SELECT 'CLIENT1: ' || COUNT(*) || ' objects remaining' FROM dba_objects
  12   WHERE owner = 'CLIENT1'
- 13     AND object_name NOT LIKE 'SYS_P%'
- 14     AND object_name NOT LIKE 'TMP$%'
+ 13  	AND object_name NOT LIKE 'SYS_P%'
+ 14  	AND object_name NOT LIKE 'TMP$%'
  15  UNION ALL
  16  SELECT 'CLIENT2: ' || COUNT(*) || ' objects remaining' FROM dba_objects
  17   WHERE owner = 'CLIENT2'
- 18     AND object_name NOT LIKE 'SYS_P%'
- 19     AND object_name NOT LIKE 'TMP$%';
+ 18  	AND object_name NOT LIKE 'SYS_P%'
+ 19  	AND object_name NOT LIKE 'TMP$%'
+ 20  UNION ALL
+ 21  SELECT 'CREPL: ' || COUNT(*) || ' objects remaining' FROM dba_objects
+ 22   WHERE owner = 'CREPL'
+ 23  	AND object_name NOT LIKE 'SYS_P%'
+ 24  	AND object_name NOT LIKE 'TMP$%';
 
-SUMMARY                                                            
--------------------------------------------------------------------
-CARCH: 1 objects remaining
-CAGENT1: 0 objects remaining
-CLIENT1: 0 objects remaining
-CLIENT2: 0 objects remaining
+SUMMARY                                                                         
+-------------------------------------------------------------------             
+CARCH: 1 objects remaining                                                      
+CAGENT1: 0 objects remaining                                                    
+CLIENT1: 0 objects remaining                                                    
+CLIENT2: 0 objects remaining                                                    
+CREPL: 0 objects remaining                                                      
 
-4 rows selected. 
+5 rows selected.
 
 SQL> 
 SQL> SPOOL OFF

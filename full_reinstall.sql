@@ -13,6 +13,7 @@ PROMPT   - Run drop_all_schemas.sql first for a clean slate
 PROMPT   - This script connects as SYS for most steps, then as CARCH
 PROMPT     for DB link creation (uses CarchDev2026_42 convention)
 PROMPT   - CLIENT2 is created automatically if not present
+PROMPT   - CREPL is created automatically if not present
 PROMPT ============================================================
 
 SPOOL full_reinstall.log
@@ -35,6 +36,36 @@ BEGIN
     DBMS_OUTPUT.PUT_LINE('CLIENT2 user created');
   ELSE
     DBMS_OUTPUT.PUT_LINE('CLIENT2 user already exists');
+  END IF;
+END;
+/
+
+PROMPT
+PROMPT ============================================================
+PROMPT Step 0b: Creating CREPL user if not exists
+PROMPT ============================================================
+
+DECLARE
+  l_cnt NUMBER;
+BEGIN
+  SELECT COUNT(*) INTO l_cnt FROM dba_users WHERE username = 'CREPL';
+  IF l_cnt = 0 THEN
+    EXECUTE IMMEDIATE 'CREATE USER CREPL IDENTIFIED BY CreplDev2026_42' ||
+                      ' DEFAULT TABLESPACE USERS QUOTA UNLIMITED ON USERS';
+    EXECUTE IMMEDIATE 'GRANT CONNECT TO CREPL';
+    EXECUTE IMMEDIATE 'GRANT CREATE TABLE TO CREPL';
+    EXECUTE IMMEDIATE 'GRANT CREATE VIEW TO CREPL';
+    EXECUTE IMMEDIATE 'GRANT CREATE SYNONYM TO CREPL';
+    EXECUTE IMMEDIATE 'GRANT CREATE PROCEDURE TO CREPL';
+    EXECUTE IMMEDIATE 'GRANT CREATE SESSION TO CREPL';
+    DBMS_OUTPUT.PUT_LINE('CREPL user created');
+  ELSE
+    DBMS_OUTPUT.PUT_LINE('CREPL user already exists');
+    EXECUTE IMMEDIATE 'GRANT CREATE TABLE TO CREPL';
+    EXECUTE IMMEDIATE 'GRANT CREATE VIEW TO CREPL';
+    EXECUTE IMMEDIATE 'GRANT CREATE SYNONYM TO CREPL';
+    EXECUTE IMMEDIATE 'GRANT CREATE PROCEDURE TO CREPL';
+    EXECUTE IMMEDIATE 'GRANT CREATE SESSION TO CREPL';
   END IF;
 END;
 /
@@ -261,6 +292,45 @@ ALTER SESSION SET CURRENT_SCHEMA = CARCH;
 
 PROMPT
 PROMPT ============================================================
+PROMPT Step 10: Granting CARCH layer 2 access to CREPL
+PROMPT ============================================================
+
+GRANT SELECT ON TW_ARCHIVE_TABLES TO CREPL;
+GRANT SELECT ON TW_ARCHIVE_PARTITIONS TO CREPL;
+GRANT SELECT ON ORDERS_ARCH_SRC TO CREPL;
+GRANT SELECT ON ORDERS_SUBPART_SRC TO CREPL;
+
+PROMPT
+PROMPT ============================================================
+PROMPT Step 11: Installing CREPL layer 3 replica core
+PROMPT ============================================================
+
+ALTER SESSION SET CURRENT_SCHEMA = CREPL;
+
+@deploy/layer3/install_layer3_replica.sql
+
+PROMPT
+PROMPT ============================================================
+PROMPT Step 12: Installing CREPL replica target tables
+PROMPT ============================================================
+
+ALTER SESSION SET CURRENT_SCHEMA = CREPL;
+
+@deploy/layer3/install_orders_replica_target.sql
+@deploy/layer3/install_orders_subpart_replica_target.sql
+
+PROMPT
+PROMPT ============================================================
+PROMPT Step 13: Seeding CREPL replica metadata
+PROMPT ============================================================
+
+ALTER SESSION SET CURRENT_SCHEMA = CREPL;
+
+@deploy/layer3/seed_carch_local_replica.sql
+@deploy/layer3/seed_carch_local_replica_subpart.sql
+
+PROMPT
+PROMPT ============================================================
 PROMPT Full reinstall completed.
 PROMPT Check full_reinstall.log for details.
 PROMPT ============================================================
@@ -273,7 +343,7 @@ BEGIN
   FOR r IN (
     SELECT owner, object_type, COUNT(*) AS cnt
       FROM dba_objects
-     WHERE owner IN ('CARCH','CAGENT1','CLIENT1','CLIENT2')
+     WHERE owner IN ('CARCH','CAGENT1','CLIENT1','CLIENT2','CREPL')
        AND object_name NOT LIKE 'SYS_P%'
        AND object_name NOT LIKE 'TMP$%'
      GROUP BY owner, object_type
@@ -299,7 +369,9 @@ SELECT 'CAGENT1: ' || COUNT(*) || ' objects installed' FROM dba_objects WHERE ow
 UNION ALL
 SELECT 'CLIENT1: ' || COUNT(*) || ' objects installed' FROM dba_objects WHERE owner = 'CLIENT1' AND object_name NOT LIKE 'SYS_P%' AND object_name NOT LIKE 'TMP$%'
 UNION ALL
-SELECT 'CLIENT2: ' || COUNT(*) || ' objects installed' FROM dba_objects WHERE owner = 'CLIENT2' AND object_name NOT LIKE 'SYS_P%' AND object_name NOT LIKE 'TMP$%';
+SELECT 'CLIENT2: ' || COUNT(*) || ' objects installed' FROM dba_objects WHERE owner = 'CLIENT2' AND object_name NOT LIKE 'SYS_P%' AND object_name NOT LIKE 'TMP$%'
+UNION ALL
+SELECT 'CREPL: '   || COUNT(*) || ' objects installed' FROM dba_objects WHERE owner = 'CREPL'   AND object_name NOT LIKE 'SYS_P%' AND object_name NOT LIKE 'TMP$%';
 
 SPOOL OFF
 

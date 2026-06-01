@@ -25,6 +25,7 @@ Layer 2 decyduje:
 ```
 
 Layer 1 wykonuje tylko operacje zlecone przez layer 2 i udostepnia metadane techniczne o partycjach.
+Nie wylicza polityki archiwizacji, quality, retencji ani truncate eligibility.
 
 ## Aktualny Minimalny Model Layer 2
 
@@ -51,7 +52,12 @@ SOURCE_AGENT_SCHEMA   VARCHAR2(128) NOT NULL,
 TARGET_OWNER          VARCHAR2(128) NOT NULL,
 TARGET_TABLE_NAME     VARCHAR2(128) NOT NULL,
 TRUNCATE_MODE         VARCHAR2(20) DEFAULT 'TRUNCATE' NOT NULL,
-RETENTION_RULE        VARCHAR2(30),
+PARALLEL_DEGREE       NUMBER DEFAULT 4 NOT NULL,
+TABLESPACE_NAME       VARCHAR2(128) DEFAULT 'USERS' NOT NULL,
+LAST_BUSINESS_DATE    VARCHAR2(128) DEFAULT 'dat.fn_eod' NOT NULL,
+DAYS_ONLINE           NUMBER DEFAULT 30 NOT NULL,
+PRESERVE_RULE         VARCHAR2(1000),
+PRESERVE_CALC         VARCHAR2(500),
 ENABLED_FLAG          VARCHAR2(1) DEFAULT 'Y' NOT NULL,
 CREATED_AT            TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
 UPDATED_AT            TIMESTAMP
@@ -66,6 +72,18 @@ TARGET_OWNER + TARGET_TABLE_NAME
 
 Na tym etapie jedna fizyczna tabela target ma dokladnie jeden setup archiwizacji.
 
+`LAST_BUSINESS_DATE` jest wyrazeniem SQL zwracajacym date biznesowa, np.
+`dat.fn_eod`. `DAYS_ONLINE` okresla ile dni danych ma pozostac online na
+zrodle przed truncate. Kandydaci do source cleanup sa liczeni z:
+
+```text
+FN_ARCHIVE_HIGH_VALUE_DATE(LAST_BUSINESS_DATE) - DAYS_ONLINE
+```
+
+`PRESERVE_RULE` jest opcjonalnym SQL-em zwracajacym daty, ktore maja chronic
+pasujace partycje/subpartycje przed truncate. `PRESERVE_CALC` przechowuje wynik
+walidacji tej reguly.
+
 ### TW_ARCHIVE_PARTITIONS
 
 Jedna tabela dla partycji i subpartycji. To upraszcza obecny podzial na `TW_ARCHIVE_PARTITIONS` i `TW_ARCHIVE_SUBPARTITIONS`.
@@ -78,13 +96,14 @@ TARGET_OWNER               VARCHAR2(128) NOT NULL,
 TARGET_TABLE_NAME          VARCHAR2(128) NOT NULL,
 
 ARCHIVE_UNIT_TYPE          VARCHAR2(20) NOT NULL, -- PARTITION / SUBPARTITION
+SOURCE_PARTITION_NAME      VARCHAR2(128) NOT NULL,
+SOURCE_SUBPARTITION_NAME   VARCHAR2(128) DEFAULT '#' NOT NULL,
 PARTITION_NAME             VARCHAR2(128) NOT NULL,
 SUBPARTITION_NAME          VARCHAR2(128) DEFAULT '#' NOT NULL,
 
 PARTITION_HIGH_VALUE       VARCHAR2(4000) NOT NULL,
 SUBPARTITION_HIGH_VALUE    VARCHAR2(4000) DEFAULT '#' NOT NULL,
-PARTITION_POSITION         NUMBER,
-SUBPARTITION_POSITION      NUMBER,
+PREV_PARTITION_HIGH_VALUE  VARCHAR2(4000),
 
 ARCHIVE_STATUS             VARCHAR2(1) DEFAULT 'N' NOT NULL,
 QUALITY_STATUS             VARCHAR2(1) DEFAULT 'N' NOT NULL,
@@ -163,7 +182,7 @@ Layer 1 nie powinien decydowac:
 ```text
 - ktore tabele sa w scope
 - ktore partycje sa eligible
-- czy retention minal
+- czy business-date retention minal
 - czy archiwizacja jest kompletna
 - czy mozna purge'owac
 ```
@@ -213,7 +232,9 @@ Minimalny flow:
    Opcjonalne parametry TARGET_OWNER/TARGET_TABLE_NAME moga zawezic run
    do jednej target tabeli.
    Layer 2 zleca layer 1 agentowi truncate tylko dla QUALITY_STATUS = Y.
-   Retencja jest sprawdzana tutaj przez RETENTION_RULE.
+   Retencja jest sprawdzana przez LAST_BUSINESS_DATE i DAYS_ONLINE.
+   Cutoff to FN_ARCHIVE_HIGH_VALUE_DATE(LAST_BUSINESS_DATE) - DAYS_ONLINE.
+   PRESERVE_RULE moze zwrocic daty, ktore blokuja truncate pasujacej jednostki.
    Data high-value jest liczona przez FN_ARCHIVE_HIGH_VALUE_DATE na podstawie
    tekstowego HIGH_VALUE z dictionary.
    Ustawia TRUNCATE_STATUS = Y.
@@ -230,6 +251,13 @@ oraz tryb execute:
 ```sql
 p_execute => 'Y'
 ```
+
+## Test Support
+
+Pakiet `DAT` instalowany z `deploy/test_support` jest sztucznym providerem dat
+biznesowych dla lokalnych testow. Nie jest czescia core archivera. W produkcji
+wyrazenia w `LAST_BUSINESS_DATE` i `PRESERVE_RULE` powinny wskazywac na realny
+pakiet dat biznesowych dostarczony poza archiverem.
 
 ## Co Przeniesc Z Obecnego Projektu
 
@@ -453,38 +481,37 @@ Rekomendacja:
 
 Jesli mozliwe, rozwazyc staly staging table per target table zamiast tworzenia wielu fizycznych tabel.
 
-## Proponowany Start Implementacji
+## Obecny Stan Implementacji L1/L2
 
-Kolejnosc prac dla nowego projektu:
+Aktualny kod realizuje nastepujacy przeplyw:
 
 ```text
-1. Utworzyc model layer 2:
-   TW_ARCHIVE_TABLES
-   TW_ARCHIVE_PARTITIONS
-   TW_ARCHIVE_RUNS / MD_PROCESS_LOG
+1. Layer 1 udostepnia PKG_ARCHIVE_AGENT:
+   partition metadata, row count i kontrolowany cleanup unit.
 
-2. Utworzyc minimalny layer 1 agent:
-   PKG_ARCHIVE_AGENT.fn_get_partition_info
-   PKG_ARCHIVE_AGENT.fn_get_row_count
-   PKG_ARCHIVE_AGENT.prc_cleanup_unit
-   PKG_ARCHIVE_AGENT.fn_health_check
+2. Layer 2 przechowuje centralne metadane:
+   TW_ARCHIVE_TABLES, TW_ARCHIVE_PARTITIONS, TW_ARCHIVE_RUNS, MD_PROCESS_LOG.
 
-3. Zrobic discovery na layer 2:
-   czyta zrodla
-   pobiera partition info przez DB link
-   dodaje target partycje i robi INSERT do TW_ARCHIVE_PARTITIONS
+3. DISCOVER:
+   czyta source partition info przez DB link do layer 1,
+   dodaje target partycje i robi INSERT do TW_ARCHIVE_PARTITIONS.
 
-4. Zrobic import dla jednego przypadku:
-   range partition, bez subpartycji
+4. ARCHIVE:
+   laduje staging i wykonuje EXCHANGE PARTITION/SUBPARTITION.
 
-5. Dodac subpartycje.
+5. QUALITY:
+   porownuje source row count z target row count.
 
-6. Dodac quality check.
+6. TRUNCATE:
+   zleca source cleanup przez layer 1 agent po archive/quality success,
+   business-date cutoff i preserve checks.
 
-7. Dodac controlled source truncate.
+7. RUNNER:
+   orkiestruje DISCOVER -> ARCHIVE -> QUALITY -> TRUNCATE.
 ```
 
-Pierwszy milestone powinien obslugiwac jedna tabele range-partitioned z jednego source, ale na modelu danych od razu gotowym na wiele source.
+Layer 3 replica bedzie opisana osobno w
+`docs/central_layer3_replica_architecture.md`.
 
 ## Podsumowanie
 

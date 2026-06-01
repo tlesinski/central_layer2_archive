@@ -39,6 +39,12 @@ full_reinstall.sql                          root-level full reinstall script
 
 docs/
   central_layer2_archive_architecture.md
+  central_layer3_replica_architecture.md
+
+deploy/
+  test_support/
+    dat.spec.sql
+    dat.body.sql
 
 layer1_agent/
   types/
@@ -60,6 +66,10 @@ layer2_core/
     tw_archive_partitions.sql
   functions/
     fn_archive_high_value_date.sql
+    fn_calculate_retention_rule.sql
+    fn_validate_preserve_rule.sql
+  triggers/
+    trg_archive_tables_preserve_calc.sql
   views/
     tw_archive_source_partitions_vw.sql
     tw_archive_discovery_partitions_vw.sql
@@ -76,6 +86,18 @@ layer2_core/
     pkg_archive_quality.spec.sql / body.sql
     pkg_archive_truncate.spec.sql / body.sql
     pkg_archive_runner.spec.sql / body.sql
+
+layer3_replica/
+  tables/
+    tw_replica_tables.sql
+    tw_replica_runs.sql
+    tw_replica_partitions.sql
+  views/
+    tw_replica_source_partitions_vw.sql
+    tw_replica_discovery_partitions_vw.sql
+    tw_replica_replicate_partitions_vw.sql
+    tw_replica_quality_partitions_vw.sql
+    tw_replica_purge_partitions_vw.sql
 
 deploy/
   drop_all_schemas.sql                     schema-level drop script (root)
@@ -103,6 +125,18 @@ deploy/
     smoke_runner_client1_loopback.sql
     smoke_runner_client1_loopback_subpart.sql
     smoke_runner_client1_loopback_exchange.sql
+  layer3/
+    install_layer3_replica.sql
+    recreate_layer3_replica.sql
+    install_orders_replica_target.sql
+    install_orders_subpart_replica_target.sql
+    seed_carch_local_replica.sql
+    seed_carch_local_replica_subpart.sql
+    smoke_replica_discovery.sql
+    smoke_replica_replicate.sql
+    smoke_replica_quality.sql
+    smoke_replica_purge_preview.sql
+    smoke_replica_runner.sql
 ```
 
 Current state:
@@ -122,6 +156,12 @@ Current state:
 - remote-path runner smoke test present (range and subpartition)
 - active target uniqueness safeguards present
 - full reinstall script (clean drop + full install)
+- fake `DAT` package for local tests only; it is not part of the layer 2 core
+- initial layer 3 replica metadata model and process candidate views present
+- initial layer 3 discovery package present (`PKG_REPLICA_DISCOVERY`)
+- initial layer 3 replicate package present (`PKG_REPLICA_REPLICATE`)
+- initial layer 3 quality, purge, and runner packages present
+- layer 3 local discovery smoke script present
 ```
 
 ## Relationship To old_archiver
@@ -168,9 +208,28 @@ Current minimal model removes `TW_ARCHIVE_SOURCES`. `SOURCE_DB_LINK` lives
 directly in `TW_ARCHIVE_TABLES` and is part of the natural primary key for a
 source table setup.
 
-`TW_ARCHIVE_TABLES` includes `PARALLEL_DEGREE` (default 4) for controlling
-parallelism during staging inserts and staging index builds. `TABLESPACE_NAME`
-controls the tablespace used by exchange staging tables and staging indexes.
+`TW_ARCHIVE_TABLES` includes:
+
+```text
+PARALLEL_DEGREE    controls staging inserts and staging index builds
+TABLESPACE_NAME    controls exchange staging table and index placement
+TRUNCATE_MODE      enables or disables source cleanup requests
+LAST_BUSINESS_DATE SQL expression used to calculate the current business date
+DAYS_ONLINE        number of days kept online on the source before truncate
+PRESERVE_RULE      optional SQL returning dates that must not be truncated
+PRESERVE_CALC      validation result for PRESERVE_RULE
+```
+
+The current retention model is not a static `SYSDATE - N` rule. Layer 2 derives
+truncate eligibility from business-date configuration and partition high values:
+
+```text
+cutoff_date = FN_ARCHIVE_HIGH_VALUE_DATE(LAST_BUSINESS_DATE) - DAYS_ONLINE
+```
+
+Local test installs provide a fake `DAT` package with `fn_eod`, `fn_boy`, and
+`fn_eoy` so sample metadata can use business-date expressions. Production date
+logic is expected to be provided outside the archiver core.
 
 `TW_ARCHIVE_PARTITIONS` should represent both partitions and subpartitions using
 an explicit `ARCHIVE_UNIT_TYPE` column. Parent partition status for
@@ -212,22 +271,28 @@ prc_cleanup_unit(owner, table_name, partition_name, subpartition_name, mode)
 fn_health_check
 ```
 
-The agent should not contain archive policy.
+The agent should not contain archive policy. It must not decide which
+partitions are eligible, whether quality passed, whether retention has elapsed,
+or whether cleanup should run. Those decisions belong to layer 2.
 
-## Implementation Order
+## Implemented L1/L2 Flow
 
-Recommended first milestones:
+The current L1/L2 implementation contains the core flow below:
 
 ```text
-1. Add layer 2 DDL for central metadata tables.
-2. Add layer 2 install script.
-3. Replace the reference layer 1 helper with a real PKG_ARCHIVE_AGENT.
-4. Add layer 1 install script.
-5. Implement discovery in layer 2.
-6. Implement import for one range-partitioned table using EXCHANGE.
-7. Add subpartition support.
-8. Add quality checks.
-9. Add controlled source truncate.
+1. Layer 1 exposes PKG_ARCHIVE_AGENT for partition metadata, row counts,
+   and explicit cleanup requests.
+2. Layer 2 owns TW_ARCHIVE_TABLES, TW_ARCHIVE_PARTITIONS, TW_ARCHIVE_RUNS,
+   and MD_PROCESS_LOG.
+3. DISCOVER reads source partition metadata through the layer 1 agent view
+   and adds missing target partitions.
+4. ARCHIVE imports eligible partitions/subpartitions into layer 2 target
+   tables through staging and EXCHANGE.
+5. QUALITY compares source and target row counts and updates QUALITY_STATUS.
+6. TRUNCATE requests source cleanup through the layer 1 agent only after
+   archive and quality success, business-date cutoff, and preserve checks.
+7. RUNNER orchestrates DISCOVER -> ARCHIVE -> QUALITY -> TRUNCATE with
+   preview/execute controls.
 ```
 
 Every operational procedure should support preview and execute modes:
@@ -314,8 +379,9 @@ CARCH.PKG_ARCHIVE_TRUNCATE
   opens one TRUNCATE run and can be narrowed to one target table with optional
   target owner/table parameters
   requests source truncate through the layer 1 agent only after quality success
-  applies RETENTION_RULE before truncating source partitions/subpartitions;
-  test installs provide a fake DAT package with fn_eod, fn_boy, fn_eoy
+  applies LAST_BUSINESS_DATE - DAYS_ONLINE cutoff before truncating source
+  partitions/subpartitions
+  respects optional PRESERVE_RULE dates that protect matching archive units
 
 CARCH.PKG_ARCHIVE_RUNNER
   runs DISCOVER -> ARCHIVE -> QUALITY -> TRUNCATE with stop-after-step control
@@ -376,6 +442,13 @@ Remote compatibility notes:
   `DROP ANY TABLE` to CAGENT1 so truncate can execute through the DB link.
 - DELETE cleanup is intentionally not part of the current layer 2 archive path.
 ```
+
+## Layer 3 Direction
+
+Layer 3 replica design is intentionally kept out of this README and captured in
+`docs/central_layer3_replica_architecture.md`. The first
+implemented foundation contains the `TW_REPLICA_*` metadata tables, process
+candidate views, local `CREPL` smoke target tables, and seed metadata.
 
 ## Quick Reinstall
 
