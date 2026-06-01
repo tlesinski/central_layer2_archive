@@ -6,6 +6,7 @@ SET ECHO ON
 PROMPT Installing Central Layer 3 Replica core objects
 
 @layer2_core/sequences/md_process_log_seq.sql
+@layer3_replica/sequences/stg_tmp_replica_seq.sql
 @layer2_core/tables/md_process_log.sql
 @layer2_core/packages/pkg_tl_logging.spec.sql
 @layer2_core/packages/pkg_tl_logging.body.sql
@@ -25,6 +26,8 @@ PROMPT Installing Central Layer 3 Replica core objects
 @layer3_replica/packages/pkg_replica_log.body.sql
 @layer3_replica/packages/pkg_replica_discovery.spec.sql
 @layer3_replica/packages/pkg_replica_discovery.body.sql
+@layer3_replica/packages/pkg_replica_partition.spec.sql
+@layer3_replica/packages/pkg_replica_partition.body.sql
 @layer3_replica/packages/pkg_replica_replicate.spec.sql
 @layer3_replica/packages/pkg_replica_replicate.body.sql
 @layer3_replica/packages/pkg_replica_quality.spec.sql
@@ -48,6 +51,8 @@ SHOW ERRORS PACKAGE PKG_REPLICA_LOG
 SHOW ERRORS PACKAGE BODY PKG_REPLICA_LOG
 SHOW ERRORS PACKAGE PKG_REPLICA_DISCOVERY
 SHOW ERRORS PACKAGE BODY PKG_REPLICA_DISCOVERY
+SHOW ERRORS PACKAGE PKG_REPLICA_PARTITION
+SHOW ERRORS PACKAGE BODY PKG_REPLICA_PARTITION
 SHOW ERRORS PACKAGE PKG_REPLICA_REPLICATE
 SHOW ERRORS PACKAGE BODY PKG_REPLICA_REPLICATE
 SHOW ERRORS PACKAGE PKG_REPLICA_QUALITY

@@ -25,14 +25,15 @@ BEGIN
      WHERE owner = 'CREPL'
        AND object_type IN ('PACKAGE', 'PACKAGE BODY')
        AND object_name IN (
-         'PKG_REPLICA_RUNNER',
-         'PKG_REPLICA_PURGE',
-         'PKG_REPLICA_QUALITY',
-         'PKG_REPLICA_REPLICATE',
-         'PKG_REPLICA_DISCOVERY',
-         'PKG_REPLICA_LOG',
-         'PKG_SQL',
-         'PKG_TL_LOGGING'
+          'PKG_REPLICA_RUNNER',
+          'PKG_REPLICA_PURGE',
+          'PKG_REPLICA_QUALITY',
+          'PKG_REPLICA_REPLICATE',
+          'PKG_REPLICA_PARTITION',
+          'PKG_REPLICA_DISCOVERY',
+          'PKG_REPLICA_LOG',
+          'PKG_SQL',
+          'PKG_TL_LOGGING'
        )
      ORDER BY object_type DESC
   ) LOOP
@@ -134,12 +135,29 @@ BEGIN
     END;
   END LOOP;
 
+  -- drop orphan replica staging tables
+  FOR r IN (
+    SELECT table_name
+      FROM dba_tables
+     WHERE owner = 'CREPL'
+       AND table_name LIKE 'STG\_TMP\_REPLICA\_%' ESCAPE '\'
+  ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'DROP TABLE CREPL.' || r.table_name || ' PURGE';
+      DBMS_OUTPUT.PUT_LINE('Dropped staging TABLE CREPL.' || r.table_name);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Could not drop staging TABLE ' ||
+                             r.table_name || ': ' || SQLERRM);
+    END;
+  END LOOP;
+
   -- sequence
   FOR r IN (
     SELECT sequence_name
       FROM dba_sequences
      WHERE sequence_owner = 'CREPL'
-        AND sequence_name = 'MD_PROCESS_LOG_SEQ'
+        AND sequence_name IN ('MD_PROCESS_LOG_SEQ', 'STG_TMP_REPLICA_SEQ')
   ) LOOP
     BEGIN
       EXECUTE IMMEDIATE 'DROP SEQUENCE CREPL.' || r.sequence_name;

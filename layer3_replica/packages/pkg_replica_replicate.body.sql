@@ -29,30 +29,6 @@ AS
     RETURN PKG_SQL.fn_assert_simple_name(p_name);
   END fn_normalize_name;
 
-  FUNCTION fn_qualified_table(p_owner IN VARCHAR2, p_table IN VARCHAR2) RETURN VARCHAR2 IS
-  BEGIN
-    RETURN PKG_SQL.fn_assert_simple_name(p_owner) || '.' || PKG_SQL.fn_assert_simple_name(p_table);
-  END fn_qualified_table;
-
-  FUNCTION fn_source_table
-  (
-    p_source_db_link    IN VARCHAR2,
-    p_source_owner      IN VARCHAR2,
-    p_source_table_name IN VARCHAR2
-  )
-  RETURN VARCHAR2
-  IS
-    l_table VARCHAR2(4000);
-  BEGIN
-    l_table := fn_qualified_table(p_source_owner, p_source_table_name);
-
-    IF UPPER(TRIM(p_source_db_link)) <> 'LOCAL' THEN
-      l_table := l_table || '@' || PKG_SQL.fn_assert_simple_name(p_source_db_link);
-    END IF;
-
-    RETURN l_table;
-  END fn_source_table;
-
   PROCEDURE prc_mark_partition
   (
     p_source_db_link          IN VARCHAR2,
@@ -96,6 +72,7 @@ AS
     l_sql               CLOB;
     l_rows_available    NUMBER := 0;
     l_rows_loaded       NUMBER;
+    l_staging_table     VARCHAR2(128);
     l_units             NUMBER := 0;
     l_replicated        NUMBER := 0;
     l_tables            NUMBER := 0;
@@ -178,43 +155,95 @@ AS
           );
         END IF;
 
+        PKG_REPLICA_PARTITION.prc_create_exchange_staging
+        (
+          p_target_owner       => r.target_owner,
+          p_target_table       => r.target_table_name,
+          p_partition_name     => r.partition_name,
+          p_staging_table_name => l_staging_table,
+          p_execute            => l_execute_flag,
+          p_log_id             => l_log_id,
+          p_tablespace_name    => r.tablespace_name
+        );
+
         IF r.archive_unit_type = 'SUBPARTITION' THEN
-          l_sql :=
-            'ALTER TABLE ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
-            ' TRUNCATE SUBPARTITION ' || PKG_SQL.fn_assert_simple_name(r.subpartition_name);
+          PKG_REPLICA_PARTITION.prc_load_exchange_staging_subpartition
+          (
+            p_source_db_link              => r.source_db_link,
+            p_source_owner                => r.source_owner,
+            p_source_table                => r.source_table_name,
+            p_source_subpartition_name    => r.source_subpartition_name,
+            p_target_owner                => r.target_owner,
+            p_target_table                => r.target_table_name,
+            p_staging_table_name          => l_staging_table,
+            p_execute                     => l_execute_flag,
+            p_log_id                      => l_log_id,
+            p_parallel_degree             => r.parallel_degree,
+            p_rows_loaded                 => l_rows_loaded
+          );
         ELSE
-          l_sql :=
-            'ALTER TABLE ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
-            ' TRUNCATE PARTITION ' || PKG_SQL.fn_assert_simple_name(r.partition_name);
+          PKG_REPLICA_PARTITION.prc_load_exchange_staging
+          (
+            p_source_db_link        => r.source_db_link,
+            p_source_owner          => r.source_owner,
+            p_source_table          => r.source_table_name,
+            p_source_partition_name => r.source_partition_name,
+            p_target_owner          => r.target_owner,
+            p_target_table          => r.target_table_name,
+            p_staging_table_name    => l_staging_table,
+            p_execute               => l_execute_flag,
+            p_log_id                => l_log_id,
+            p_parallel_degree       => r.parallel_degree,
+            p_rows_loaded           => l_rows_loaded
+          );
         END IF;
 
-        l_rows_loaded := PKG_SQL.fn_run_sql(l_log_id, l_sql, l_execute_flag);
+        PKG_REPLICA_PARTITION.prc_build_staging_indexes
+        (
+          p_target_owner       => r.target_owner,
+          p_target_table       => r.target_table_name,
+          p_staging_table_name => l_staging_table,
+          p_execute            => l_execute_flag,
+          p_log_id             => l_log_id,
+          p_parallel_degree    => r.parallel_degree,
+          p_tablespace_name    => r.tablespace_name
+        );
 
         IF r.archive_unit_type = 'SUBPARTITION' THEN
-          l_sql :=
-            'INSERT /*+ APPEND PARALLEL(' || TO_CHAR(NVL(r.parallel_degree, 4)) || ') */ ' ||
-            'INTO ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
-            ' SUBPARTITION (' || PKG_SQL.fn_assert_simple_name(r.subpartition_name) || ') ' ||
-            'SELECT /*+ PARALLEL(' || TO_CHAR(NVL(r.parallel_degree, 4)) || ') */ * ' ||
-            'FROM ' || fn_source_table(r.source_db_link, r.source_owner, r.source_table_name) ||
-            ' SUBPARTITION (' || PKG_SQL.fn_assert_simple_name(r.source_subpartition_name) || ')';
+          PKG_REPLICA_PARTITION.prc_exchange_subpartition
+          (
+            p_target_owner       => r.target_owner,
+            p_target_table       => r.target_table_name,
+            p_subpartition_name  => r.subpartition_name,
+            p_staging_table_name => l_staging_table,
+            p_execute            => l_execute_flag,
+            p_log_id             => l_log_id
+          );
         ELSE
-          l_sql :=
-            'INSERT /*+ APPEND PARALLEL(' || TO_CHAR(NVL(r.parallel_degree, 4)) || ') */ ' ||
-            'INTO ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
-            ' PARTITION (' || PKG_SQL.fn_assert_simple_name(r.partition_name) || ') ' ||
-            'SELECT /*+ PARALLEL(' || TO_CHAR(NVL(r.parallel_degree, 4)) || ') */ * ' ||
-            'FROM ' || fn_source_table(r.source_db_link, r.source_owner, r.source_table_name) ||
-            ' PARTITION (' || PKG_SQL.fn_assert_simple_name(r.source_partition_name) || ')';
+          PKG_REPLICA_PARTITION.prc_exchange_partition
+          (
+            p_target_owner       => r.target_owner,
+            p_target_table       => r.target_table_name,
+            p_partition_name     => r.partition_name,
+            p_staging_table_name => l_staging_table,
+            p_execute            => l_execute_flag,
+            p_log_id             => l_log_id
+          );
         END IF;
 
-        l_rows_loaded := PKG_SQL.fn_run_sql(l_log_id, l_sql, l_execute_flag);
+        PKG_REPLICA_PARTITION.prc_drop_staging
+        (
+          p_staging_owner      => r.target_owner,
+          p_staging_table_name => l_staging_table,
+          p_execute            => l_execute_flag,
+          p_log_id             => l_log_id
+        );
 
         PKG_REPLICA_LOG.prc_log_message
         (
           p_run_id   => l_run_id,
-          p_log_type => 'REPLICA_LOAD',
-          p_log_msg  => 'REPLICA_LOAD ' ||
+          p_log_type => 'REPLICA_EXCHANGE',
+          p_log_msg  => 'REPLICA_EXCHANGE ' ||
                         'source=' || r.source_db_link || '.' || r.source_owner || '.' || r.source_table_name ||
                         ' ' || r.source_partition_name ||
                         CASE
@@ -227,6 +256,7 @@ AS
                           WHEN r.archive_unit_type = 'SUBPARTITION'
                             THEN '.' || r.subpartition_name
                         END ||
+                        ', staging=' || r.target_owner || '.' || l_staging_table ||
                         ', rows_loaded=' || NVL(TO_CHAR(l_rows_loaded), '<DRY_RUN>') ||
                         ', execute=' || l_execute_flag
         );
@@ -248,18 +278,19 @@ AS
           COMMIT;
         END IF;
 
-        DBMS_OUTPUT.PUT_LINE('REPLICATE_DONE ' ||
+        DBMS_OUTPUT.PUT_LINE('REPLICATE_EXCHANGE ' ||
                              r.source_db_link || '.' || r.source_owner || '.' ||
                              r.source_table_name || ' ' || r.source_partition_name ||
                              CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.source_subpartition_name END ||
                              ' target=' || r.target_owner || '.' || r.target_table_name || ' ' ||
                              r.partition_name ||
                              CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END ||
+                             ' staging=' || r.target_owner || '.' || l_staging_table ||
                              ' loaded=' || NVL(TO_CHAR(l_rows_loaded), '<DRY_RUN>'));
 
         IF l_execute_flag = 'Y' THEN
           l_table_summary := l_table_summary ||
-            TO_CLOB(PKG_REPLICA_LOG.fn_summary_cell('REPLICATED')) || '|' ||
+            TO_CLOB(PKG_REPLICA_LOG.fn_summary_cell('EXCHANGED')) || '|' ||
             PKG_REPLICA_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
             PKG_REPLICA_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
             PKG_REPLICA_LOG.fn_summary_cell(r.partition_name) || '|' ||
