@@ -237,8 +237,7 @@ AS
           TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell(CASE WHEN r.preserve_date IS NOT NULL THEN
             'PRESERVED per MAX_preserve_date=' || TO_CHAR(r.preserve_date, 'YYYY-MM-DD')
           ELSE
-            r.partition_name ||
-            CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END
+            CASE WHEN l_execute_flag = 'Y' THEN 'TRUNCATED' ELSE 'SKIP' END
 END)) || '|' ||
           PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
           PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||

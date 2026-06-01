@@ -103,7 +103,7 @@ AS
     l_msg             CLOB;
     l_summary         CLOB := NULL;
     l_partition_columns VARCHAR2(1000) :=
-      'NOTE|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT';
+      'NOTE|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT';
   BEGIN
     l_execute_flag := fn_normalize_execute(p_execute);
     l_target_owner := fn_normalize_name(p_target_owner);
@@ -239,10 +239,11 @@ AS
             l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
 
             l_table_summary := l_table_summary ||
-              TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell(s.partition_name ||
-                                              CASE WHEN s.archive_unit_type = 'SUBPARTITION' THEN '.' || l_target_subpart END)) || '|' ||
+              TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell(s.archive_unit_type)) || '|' ||
               PKG_ARCHIVE_LOG.fn_summary_cell(s.source_partition_name) || '|' ||
               PKG_ARCHIVE_LOG.fn_summary_cell(s.source_subpartition_name) || '|' ||
+              PKG_ARCHIVE_LOG.fn_summary_cell(s.partition_name) || '|' ||
+              PKG_ARCHIVE_LOG.fn_summary_cell(l_target_subpart) || '|' ||
               PKG_ARCHIVE_LOG.fn_summary_cell(s.partition_high_value) || '|' ||
               PKG_ARCHIVE_LOG.fn_summary_cell(s.subpartition_high_value) || '|' ||
               PKG_ARCHIVE_LOG.fn_summary_cell('N') || '|' ||

@@ -4285,7 +4285,7 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_DISCOVERY
 103      l_msg             CLOB;
 104      l_summary         CLOB := NULL;
 105      l_partition_columns VARCHAR2(1000) :=
-106        'NOTE|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT';
+106        'NOTE|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT';
 107    BEGIN
 108      l_execute_flag := fn_normalize_execute(p_execute);
 109      l_target_owner := fn_normalize_name(p_target_owner);
@@ -4421,69 +4421,70 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_DISCOVERY
 239              l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
 240  
 241              l_table_summary := l_table_summary ||
-242                TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell(s.partition_name ||
-243                                                CASE WHEN s.archive_unit_type = 'SUBPARTITION' THEN '.' || l_target_subpart END)) || '|' ||
-244                PKG_ARCHIVE_LOG.fn_summary_cell(s.source_partition_name) || '|' ||
-245                PKG_ARCHIVE_LOG.fn_summary_cell(s.source_subpartition_name) || '|' ||
-246                PKG_ARCHIVE_LOG.fn_summary_cell(s.partition_high_value) || '|' ||
-247                PKG_ARCHIVE_LOG.fn_summary_cell(s.subpartition_high_value) || '|' ||
-248                PKG_ARCHIVE_LOG.fn_summary_cell('N') || '|' ||
+242                TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell(s.archive_unit_type)) || '|' ||
+243                PKG_ARCHIVE_LOG.fn_summary_cell(s.source_partition_name) || '|' ||
+244                PKG_ARCHIVE_LOG.fn_summary_cell(s.source_subpartition_name) || '|' ||
+245                PKG_ARCHIVE_LOG.fn_summary_cell(s.partition_name) || '|' ||
+246                PKG_ARCHIVE_LOG.fn_summary_cell(l_target_subpart) || '|' ||
+247                PKG_ARCHIVE_LOG.fn_summary_cell(s.partition_high_value) || '|' ||
+248                PKG_ARCHIVE_LOG.fn_summary_cell(s.subpartition_high_value) || '|' ||
 249                PKG_ARCHIVE_LOG.fn_summary_cell('N') || '|' ||
 250                PKG_ARCHIVE_LOG.fn_summary_cell('N') || '|' ||
-251                PKG_ARCHIVE_LOG.fn_summary_cell(NULL) || '|' ||
-252                PKG_ARCHIVE_LOG.fn_summary_cell(NULL) || CHR(10);
-253            END LOOP;
-254          ELSE
-255            l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
-256          END IF;
-257  
-258          IF l_execute_flag = 'Y' THEN
-259            COMMIT;
-260          END IF;
-261        END LOOP;
-262  
-263        IF l_execute_flag = 'Y' AND l_table_summary IS NOT NULL THEN
-264          l_summary := l_summary ||
-265            '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
-266            PKG_SQL.fn_format_table(
-267              p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE',
-268              p_rows    => PKG_ARCHIVE_LOG.fn_summary_cell(t.source_db_link) || '|' ||
-269                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_owner) || '|' ||
-270                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_table_name) || '|' ||
-271                           PKG_ARCHIVE_LOG.fn_summary_cell(l_execute_flag) || CHR(10)
-272            ) || CHR(10) ||
-273            PKG_SQL.fn_format_table(
-274              p_columns    => l_partition_columns,
-275              p_rows       => l_table_summary
-276            ) || CHR(10);
-277        END IF;
-278      END LOOP;
-279  
-280      DBMS_OUTPUT.PUT_LINE(
-281        'DISCOVER tables=' || l_tables ||
-282        ' partitions=' || l_partitions ||
-283        ' found=' || l_rows_discovered ||
-284        ' inserted=' || l_rows_inserted ||
-285        ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
-286        ' target_table=' || NVL(l_target_table, '<ALL>') ||
-287        ' execute=' || l_execute_flag
-288      );
-289  
-290      IF l_summary IS NOT NULL THEN
-291        PKG_ARCHIVE_LOG.prc_log_message(l_run_id, l_summary, 'SUMMARY');
-292      END IF;
-293  
-294      PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
-295    EXCEPTION
-296      WHEN OTHERS THEN
-297        IF l_run_id IS NOT NULL THEN
-298          PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
-299          PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
-300        END IF;
-301        RAISE;
-302    END prc_discover;
-303  END PKG_ARCHIVE_DISCOVERY;
-304  /
+251                PKG_ARCHIVE_LOG.fn_summary_cell('N') || '|' ||
+252                PKG_ARCHIVE_LOG.fn_summary_cell(NULL) || '|' ||
+253                PKG_ARCHIVE_LOG.fn_summary_cell(NULL) || CHR(10);
+254            END LOOP;
+255          ELSE
+256            l_rows_inserted := l_rows_inserted + NVL(l_rows, 0);
+257          END IF;
+258  
+259          IF l_execute_flag = 'Y' THEN
+260            COMMIT;
+261          END IF;
+262        END LOOP;
+263  
+264        IF l_execute_flag = 'Y' AND l_table_summary IS NOT NULL THEN
+265          l_summary := l_summary ||
+266            '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
+267            PKG_SQL.fn_format_table(
+268              p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE',
+269              p_rows    => PKG_ARCHIVE_LOG.fn_summary_cell(t.source_db_link) || '|' ||
+270                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_owner) || '|' ||
+271                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_table_name) || '|' ||
+272                           PKG_ARCHIVE_LOG.fn_summary_cell(l_execute_flag) || CHR(10)
+273            ) || CHR(10) ||
+274            PKG_SQL.fn_format_table(
+275              p_columns    => l_partition_columns,
+276              p_rows       => l_table_summary
+277            ) || CHR(10);
+278        END IF;
+279      END LOOP;
+280  
+281      DBMS_OUTPUT.PUT_LINE(
+282        'DISCOVER tables=' || l_tables ||
+283        ' partitions=' || l_partitions ||
+284        ' found=' || l_rows_discovered ||
+285        ' inserted=' || l_rows_inserted ||
+286        ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
+287        ' target_table=' || NVL(l_target_table, '<ALL>') ||
+288        ' execute=' || l_execute_flag
+289      );
+290  
+291      IF l_summary IS NOT NULL THEN
+292        PKG_ARCHIVE_LOG.prc_log_message(l_run_id, l_summary, 'SUMMARY');
+293      END IF;
+294  
+295      PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+296    EXCEPTION
+297      WHEN OTHERS THEN
+298        IF l_run_id IS NOT NULL THEN
+299          PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
+300          PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
+301        END IF;
+302        RAISE;
+303    END prc_discover;
+304  END PKG_ARCHIVE_DISCOVERY;
+305  /
 
 Package Body PKG_ARCHIVE_DISCOVERY compiled
 
@@ -4605,7 +4606,7 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_IMPORT
  85      l_summary         CLOB := NULL;
  86      l_table_summary   CLOB;
  87      l_partition_columns VARCHAR2(1000) :=
- 88        'NOTE|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT';
+ 88        'NOTE|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT';
  89    BEGIN
  90      l_execute_flag := fn_normalize_execute(p_execute);
  91      l_target_owner := fn_normalize_name(p_target_owner);
@@ -4823,62 +4824,63 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_IMPORT
 303  
 304          IF l_execute_flag = 'Y' THEN
 305            l_table_summary := l_table_summary ||
-306              TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_name ||
-307                                              CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END)) || '|' ||
-308              PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
-309              PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
-310              PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_high_value) || '|' ||
-311              PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_high_value) || '|' ||
-312              PKG_ARCHIVE_LOG.fn_summary_cell('Y') || '|' ||
-313              PKG_ARCHIVE_LOG.fn_summary_cell('N') || '|' ||
-314              PKG_ARCHIVE_LOG.fn_summary_cell(r.truncate_status) || '|' ||
-315              PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.source_row_count)) || '|' ||
-316              PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(l_rows_loaded)) || CHR(10);
-317          END IF;
-318        END LOOP; -- FOR r
-319  
-320        IF l_execute_flag = 'Y' AND l_table_summary IS NOT NULL THEN
-321          l_summary := l_summary ||
-322            '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
-323            PKG_SQL.fn_format_table(
-324              p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE',
-325              p_rows    => PKG_ARCHIVE_LOG.fn_summary_cell(t.source_db_link) || '|' ||
-326                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_owner) || '|' ||
-327                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_table_name) || '|' ||
-328                           PKG_ARCHIVE_LOG.fn_summary_cell(l_execute_flag) || CHR(10)
-329            ) || CHR(10) ||
-330            PKG_SQL.fn_format_table(
-331              p_columns    => l_partition_columns,
-332              p_rows       => l_table_summary
-333            ) || CHR(10);
-334        END IF;
-335      END LOOP; -- FOR t
-336  
-337      IF l_summary IS NOT NULL THEN
-338        PKG_ARCHIVE_LOG.prc_log_message(l_run_id, l_summary, 'SUMMARY');
-339      END IF;
-340  
-341      DBMS_OUTPUT.PUT_LINE(
-342        'IMPORT tables=' || l_tables ||
-343        ' units=' || l_units ||
-344        ' found=' || l_rows_available ||
-345        ' imported=' || l_imported ||
-346        ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
-347        ' target_table=' || NVL(l_target_table, '<ALL>') ||
-348        ' execute=' || l_execute_flag
-349      );
-350  
-351      PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
-352    EXCEPTION
-353      WHEN OTHERS THEN
-354        IF l_run_id IS NOT NULL THEN
-355          PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
-356          PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
-357        END IF;
-358        RAISE;
-359    END prc_import;
-360  END PKG_ARCHIVE_IMPORT;
-361  /
+306              TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell('EXCHANGED')) || '|' ||
+307              PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
+308              PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
+309              PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_name) || '|' ||
+310              PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_name) || '|' ||
+311              PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_high_value) || '|' ||
+312              PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_high_value) || '|' ||
+313              PKG_ARCHIVE_LOG.fn_summary_cell('Y') || '|' ||
+314              PKG_ARCHIVE_LOG.fn_summary_cell('N') || '|' ||
+315              PKG_ARCHIVE_LOG.fn_summary_cell(r.truncate_status) || '|' ||
+316              PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.source_row_count)) || '|' ||
+317              PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(l_rows_loaded)) || CHR(10);
+318          END IF;
+319        END LOOP; -- FOR r
+320  
+321        IF l_execute_flag = 'Y' AND l_table_summary IS NOT NULL THEN
+322          l_summary := l_summary ||
+323            '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
+324            PKG_SQL.fn_format_table(
+325              p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE',
+326              p_rows    => PKG_ARCHIVE_LOG.fn_summary_cell(t.source_db_link) || '|' ||
+327                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_owner) || '|' ||
+328                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_table_name) || '|' ||
+329                           PKG_ARCHIVE_LOG.fn_summary_cell(l_execute_flag) || CHR(10)
+330            ) || CHR(10) ||
+331            PKG_SQL.fn_format_table(
+332              p_columns    => l_partition_columns,
+333              p_rows       => l_table_summary
+334            ) || CHR(10);
+335        END IF;
+336      END LOOP; -- FOR t
+337  
+338      IF l_summary IS NOT NULL THEN
+339        PKG_ARCHIVE_LOG.prc_log_message(l_run_id, l_summary, 'SUMMARY');
+340      END IF;
+341  
+342      DBMS_OUTPUT.PUT_LINE(
+343        'IMPORT tables=' || l_tables ||
+344        ' units=' || l_units ||
+345        ' found=' || l_rows_available ||
+346        ' imported=' || l_imported ||
+347        ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
+348        ' target_table=' || NVL(l_target_table, '<ALL>') ||
+349        ' execute=' || l_execute_flag
+350      );
+351  
+352      PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+353    EXCEPTION
+354      WHEN OTHERS THEN
+355        IF l_run_id IS NOT NULL THEN
+356          PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
+357          PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
+358        END IF;
+359        RAISE;
+360    END prc_import;
+361  END PKG_ARCHIVE_IMPORT;
+362  /
 
 Package Body PKG_ARCHIVE_IMPORT compiled
 
@@ -4982,7 +4984,7 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_QUALITY
  66      l_summary         CLOB := NULL;
  67      l_table_summary   CLOB;
  68      l_partition_columns VARCHAR2(1000) :=
- 69        'NOTE|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT';
+ 69        'NOTE|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT';
  70    BEGIN
  71      l_execute_flag := fn_normalize_execute(p_execute);
  72      l_target_owner := fn_normalize_name(p_target_owner);
@@ -5093,62 +5095,63 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_QUALITY
 177          END IF;
 178  
 179          l_table_summary := l_table_summary ||
-180            TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_name ||
-181                                            CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END)) || '|' ||
-182            PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
-183            PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
-184            PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_high_value) || '|' ||
-185            PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_high_value) || '|' ||
-186            PKG_ARCHIVE_LOG.fn_summary_cell(r.archive_status) || '|' ||
-187            PKG_ARCHIVE_LOG.fn_summary_cell(l_quality_status) || '|' ||
-188            PKG_ARCHIVE_LOG.fn_summary_cell(r.truncate_status) || '|' ||
-189            PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(l_source_rows)) || '|' ||
-190            PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.target_row_count)) || CHR(10);
-191        END LOOP; -- FOR r
-192  
-193        IF l_table_summary IS NOT NULL THEN
-194          l_summary := l_summary ||
-195            '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
-196            PKG_SQL.fn_format_table(
-197              p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE',
-198              p_rows    => PKG_ARCHIVE_LOG.fn_summary_cell(t.source_db_link) || '|' ||
-199                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_owner) || '|' ||
-200                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_table_name) || '|' ||
-201                           PKG_ARCHIVE_LOG.fn_summary_cell(l_execute_flag) || CHR(10)
-202            ) || CHR(10) ||
-203            PKG_SQL.fn_format_table(
-204              p_columns    => l_partition_columns,
-205              p_rows       => l_table_summary
-206            ) || CHR(10);
-207        END IF;
-208      END LOOP; -- FOR t
-209  
-210      DBMS_OUTPUT.PUT_LINE(
-211        'QUALITY tables=' || l_tables ||
-212        ' units=' || l_units ||
-213        ' found=' || l_rows_available ||
-214        ' ok=' || l_ok ||
-215        ' failed=' || l_failed ||
-216        ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
-217        ' target_table=' || NVL(l_target_table, '<ALL>') ||
-218        ' execute=' || l_execute_flag
-219      );
-220  
-221      IF l_summary IS NOT NULL THEN
-222        PKG_ARCHIVE_LOG.prc_log_message(l_run_id, l_summary, 'SUMMARY');
-223      END IF;
-224  
-225      PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, CASE WHEN l_failed > 0 THEN 'WARNING' ELSE 'SUCCESS' END);
-226    EXCEPTION
-227      WHEN OTHERS THEN
-228        IF l_run_id IS NOT NULL THEN
-229          PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
-230          PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
-231        END IF;
-232        RAISE;
-233    END prc_quality;
-234  END PKG_ARCHIVE_QUALITY;
-235  /
+180            TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell(CASE WHEN l_quality_status = 'Y' THEN 'OK' ELSE 'MISMATCH' END)) || '|' ||
+181            PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
+182            PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
+183            PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_name) || '|' ||
+184            PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_name) || '|' ||
+185            PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_high_value) || '|' ||
+186            PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_high_value) || '|' ||
+187            PKG_ARCHIVE_LOG.fn_summary_cell(r.archive_status) || '|' ||
+188            PKG_ARCHIVE_LOG.fn_summary_cell(l_quality_status) || '|' ||
+189            PKG_ARCHIVE_LOG.fn_summary_cell(r.truncate_status) || '|' ||
+190            PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(l_source_rows)) || '|' ||
+191            PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.target_row_count)) || CHR(10);
+192        END LOOP; -- FOR r
+193  
+194        IF l_table_summary IS NOT NULL THEN
+195          l_summary := l_summary ||
+196            '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
+197            PKG_SQL.fn_format_table(
+198              p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE',
+199              p_rows    => PKG_ARCHIVE_LOG.fn_summary_cell(t.source_db_link) || '|' ||
+200                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_owner) || '|' ||
+201                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_table_name) || '|' ||
+202                           PKG_ARCHIVE_LOG.fn_summary_cell(l_execute_flag) || CHR(10)
+203            ) || CHR(10) ||
+204            PKG_SQL.fn_format_table(
+205              p_columns    => l_partition_columns,
+206              p_rows       => l_table_summary
+207            ) || CHR(10);
+208        END IF;
+209      END LOOP; -- FOR t
+210  
+211      DBMS_OUTPUT.PUT_LINE(
+212        'QUALITY tables=' || l_tables ||
+213        ' units=' || l_units ||
+214        ' found=' || l_rows_available ||
+215        ' ok=' || l_ok ||
+216        ' failed=' || l_failed ||
+217        ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
+218        ' target_table=' || NVL(l_target_table, '<ALL>') ||
+219        ' execute=' || l_execute_flag
+220      );
+221  
+222      IF l_summary IS NOT NULL THEN
+223        PKG_ARCHIVE_LOG.prc_log_message(l_run_id, l_summary, 'SUMMARY');
+224      END IF;
+225  
+226      PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, CASE WHEN l_failed > 0 THEN 'WARNING' ELSE 'SUCCESS' END);
+227    EXCEPTION
+228      WHEN OTHERS THEN
+229        IF l_run_id IS NOT NULL THEN
+230          PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
+231          PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
+232        END IF;
+233        RAISE;
+234    END prc_quality;
+235  END PKG_ARCHIVE_QUALITY;
+236  /
 
 Package Body PKG_ARCHIVE_QUALITY compiled
 
@@ -5423,70 +5426,69 @@ SQL> CREATE OR REPLACE PACKAGE BODY PKG_ARCHIVE_TRUNCATE
 237            TO_CLOB(PKG_ARCHIVE_LOG.fn_summary_cell(CASE WHEN r.preserve_date IS NOT NULL THEN
 238              'PRESERVED per MAX_preserve_date=' || TO_CHAR(r.preserve_date, 'YYYY-MM-DD')
 239            ELSE
-240              r.partition_name ||
-241              CASE WHEN r.archive_unit_type = 'SUBPARTITION' THEN '.' || r.subpartition_name END
-242  END)) || '|' ||
-243            PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
-244            PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
-245            PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_name) || '|' ||
-246            PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_name) || '|' ||
-247            PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_high_value) || '|' ||
-248            PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_high_value) || '|' ||
-249            PKG_ARCHIVE_LOG.fn_summary_cell(r.archive_status) || '|' ||
-250            PKG_ARCHIVE_LOG.fn_summary_cell(r.quality_status) || '|' ||
-251            PKG_ARCHIVE_LOG.fn_summary_cell(CASE WHEN l_execute_flag = 'Y' THEN 'Y' ELSE 'N' END) || '|' ||
-252            PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.source_row_count)) || '|' ||
-253            PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.target_row_count)) || '|' ||
-254            PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.preserve_date, 'YYYY-MM-DD')) ||
-255            CHR(10);
-256        END LOOP; -- FOR r
-257  
-258        IF l_table_summary IS NOT NULL THEN
-259          l_summary := l_summary ||
-260            '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
-261            PKG_SQL.fn_format_table(
-262              p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE|LAST_BUSINESS_DATE|DAYS_ONLINE|CUTOFF_DATE',
-263              p_rows    => PKG_ARCHIVE_LOG.fn_summary_cell(t.source_db_link) || '|' ||
-264                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_owner) || '|' ||
-265                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_table_name) || '|' ||
-266                           PKG_ARCHIVE_LOG.fn_summary_cell(l_execute_flag) || '|' ||
-267                           PKG_ARCHIVE_LOG.fn_summary_cell(l_last_business_date_calc) || '|' ||
-268                           PKG_ARCHIVE_LOG.fn_summary_cell(l_days_online) || '|' ||
-269                           PKG_ARCHIVE_LOG.fn_summary_cell(l_cutoff_date) || CHR(10)
-270            ) || CHR(10) ||
-271            PKG_SQL.fn_format_table(
-272              p_columns    => 'NOTE|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|MAX_PRESERVE_DATE',
-273              p_rows       => l_table_summary
-274            ) || CHR(10);
-275        END IF;
-276      END LOOP; -- FOR t
-277  
-278      DBMS_OUTPUT.PUT_LINE(
-279        'TRUNCATE tables=' || l_tables ||
-280        ' units=' || l_units ||
-281        ' found=' || l_rows_available ||
-282        ' truncated=' || l_truncated ||
-283        ' preserved=' || l_preserved ||
-284        ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
-285        ' target_table=' || NVL(l_target_table, '<ALL>') ||
-286        ' execute=' || l_execute_flag
-287      );
-288  
-289      IF l_summary IS NOT NULL THEN
-290        PKG_ARCHIVE_LOG.prc_log_message(l_run_id, l_summary, 'SUMMARY');
-291      END IF;
-292  
-293      PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
-294    EXCEPTION
-295      WHEN OTHERS THEN
-296        IF l_run_id IS NOT NULL THEN
-297          PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
-298          PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
-299        END IF;
-300        RAISE;
-301    END prc_truncate;
-302  END PKG_ARCHIVE_TRUNCATE;
-303  /
+240              CASE WHEN l_execute_flag = 'Y' THEN 'TRUNCATED' ELSE 'SKIP' END
+241  END)) || '|' ||
+242            PKG_ARCHIVE_LOG.fn_summary_cell(r.source_partition_name) || '|' ||
+243            PKG_ARCHIVE_LOG.fn_summary_cell(r.source_subpartition_name) || '|' ||
+244            PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_name) || '|' ||
+245            PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_name) || '|' ||
+246            PKG_ARCHIVE_LOG.fn_summary_cell(r.partition_high_value) || '|' ||
+247            PKG_ARCHIVE_LOG.fn_summary_cell(r.subpartition_high_value) || '|' ||
+248            PKG_ARCHIVE_LOG.fn_summary_cell(r.archive_status) || '|' ||
+249            PKG_ARCHIVE_LOG.fn_summary_cell(r.quality_status) || '|' ||
+250            PKG_ARCHIVE_LOG.fn_summary_cell(CASE WHEN l_execute_flag = 'Y' THEN 'Y' ELSE 'N' END) || '|' ||
+251            PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.source_row_count)) || '|' ||
+252            PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.target_row_count)) || '|' ||
+253            PKG_ARCHIVE_LOG.fn_summary_cell(TO_CHAR(r.preserve_date, 'YYYY-MM-DD')) ||
+254            CHR(10);
+255        END LOOP; -- FOR r
+256  
+257        IF l_table_summary IS NOT NULL THEN
+258          l_summary := l_summary ||
+259            '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
+260            PKG_SQL.fn_format_table(
+261              p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE|LAST_BUSINESS_DATE|DAYS_ONLINE|CUTOFF_DATE',
+262              p_rows    => PKG_ARCHIVE_LOG.fn_summary_cell(t.source_db_link) || '|' ||
+263                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_owner) || '|' ||
+264                           PKG_ARCHIVE_LOG.fn_summary_cell(t.source_table_name) || '|' ||
+265                           PKG_ARCHIVE_LOG.fn_summary_cell(l_execute_flag) || '|' ||
+266                           PKG_ARCHIVE_LOG.fn_summary_cell(l_last_business_date_calc) || '|' ||
+267                           PKG_ARCHIVE_LOG.fn_summary_cell(l_days_online) || '|' ||
+268                           PKG_ARCHIVE_LOG.fn_summary_cell(l_cutoff_date) || CHR(10)
+269            ) || CHR(10) ||
+270            PKG_SQL.fn_format_table(
+271              p_columns    => 'NOTE|SOURCE_PARTITION_NAME|SOURCE_SUBPARTITION_NAME|PARTITION_NAME|SUBPARTITION_NAME|PARTITION_HIGH_VALUE|SUBPARTITION_HIGH_VALUE|ARCHIVE_STATUS|QUALITY_STATUS|TRUNCATE_STATUS|SOURCE_ROW_COUNT|TARGET_ROW_COUNT|MAX_PRESERVE_DATE',
+272              p_rows       => l_table_summary
+273            ) || CHR(10);
+274        END IF;
+275      END LOOP; -- FOR t
+276  
+277      DBMS_OUTPUT.PUT_LINE(
+278        'TRUNCATE tables=' || l_tables ||
+279        ' units=' || l_units ||
+280        ' found=' || l_rows_available ||
+281        ' truncated=' || l_truncated ||
+282        ' preserved=' || l_preserved ||
+283        ' target_owner=' || NVL(l_target_owner, '<ALL>') ||
+284        ' target_table=' || NVL(l_target_table, '<ALL>') ||
+285        ' execute=' || l_execute_flag
+286      );
+287  
+288      IF l_summary IS NOT NULL THEN
+289        PKG_ARCHIVE_LOG.prc_log_message(l_run_id, l_summary, 'SUMMARY');
+290      END IF;
+291  
+292      PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'SUCCESS');
+293    EXCEPTION
+294      WHEN OTHERS THEN
+295        IF l_run_id IS NOT NULL THEN
+296          PKG_ARCHIVE_LOG.prc_log_error_stack(l_run_id);
+297          PKG_ARCHIVE_LOG.prc_finish_run(l_run_id, 'ERROR', SQLERRM);
+298        END IF;
+299        RAISE;
+300    END prc_truncate;
+301  END PKG_ARCHIVE_TRUNCATE;
+302  /
 
 Package Body PKG_ARCHIVE_TRUNCATE compiled
 
