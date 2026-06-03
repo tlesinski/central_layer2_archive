@@ -39,6 +39,12 @@ full_reinstall.sql                          root-level full reinstall script
 
 docs/
   central_layer2_archive_architecture.md
+  central_layer3_replica_architecture.md
+
+deploy/
+  test_support/
+    dat.spec.sql
+    dat.body.sql
 
 layer1_agent/
   types/
@@ -53,6 +59,7 @@ layer1_agent/
 layer2_core/
   sequences/
     md_process_log_seq.sql
+    stg_tmp_arch_seq.sql
   tables/
     md_process_log.sql
     tw_archive_tables.sql
@@ -60,6 +67,11 @@ layer2_core/
     tw_archive_partitions.sql
   functions/
     fn_archive_high_value_date.sql
+    fn_calculate_retention_rule.sql
+    fn_validate_preserve_rule.sql
+  triggers/
+    trg_archive_tables_retention_calc.sql
+    trg_archive_tables_preserve_calc.sql
   views/
     tw_archive_source_partitions_vw.sql
     tw_archive_discovery_partitions_vw.sql
@@ -77,14 +89,45 @@ layer2_core/
     pkg_archive_truncate.spec.sql / body.sql
     pkg_archive_runner.spec.sql / body.sql
 
+layer3_replica/
+  sequences/
+    stg_tmp_replica_seq.sql
+  tables/
+    tw_replica_tables.sql
+    tw_replica_runs.sql
+    tw_replica_partitions.sql
+  views/
+    tw_replica_source_partitions_vw.sql
+    tw_replica_discovery_partitions_vw.sql
+    tw_replica_replicate_partitions_vw.sql
+    tw_replica_quality_partitions_vw.sql
+    tw_replica_purge_partitions_vw.sql
+  packages/
+    pkg_replica_partition.spec.sql / body.sql
+    pkg_replica_discovery.spec.sql / body.sql
+    pkg_replica_replicate.spec.sql / body.sql
+    pkg_replica_quality.spec.sql / body.sql
+    pkg_replica_purge.spec.sql / body.sql
+    pkg_replica_runner.spec.sql / body.sql
+
 deploy/
+  smoke_all.sql                            full local smoke suite
   drop_all_schemas.sql                     schema-level drop script (root)
   client1/
     install_client1_test_source.sql
     install_client1_subpart_test_source.sql
+    install_client1_daily_interval_test_source.sql
     grant_client1_to_cagent1.sql
     grant_client1_subpart_to_cagent1.sql
+    grant_client1_daily_interval_to_cagent1.sql
     grant_cleanup_admin_to_cagent1.sql
+  client2/
+    install_client2_test_source.sql
+    install_client2_subpart_test_source.sql
+    install_client2_daily_interval_test_source.sql
+    grant_client2_to_cagent1.sql
+    grant_client2_subpart_to_cagent1.sql
+    grant_client2_daily_interval_to_cagent1.sql
   layer1/
     install_layer1_agent.sql
     grant_layer1_agent_to_carch.sql
@@ -92,17 +135,40 @@ deploy/
     create_client1_loopback_link.sql
     install_layer2_core.sql
     install_orders_archive_target.sql
+    install_orders_archive_target2.sql
     install_orders_subpart_archive_target.sql
+    install_orders_subpart_archive_target2.sql
+    install_orders_daily_interval_archive_target.sql
+    install_orders_daily_interval_archive_target2.sql
     recreate_layer2_core.sql
     reset_client1_loopback_metadata.sql
     seed_client1_loopback.sql
     seed_client1_loopback_subpart.sql
+    seed_client1_loopback_daily_interval.sql
+    seed_client2_loopback.sql
+    seed_client2_loopback_subpart.sql
+    seed_client2_loopback_daily_interval.sql
     smoke_remote_client1_loopback.sql
     smoke_remote_flow_client1_loopback.sql
     smoke_truncate_preview_client1_loopback.sql
     smoke_runner_client1_loopback.sql
     smoke_runner_client1_loopback_subpart.sql
     smoke_runner_client1_loopback_exchange.sql
+    smoke_runner_multisource.sql
+    smoke_runner_multisource_subpart.sql
+    smoke_runner_multisource_daily_interval.sql
+  layer3/
+    install_layer3_replica.sql
+    recreate_layer3_replica.sql
+    install_orders_replica_target.sql
+    install_orders_subpart_replica_target.sql
+    seed_carch_local_replica.sql
+    seed_carch_local_replica_subpart.sql
+    smoke_replica_discovery.sql
+    smoke_replica_replicate.sql
+    smoke_replica_quality.sql
+    smoke_replica_purge_preview.sql
+    smoke_replica_runner.sql
 ```
 
 Current state:
@@ -120,8 +186,17 @@ Current state:
 - remote-path loopback smoke tests present
 - remote-path truncate preview smoke test present
 - remote-path runner smoke test present (range and subpartition)
+- multisource runner smoke tests present for CLIENT1 and CLIENT2
+- daily interval source/target smoke coverage present
 - active target uniqueness safeguards present
-- full reinstall script (clean drop + full install)
+- full reinstall script (clean drop + full install, including CLIENT2 and CREPL)
+- fake `DAT` package for local tests only; it is not part of the layer 2 core
+- layer 3 replica metadata model and process candidate views present
+- layer 3 packages present: PKG_REPLICA_LOG, PKG_REPLICA_DISCOVERY,
+  PKG_REPLICA_PARTITION, PKG_REPLICA_REPLICATE, PKG_REPLICA_QUALITY,
+  PKG_REPLICA_PURGE, PKG_REPLICA_RUNNER
+- layer 3 local smoke scripts present for DISCOVER, REPLICATE, QUALITY, PURGE
+  preview, and RUNNER
 ```
 
 ## Relationship To old_archiver
@@ -168,9 +243,28 @@ Current minimal model removes `TW_ARCHIVE_SOURCES`. `SOURCE_DB_LINK` lives
 directly in `TW_ARCHIVE_TABLES` and is part of the natural primary key for a
 source table setup.
 
-`TW_ARCHIVE_TABLES` includes `PARALLEL_DEGREE` (default 4) for controlling
-parallelism during staging inserts and staging index builds. `TABLESPACE_NAME`
-controls the tablespace used by exchange staging tables and staging indexes.
+`TW_ARCHIVE_TABLES` includes:
+
+```text
+PARALLEL_DEGREE    controls staging inserts and staging index builds
+TABLESPACE_NAME    controls exchange staging table and index placement
+TRUNCATE_MODE      enables or disables source cleanup requests
+LAST_BUSINESS_DATE SQL expression used to calculate the current business date
+DAYS_ONLINE        number of days kept online on the source before truncate
+PRESERVE_RULE      optional SQL returning dates that must not be truncated
+PRESERVE_CALC      validation result for PRESERVE_RULE
+```
+
+The current retention model is not a static `SYSDATE - N` rule. Layer 2 derives
+truncate eligibility from business-date configuration and partition high values:
+
+```text
+cutoff_date = FN_ARCHIVE_HIGH_VALUE_DATE(LAST_BUSINESS_DATE) - DAYS_ONLINE
+```
+
+Local test installs provide a fake `DAT` package with `fn_eod`, `fn_boy`, and
+`fn_eoy` so sample metadata can use business-date expressions. Production date
+logic is expected to be provided outside the archiver core.
 
 `TW_ARCHIVE_PARTITIONS` should represent both partitions and subpartitions using
 an explicit `ARCHIVE_UNIT_TYPE` column. Parent partition status for
@@ -212,22 +306,28 @@ prc_cleanup_unit(owner, table_name, partition_name, subpartition_name, mode)
 fn_health_check
 ```
 
-The agent should not contain archive policy.
+The agent should not contain archive policy. It must not decide which
+partitions are eligible, whether quality passed, whether retention has elapsed,
+or whether cleanup should run. Those decisions belong to layer 2.
 
-## Implementation Order
+## Implemented L1/L2 Flow
 
-Recommended first milestones:
+The current L1/L2 implementation contains the core flow below:
 
 ```text
-1. Add layer 2 DDL for central metadata tables.
-2. Add layer 2 install script.
-3. Replace the reference layer 1 helper with a real PKG_ARCHIVE_AGENT.
-4. Add layer 1 install script.
-5. Implement discovery in layer 2.
-6. Implement import for one range-partitioned table using EXCHANGE.
-7. Add subpartition support.
-8. Add quality checks.
-9. Add controlled source truncate.
+1. Layer 1 exposes PKG_ARCHIVE_AGENT for partition metadata, row counts,
+   and explicit cleanup requests.
+2. Layer 2 owns TW_ARCHIVE_TABLES, TW_ARCHIVE_PARTITIONS, TW_ARCHIVE_RUNS,
+   and MD_PROCESS_LOG.
+3. DISCOVER reads source partition metadata through the layer 1 agent view
+   and adds missing target partitions.
+4. ARCHIVE imports eligible partitions/subpartitions into layer 2 target
+   tables through staging and EXCHANGE.
+5. QUALITY compares source and target row counts and updates QUALITY_STATUS.
+6. TRUNCATE requests source cleanup through the layer 1 agent only after
+   archive and quality success, business-date cutoff, and preserve checks.
+7. RUNNER orchestrates DISCOVER -> ARCHIVE -> QUALITY -> TRUNCATE with
+   preview/execute controls.
 ```
 
 Every operational procedure should support preview and execute modes:
@@ -272,8 +372,10 @@ Local development database layout used so far:
 
 ```text
 CARCH    central layer 2 schema
-CLIENT1  sample client/source schema
 CAGENT1  layer 1 agent schema
+CLIENT1  sample client/source schema
+CLIENT2  second sample client/source schema for multisource validation
+CREPL    layer 3 replica schema
 ```
 
 Installed smoke flow:
@@ -282,8 +384,17 @@ Installed smoke flow:
 CLIENT1.ORDERS_ARCH_SRC
   range-partitioned test source table
 
+CLIENT1.ORDERS_SUBPART_SRC
+  range-list subpartitioned test source table
+
+CLIENT1.ORDERS_DAILY_INT_SRC
+  daily interval test source table
+
+CLIENT2.ORDERS_ARCH_SRC / ORDERS_SUBPART_SRC / ORDERS_DAILY_INT_SRC
+  second source schema with matching structures and separate CARCH targets
+
 CAGENT1.PKG_ARCHIVE_AGENT
-  reads partition metadata and row counts from CLIENT1
+  reads partition metadata and row counts from CLIENT1 and CLIENT2
 
 CARCH.PKG_ARCHIVE_DISCOVERY
   opens one DISCOVER run and processes all configured source tables in that run
@@ -314,8 +425,9 @@ CARCH.PKG_ARCHIVE_TRUNCATE
   opens one TRUNCATE run and can be narrowed to one target table with optional
   target owner/table parameters
   requests source truncate through the layer 1 agent only after quality success
-  applies RETENTION_RULE before truncating source partitions/subpartitions;
-  test installs provide a fake DAT package with fn_eod, fn_boy, fn_eoy
+  applies LAST_BUSINESS_DATE - DAYS_ONLINE cutoff before truncating source
+  partitions/subpartitions
+  respects optional PRESERVE_RULE dates that protect matching archive units
 
 CARCH.PKG_ARCHIVE_RUNNER
   runs DISCOVER -> ARCHIVE -> QUALITY -> TRUNCATE with stop-after-step control
@@ -327,6 +439,8 @@ Expected discovery smoke result:
 ```text
 5 discovered partition rows for CLIENT1.ORDERS_ARCH_SRC
 10 discovered subpartition rows for CLIENT1.ORDERS_SUBPART_SRC
+daily interval source rows discovered for CLIENT1.ORDERS_DAILY_INT_SRC
+matching CLIENT2 rows discovered into separate target tables
 PMAX source partitions ignored
 ```
 
@@ -337,6 +451,11 @@ Expected import smoke result:
 250 rows in CARCH.ORDERS_ARCH_SRC
 8 archived subpartition rows for CLIENT1.ORDERS_SUBPART_SRC
 360 rows in CARCH.ORDERS_SUBPART_SRC
+96 rows in CARCH.ORDERS_DAILY_INT_SRC
+same row-count expectations for CLIENT2 targets:
+  CARCH.ORDERS_ARCH_SRC_2
+  CARCH.ORDERS_SUBPART_SRC_2
+  CARCH.ORDERS_DAILY_INT_SRC_2
 TARGET_ROW_COUNT populated during archive
 ```
 
@@ -377,6 +496,14 @@ Remote compatibility notes:
 - DELETE cleanup is intentionally not part of the current layer 2 archive path.
 ```
 
+## Layer 3 Direction
+
+Layer 3 replica design is intentionally kept out of this README and captured in
+`docs/central_layer3_replica_architecture.md`. The implemented foundation
+contains the `TW_REPLICA_*` metadata tables, process candidate views, local
+`CREPL` smoke target tables, seed metadata, EXCHANGE-based replication, quality,
+purge preview, and runner smoke coverage.
+
 ## Quick Reinstall
 
 Connect as SYS and run in sequence:
@@ -390,7 +517,33 @@ Verify success:
 
 ```text
 - all SHOW ERRORS = "No errors"
-- seed TW_ARCHIVE_TABLES = 1 row merged per table
-- seed TW_ARCHIVE_PARTITIONS = N rows merged per table
+- seed TW_ARCHIVE_TABLES = 1 row merged per source table setup
+- seed TW_ARCHIVE_PARTITIONS = N rows merged per target table setup
+- CLIENT1 and CLIENT2 source schemas installed
+- CREPL layer 3 replica schema installed and seeded
 - DB link test: SELECT * FROM dual@CLIENT1_LOOPBACK_LINK → returns X
+```
+
+## Recommended Smoke Path
+
+After a clean reinstall, run the full smoke suite:
+
+```text
+1. @drop_all_schemas.sql
+2. @full_reinstall.sql
+3. @deploy/smoke_all.sql
+```
+
+`deploy/smoke_all.sql` runs the L2 range, multisource range, multisource
+subpartition, multisource daily interval, truncate preview, and L3 replica
+runner smoke tests. It also asserts the expected target row counts, checks that
+L3 has no remaining discovery/replicate/quality candidates, and verifies that
+the smoke schemas have no invalid objects.
+
+On Windows SQL*Plus, `ORA-12638` usually means the local Oracle client is trying
+NTS authentication. For a single session, point `TNS_ADMIN` at a directory with
+this `sqlnet.ora`, or fix the local Oracle client configuration:
+
+```text
+SQLNET.AUTHENTICATION_SERVICES = (NONE)
 ```

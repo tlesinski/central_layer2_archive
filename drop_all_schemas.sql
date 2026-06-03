@@ -7,10 +7,171 @@ WHENEVER SQLERROR EXIT
 PROMPT ============================================================
 PROMPT Dropping all Central Layer 2 Archive schema objects
 PROMPT Run this script as a DBA user (e.g. SYS or SYSTEM).
-PROMPT This will drop objects in CARCH, CAGENT1, and CLIENT1.
+PROMPT This will drop objects in CARCH, CAGENT1, CLIENT1, CLIENT2, and CREPL.
 PROMPT ============================================================
 
 SPOOL drop_all_schemas.log
+
+PROMPT
+PROMPT ============================================================
+PROMPT Section 0: Dropping CREPL (layer 3 replica) objects
+PROMPT ============================================================
+
+BEGIN
+  -- packages (body first)
+  FOR r IN (
+    SELECT object_name, object_type
+      FROM dba_objects
+     WHERE owner = 'CREPL'
+       AND object_type IN ('PACKAGE', 'PACKAGE BODY')
+       AND object_name IN (
+          'PKG_REPLICA_RUNNER',
+          'PKG_REPLICA_PURGE',
+          'PKG_REPLICA_QUALITY',
+          'PKG_REPLICA_REPLICATE',
+          'PKG_REPLICA_PARTITION',
+          'PKG_REPLICA_DISCOVERY',
+          'PKG_REPLICA_LOG',
+          'PKG_SQL',
+          'PKG_TL_LOGGING'
+       )
+     ORDER BY object_type DESC
+  ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'DROP ' || r.object_type || ' CREPL.' || r.object_name;
+      DBMS_OUTPUT.PUT_LINE('Dropped ' || r.object_type || ' CREPL.' || r.object_name);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Could not drop ' || r.object_type || ' ' ||
+                             r.object_name || ': ' || SQLERRM);
+    END;
+  END LOOP;
+
+  -- views
+  FOR r IN (
+    SELECT view_name
+      FROM dba_views
+     WHERE owner = 'CREPL'
+       AND view_name LIKE 'TW\_REPLICA\_%' ESCAPE '\'
+  ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'DROP VIEW CREPL.' || r.view_name;
+      DBMS_OUTPUT.PUT_LINE('Dropped VIEW CREPL.' || r.view_name);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Could not drop VIEW ' ||
+                             r.view_name || ': ' || SQLERRM);
+    END;
+  END LOOP;
+
+  -- synonyms to layer 2
+  FOR r IN (
+    SELECT synonym_name
+      FROM dba_synonyms
+     WHERE owner = 'CREPL'
+       AND synonym_name IN (
+         'TW_ARCHIVE_TABLES',
+         'TW_ARCHIVE_PARTITIONS',
+         'ORDERS_ARCH_SRC_L2',
+         'ORDERS_SUBPART_SRC_L2'
+       )
+  ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'DROP SYNONYM CREPL.' || r.synonym_name;
+      DBMS_OUTPUT.PUT_LINE('Dropped SYNONYM CREPL.' || r.synonym_name);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Could not drop SYNONYM ' ||
+                             r.synonym_name || ': ' || SQLERRM);
+    END;
+  END LOOP;
+
+  -- tables
+  FOR r IN (
+    SELECT table_name
+      FROM dba_tables
+     WHERE owner = 'CREPL'
+       AND table_name IN (
+         'TW_REPLICA_PARTITIONS',
+         'TW_REPLICA_RUNS',
+         'TW_REPLICA_TABLES',
+         'MD_PROCESS_LOG',
+         'ORDERS_ARCH_SRC',
+         'ORDERS_SUBPART_SRC'
+       )
+     ORDER BY CASE table_name
+                WHEN 'TW_REPLICA_PARTITIONS' THEN 1
+                WHEN 'TW_REPLICA_RUNS' THEN 2
+                WHEN 'TW_REPLICA_TABLES' THEN 3
+                WHEN 'MD_PROCESS_LOG' THEN 4
+                ELSE 5
+              END
+  ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'DROP TABLE CREPL.' || r.table_name || ' PURGE';
+      DBMS_OUTPUT.PUT_LINE('Dropped TABLE CREPL.' || r.table_name);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Could not drop TABLE ' ||
+                             r.table_name || ': ' || SQLERRM);
+    END;
+  END LOOP;
+
+  -- function
+  FOR r IN (
+    SELECT object_name
+      FROM dba_objects
+     WHERE owner = 'CREPL'
+       AND object_type = 'FUNCTION'
+       AND object_name = 'FN_ARCHIVE_HIGH_VALUE_DATE'
+  ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'DROP FUNCTION CREPL.' || r.object_name;
+      DBMS_OUTPUT.PUT_LINE('Dropped FUNCTION CREPL.' || r.object_name);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Could not drop FUNCTION ' ||
+                             r.object_name || ': ' || SQLERRM);
+    END;
+  END LOOP;
+
+  -- drop orphan replica staging tables
+  FOR r IN (
+    SELECT table_name
+      FROM dba_tables
+     WHERE owner = 'CREPL'
+       AND table_name LIKE 'STG\_TMP\_REPLICA\_%' ESCAPE '\'
+  ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'DROP TABLE CREPL.' || r.table_name || ' PURGE';
+      DBMS_OUTPUT.PUT_LINE('Dropped staging TABLE CREPL.' || r.table_name);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Could not drop staging TABLE ' ||
+                             r.table_name || ': ' || SQLERRM);
+    END;
+  END LOOP;
+
+  -- sequence
+  FOR r IN (
+    SELECT sequence_name
+      FROM dba_sequences
+     WHERE sequence_owner = 'CREPL'
+        AND sequence_name IN ('MD_PROCESS_LOG_SEQ', 'STG_TMP_REPLICA_SEQ')
+  ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'DROP SEQUENCE CREPL.' || r.sequence_name;
+      DBMS_OUTPUT.PUT_LINE('Dropped SEQUENCE CREPL.' || r.sequence_name);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Could not drop SEQUENCE ' ||
+                             r.sequence_name || ': ' || SQLERRM);
+    END;
+  END LOOP;
+END;
+/
+
+PROMPT CREPL objects dropped.
 
 PROMPT
 PROMPT ============================================================
@@ -415,7 +576,7 @@ BEGIN
   FOR r IN (
     SELECT owner, object_type, COUNT(*) AS cnt
       FROM dba_objects
-     WHERE owner IN ('CARCH','CAGENT1','CLIENT1','CLIENT2')
+     WHERE owner IN ('CARCH','CAGENT1','CLIENT1','CLIENT2','CREPL')
        AND object_name NOT LIKE 'SYS_P%'
        AND object_name NOT LIKE 'TMP$%'
      GROUP BY owner, object_type
@@ -453,6 +614,11 @@ UNION ALL
 SELECT 'CLIENT2: ' || COUNT(*) || ' objects remaining' FROM dba_objects
  WHERE owner = 'CLIENT2'
    AND object_name NOT LIKE 'SYS_P%'
+   AND object_name NOT LIKE 'TMP$%'
+UNION ALL
+SELECT 'CREPL: ' || COUNT(*) || ' objects remaining' FROM dba_objects
+ WHERE owner = 'CREPL'
+   AND object_name NOT LIKE 'SYS_P%'
    AND object_name NOT LIKE 'TMP$%';
 
 SPOOL OFF
@@ -476,4 +642,4 @@ purge dba_recyclebin;
 commit;
 
 select owner, object_name from dba_objects
-where owner in ('CARCH', 'CAGENT1', 'CLIENT1', 'CLIENT2');
+where owner in ('CARCH', 'CAGENT1', 'CLIENT1', 'CLIENT2', 'CREPL');
