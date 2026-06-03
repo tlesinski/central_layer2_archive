@@ -327,6 +327,7 @@ Rekomendowane nazwy pakietow:
 
 ```text
 PKG_REPLICA_DISCOVERY
+PKG_REPLICA_PARTITION
 PKG_REPLICA_REPLICATE
 PKG_REPLICA_QUALITY
 PKG_REPLICA_PURGE
@@ -336,11 +337,12 @@ PKG_REPLICA_RUNNER
 Stan implementacji:
 
 ```text
-PKG_REPLICA_DISCOVERY - zaimplementowany
-PKG_REPLICA_REPLICATE - zaimplementowany
-PKG_REPLICA_QUALITY   - zaimplementowany
-PKG_REPLICA_PURGE     - zaimplementowany
-PKG_REPLICA_RUNNER    - zaimplementowany
+PKG_REPLICA_DISCOVERY  - zaimplementowany
+PKG_REPLICA_PARTITION  - zaimplementowany
+PKG_REPLICA_REPLICATE  - zaimplementowany
+PKG_REPLICA_QUALITY    - zaimplementowany
+PKG_REPLICA_PURGE      - zaimplementowany
+PKG_REPLICA_RUNNER     - zaimplementowany
 ```
 
 Pakiety moga reuzyc wzorce i fragmenty kodu z layer 2, ale nie powinny
@@ -356,6 +358,28 @@ PKG_ARCHIVE_PARTITION staging/exchange ideas
 FN_ARCHIVE_HIGH_VALUE_DATE
 MD_PROCESS_LOG
 summary formatting
+```
+
+### PKG_REPLICA_PARTITION
+
+`PKG_REPLICA_PARTITION` to dedykowany pakiet EXCHANGE dla layer 3, wzorowany na
+`PKG_ARCHIVE_PARTITION` z layer 2. Implementuje cykl:
+
+```text
+1. prc_create_exchange_staging      CREATE TABLE ... FOR EXCHANGE WITH TABLE
+2. prc_load_exchange_staging        INSERT APPEND SELECT * FROM source PARTITION(name)
+3. prc_build_staging_indexes        klonuje lokalne indeksy targetu na staging
+4. prc_exchange_partition/sub       ALTER TABLE ... EXCHANGE PARTITION/SUBPARTITION
+5. prc_drop_staging                 DROP TABLE ... PURGE
+```
+
+Roznice wzgledem L2:
+
+```text
+- SEKWENCJA: STG_TMP_REPLICA_SEQ (prefix STG_TMP_REPLICA_)
+- LOAD: uzywa PARTITION(source_partition_name) zamiast zakresu klucza
+- CLEANUP: szuka STG_TMP_REPLICA_%
+- nazwy indeksow staging: STG_<original_index>_<timestamp>
 ```
 
 ## Logowanie I Statusy
@@ -412,7 +436,13 @@ Zakres smoke:
 - REPLICATE execute - zaimplementowany w deploy/layer3/smoke_replica_replicate.sql
 - QUALITY execute - zaimplementowany w deploy/layer3/smoke_replica_quality.sql
 - PURGE preview - zaimplementowany w deploy/layer3/smoke_replica_purge_preview.sql
+- RUNNER execute through QUALITY, with PURGE disabled by default -
+  zaimplementowany w deploy/layer3/smoke_replica_runner.sql
 ```
+
+`full_reinstall.sql` tworzy i przygotowuje schemat `CREPL`, instaluje core L3,
+tworzy lokalne target tabele repliki, seeduje `TW_REPLICA_TABLES` dla lokalnego
+zrodla `CARCH` oraz zaklada synonimy do metadanych layer 2.
 
 Pierwszy smoke nie musi obejmowac:
 

@@ -510,6 +510,45 @@ Aktualny kod realizuje nastepujacy przeplyw:
    orkiestruje DISCOVER -> ARCHIVE -> QUALITY -> TRUNCATE.
 ```
 
+Aktualny lokalny smoke setup obejmuje:
+
+```text
+- CARCH jako centralny layer 2
+- CAGENT1 jako layer 1 agent
+- CLIENT1 i CLIENT2 jako dwa niezalezne schematy zrodlowe
+- jeden DB link CLIENT1_LOOPBACK_LINK do CAGENT1, przez ktory agent widzi oba
+  schematy zrodlowe
+- osobne target tabele CARCH dla kazdego source setupu
+```
+
+Zakres testowych tabel zrodlowych:
+
+```text
+CLIENT1.ORDERS_ARCH_SRC
+CLIENT1.ORDERS_SUBPART_SRC
+CLIENT1.ORDERS_DAILY_INT_SRC
+
+CLIENT2.ORDERS_ARCH_SRC
+CLIENT2.ORDERS_SUBPART_SRC
+CLIENT2.ORDERS_DAILY_INT_SRC
+```
+
+Zakres smoke runnerow:
+
+```text
+- range partition: smoke_runner_client1_loopback.sql,
+  smoke_runner_multisource.sql
+- range-list subpartition: smoke_runner_client1_loopback_subpart.sql,
+  smoke_runner_multisource_subpart.sql
+- daily interval partition: smoke_runner_multisource_daily_interval.sql
+- EXCHANGE path: smoke_runner_client1_loopback_exchange.sql
+- truncate safety: smoke_truncate_preview_client1_loopback.sql
+```
+
+`full_reinstall.sql` instaluje obecnie CLIENT1, CLIENT2, CAGENT1, CARCH oraz
+CREPL, seeduje metadane L2 dla wszystkich testowych source setupow i przygotowuje
+lokalny layer 3 replica smoke.
+
 Layer 3 replica bedzie opisana osobno w
 `docs/central_layer3_replica_architecture.md`.
 
