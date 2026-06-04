@@ -3,15 +3,18 @@ SET SERVEROUTPUT ON
 SET FEEDBACK ON
 SET ECHO ON
 
-PROMPT Installing Central Archive layer 1 agent objects
+PROMPT Installing standalone AGENT objects
 
-@@../../layer1_agent/types/archive_partition_info_obj.sql
-@@../../layer1_agent/types/archive_partition_info_tab.sql
-@@../../layer1_agent/views/archive_partition_info_vw.sql
-@@../../layer1_agent/packages/pkg_archive_agent.spec.sql
-@@../../layer1_agent/packages/pkg_archive_agent.body.sql
+@layer1_agent/types/agent_partition_info_obj.sql
+@layer1_agent/types/agent_partition_info_tab.sql
+@layer1_agent/views/vw_agent_partition_info.sql
+@layer1_agent/packages/pkg_agent_archive.spec.sql
+@layer1_agent/packages/pkg_agent_archive.body.sql
 
-SHOW ERRORS PACKAGE PKG_ARCHIVE_AGENT
-SHOW ERRORS PACKAGE BODY PKG_ARCHIVE_AGENT
+SHOW ERRORS TYPE AGENT_PARTITION_INFO_OBJ
+SHOW ERRORS TYPE AGENT_PARTITION_INFO_TAB
+SHOW ERRORS VIEW VW_AGENT_PARTITION_INFO
+SHOW ERRORS PACKAGE PKG_AGENT_ARCHIVE
+SHOW ERRORS PACKAGE BODY PKG_AGENT_ARCHIVE
 
-PROMPT Central Archive layer 1 agent install completed
+PROMPT Standalone AGENT install completed

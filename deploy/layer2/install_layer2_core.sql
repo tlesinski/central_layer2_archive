@@ -2,70 +2,62 @@ SET DEFINE OFF
 SET SERVEROUTPUT ON
 SET FEEDBACK ON
 SET ECHO ON
+WHENEVER SQLERROR EXIT SQL.SQLCODE
 
-PROMPT Installing Central Layer 2 Archive core objects
-PROMPT Prerequisite: DAT package must exist in the install schema.
+PROMPT Installing standalone ARCHIVER core objects
 
-@layer2_core/sequences/md_process_log_seq.sql
-@layer2_core/sequences/stg_tmp_arch_seq.sql
-@layer2_core/tables/md_process_log.sql
-@layer2_core/tables/tw_archive_tables.sql
-@layer2_core/tables/tw_archive_runs.sql
-@layer2_core/tables/tw_archive_partitions.sql
-@layer2_core/functions/fn_archive_high_value_date.sql
-@layer2_core/functions/fn_calculate_retention_rule.sql
-@layer2_core/functions/fn_validate_preserve_rule.sql
-@layer2_core/triggers/trg_archive_tables_retention_calc.sql
-@layer2_core/triggers/trg_archive_tables_preserve_calc.sql
-@layer2_core/views/tw_archive_source_partitions_vw.sql
-@layer2_core/views/tw_archive_discovery_partitions_vw.sql
-@layer2_core/views/tw_archive_import_partitions_vw.sql
-@layer2_core/views/tw_archive_quality_partitions_vw.sql
-@layer2_core/views/tw_archive_truncate_partitions_vw.sql
-@layer2_core/packages/pkg_tl_logging.spec.sql
-@layer2_core/packages/pkg_tl_logging.body.sql
-@layer2_core/packages/pkg_sql.spec.sql
-@layer2_core/packages/pkg_sql.body.sql
-@layer2_core/packages/pkg_archive_log.spec.sql
-@layer2_core/packages/pkg_archive_log.body.sql
-@layer2_core/packages/pkg_archive_partition.spec.sql
-@layer2_core/packages/pkg_archive_partition.body.sql
-@layer2_core/packages/pkg_archive_discovery.spec.sql
-@layer2_core/packages/pkg_archive_discovery.body.sql
-@layer2_core/packages/pkg_archive_import.spec.sql
-@layer2_core/packages/pkg_archive_import.body.sql
-@layer2_core/packages/pkg_archive_quality.spec.sql
-@layer2_core/packages/pkg_archive_quality.body.sql
-@layer2_core/packages/pkg_archive_truncate.spec.sql
-@layer2_core/packages/pkg_archive_truncate.body.sql
-@layer2_core/packages/pkg_archive_runner.spec.sql
-@layer2_core/packages/pkg_archive_runner.body.sql
+@layer2_core/sequences/archiver_process_log_seq.sql
+@layer2_core/sequences/archiver_stg_tmp_seq.sql
+@layer2_core/tables/tbl_archiver_process_log.sql
+@layer2_core/tables/tbl_archiver_tables.sql
+@layer2_core/tables/tbl_archiver_runs.sql
+@layer2_core/tables/tbl_archiver_partitions.sql
+@layer2_core/functions/fn_archiver_high_value_date.sql
+@layer2_core/functions/fn_archiver_calculate_retention.sql
+@layer2_core/functions/fn_archiver_validate_preserve.sql
+@layer2_core/triggers/trg_archiver_tables_retention_calc.sql
+@layer2_core/triggers/trg_archiver_tables_preserve_calc.sql
+@layer2_core/views/vw_archiver_source_partitions.sql
+@layer2_core/views/vw_archiver_discovery_partitions.sql
+@layer2_core/views/vw_archiver_import_partitions.sql
+@layer2_core/views/vw_archiver_quality_partitions.sql
+@layer2_core/views/vw_archiver_truncate_partitions.sql
+@layer2_core/packages/pkg_archiver_tl_logging.spec.sql
+@layer2_core/packages/pkg_archiver_tl_logging.body.sql
+@layer2_core/packages/pkg_archiver_sql.spec.sql
+@layer2_core/packages/pkg_archiver_sql.body.sql
+@layer2_core/packages/pkg_archiver_log.spec.sql
+@layer2_core/packages/pkg_archiver_log.body.sql
+@layer2_core/packages/pkg_archiver_partition.spec.sql
+@layer2_core/packages/pkg_archiver_partition.body.sql
+@layer2_core/packages/pkg_archiver_discovery.spec.sql
+@layer2_core/packages/pkg_archiver_discovery.body.sql
+@layer2_core/packages/pkg_archiver_import.spec.sql
+@layer2_core/packages/pkg_archiver_import.body.sql
+@layer2_core/packages/pkg_archiver_quality.spec.sql
+@layer2_core/packages/pkg_archiver_quality.body.sql
+@layer2_core/packages/pkg_archiver_truncate.spec.sql
+@layer2_core/packages/pkg_archiver_truncate.body.sql
+@layer2_core/packages/pkg_archiver_runner.spec.sql
+@layer2_core/packages/pkg_archiver_runner.body.sql
 
-SHOW ERRORS PACKAGE PKG_TL_LOGGING
-SHOW ERRORS PACKAGE BODY PKG_TL_LOGGING
-SHOW ERRORS FUNCTION FN_ARCHIVE_HIGH_VALUE_DATE
-SHOW ERRORS FUNCTION FN_CALCULATE_RETENTION_RULE
-SHOW ERRORS FUNCTION FN_VALIDATE_PRESERVE_RULE
-SHOW ERRORS VIEW TW_ARCHIVE_SOURCE_PARTITIONS_VW
-SHOW ERRORS VIEW TW_ARCHIVE_DISCOVERY_PARTITIONS_VW
-SHOW ERRORS VIEW TW_ARCHIVE_IMPORT_PARTITIONS_VW
-SHOW ERRORS VIEW TW_ARCHIVE_QUALITY_PARTITIONS_VW
-SHOW ERRORS VIEW TW_ARCHIVE_TRUNCATE_PARTITIONS_VW
-SHOW ERRORS PACKAGE PKG_SQL
-SHOW ERRORS PACKAGE BODY PKG_SQL
-SHOW ERRORS PACKAGE PKG_ARCHIVE_LOG
-SHOW ERRORS PACKAGE BODY PKG_ARCHIVE_LOG
-SHOW ERRORS PACKAGE PKG_ARCHIVE_PARTITION
-SHOW ERRORS PACKAGE BODY PKG_ARCHIVE_PARTITION
-SHOW ERRORS PACKAGE PKG_ARCHIVE_DISCOVERY
-SHOW ERRORS PACKAGE BODY PKG_ARCHIVE_DISCOVERY
-SHOW ERRORS PACKAGE PKG_ARCHIVE_IMPORT
-SHOW ERRORS PACKAGE BODY PKG_ARCHIVE_IMPORT
-SHOW ERRORS PACKAGE PKG_ARCHIVE_QUALITY
-SHOW ERRORS PACKAGE BODY PKG_ARCHIVE_QUALITY
-SHOW ERRORS PACKAGE PKG_ARCHIVE_TRUNCATE
-SHOW ERRORS PACKAGE BODY PKG_ARCHIVE_TRUNCATE
-SHOW ERRORS PACKAGE PKG_ARCHIVE_RUNNER
-SHOW ERRORS PACKAGE BODY PKG_ARCHIVE_RUNNER
+SHOW ERRORS PACKAGE PKG_ARCHIVER_TL_LOGGING
+SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_TL_LOGGING
+SHOW ERRORS PACKAGE PKG_ARCHIVER_SQL
+SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_SQL
+SHOW ERRORS PACKAGE PKG_ARCHIVER_LOG
+SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_LOG
+SHOW ERRORS PACKAGE PKG_ARCHIVER_PARTITION
+SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_PARTITION
+SHOW ERRORS PACKAGE PKG_ARCHIVER_DISCOVERY
+SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_DISCOVERY
+SHOW ERRORS PACKAGE PKG_ARCHIVER_IMPORT
+SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_IMPORT
+SHOW ERRORS PACKAGE PKG_ARCHIVER_QUALITY
+SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_QUALITY
+SHOW ERRORS PACKAGE PKG_ARCHIVER_TRUNCATE
+SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_TRUNCATE
+SHOW ERRORS PACKAGE PKG_ARCHIVER_RUNNER
+SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_RUNNER
 
-PROMPT Central Layer 2 Archive core install completed
+PROMPT Standalone ARCHIVER core install completed

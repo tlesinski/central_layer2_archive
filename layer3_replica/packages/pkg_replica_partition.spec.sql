@@ -8,7 +8,7 @@ AS
                    create staging, load from L2 source partition,
                    build indexes, exchange, drop staging.
 
-    Prerequisite : PKG_SQL, PKG_REPLICA_LOG
+    Prerequisite : PKG_REPLICA_SQL, PKG_REPLICA_LOG
 
     Change History:
     ------------------------------------------------------------------------------

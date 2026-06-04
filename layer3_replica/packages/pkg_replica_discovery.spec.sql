@@ -6,9 +6,9 @@ AS
     Date         : 2026-06-01
     Purpose      : Discover layer 2 archive partitions for layer 3 replica -
                    add missing target partitions and insert metadata into
-                   TW_REPLICA_PARTITIONS
+                   TBL_REPLICA_PARTITIONS
 
-    Prerequisite : PKG_SQL, PKG_REPLICA_LOG, TW_REPLICA_DISCOVERY_PARTITIONS_VW
+    Prerequisite : PKG_REPLICA_SQL, PKG_REPLICA_LOG, VW_REPLICA_DISCOVERY_PARTITIONS
 
     Change History:
     ------------------------------------------------------------------------------

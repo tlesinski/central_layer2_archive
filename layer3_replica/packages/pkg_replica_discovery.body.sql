@@ -6,9 +6,9 @@ AS
     Date         : 2026-06-01
     Purpose      : Discover layer 2 archive partitions for layer 3 replica -
                    add missing target partitions and insert metadata into
-                   TW_REPLICA_PARTITIONS
+                   TBL_REPLICA_PARTITIONS
 
-    Prerequisite : PKG_SQL, PKG_REPLICA_LOG, TW_REPLICA_DISCOVERY_PARTITIONS_VW
+    Prerequisite : PKG_REPLICA_SQL, PKG_REPLICA_LOG, VW_REPLICA_DISCOVERY_PARTITIONS
 
     Change History:
     ------------------------------------------------------------------------------
@@ -23,7 +23,7 @@ AS
 
   FUNCTION fn_qualified_table(p_owner IN VARCHAR2, p_table IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
-    RETURN PKG_SQL.fn_assert_simple_name(p_owner) || '.' || PKG_SQL.fn_assert_simple_name(p_table);
+    RETURN PKG_REPLICA_SQL.fn_assert_simple_name(p_owner) || '.' || PKG_REPLICA_SQL.fn_assert_simple_name(p_table);
   END;
 
   FUNCTION fn_normalize_name(p_name IN VARCHAR2) RETURN VARCHAR2 IS
@@ -32,7 +32,7 @@ AS
       RETURN NULL;
     END IF;
 
-    RETURN PKG_SQL.fn_assert_simple_name(p_name);
+    RETURN PKG_REPLICA_SQL.fn_assert_simple_name(p_name);
   END;
 
   FUNCTION fn_target_subpartition_name
@@ -55,9 +55,9 @@ AS
              (
                'SELECT subpartition_name, high_value ' ||
                'FROM all_tab_subpartitions ' ||
-               'WHERE table_owner = ''' || REPLACE(PKG_SQL.fn_assert_simple_name(p_target_owner), '''', '''''') || ''' ' ||
-               'AND table_name = ''' || REPLACE(PKG_SQL.fn_assert_simple_name(p_target_table_name), '''', '''''') || ''' ' ||
-               'AND partition_name = ''' || REPLACE(PKG_SQL.fn_assert_simple_name(p_partition_name), '''', '''''') || ''''
+               'WHERE table_owner = ''' || REPLACE(PKG_REPLICA_SQL.fn_assert_simple_name(p_target_owner), '''', '''''') || ''' ' ||
+               'AND table_name = ''' || REPLACE(PKG_REPLICA_SQL.fn_assert_simple_name(p_target_table_name), '''', '''''') || ''' ' ||
+               'AND partition_name = ''' || REPLACE(PKG_REPLICA_SQL.fn_assert_simple_name(p_partition_name), '''', '''''') || ''''
              )
              COLUMNS
                subpartition_name       VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
@@ -120,11 +120,11 @@ AS
 
     l_sql :=
       'SELECT COUNT(*) ' ||
-      '  FROM TW_REPLICA_DISCOVERY_PARTITIONS_VW ' ||
+      '  FROM VW_REPLICA_DISCOVERY_PARTITIONS ' ||
       ' WHERE (:1 IS NULL OR target_owner = :1) ' ||
       '   AND (:2 IS NULL OR target_table_name = :2)';
 
-    l_rows_discovered := PKG_SQL.fn_run_into_sql_in_bind
+    l_rows_discovered := PKG_REPLICA_SQL.fn_run_into_sql_in_bind
     (
       p_log_id     => l_log_id,
       p_sql        => l_sql,
@@ -138,7 +138,7 @@ AS
              source_table_name,
              target_owner,
              target_table_name
-        FROM tw_replica_discovery_partitions_vw
+        FROM vw_replica_discovery_partitions
        WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
          AND (l_target_table IS NULL OR target_table_name = l_target_table)
        ORDER BY source_db_link, source_owner, source_table_name
@@ -149,7 +149,7 @@ AS
       FOR p IN (
         SELECT DISTINCT partition_name,
                partition_high_value
-          FROM tw_replica_discovery_partitions_vw
+          FROM vw_replica_discovery_partitions
          WHERE source_db_link = t.source_db_link
            AND source_owner = t.source_owner
            AND source_table_name = t.source_table_name
@@ -161,13 +161,13 @@ AS
 
         l_add_sql :=
           'ALTER TABLE ' || fn_qualified_table(t.target_owner, t.target_table_name) ||
-          ' ADD PARTITION ' || PKG_SQL.fn_assert_simple_name(p.partition_name) ||
+          ' ADD PARTITION ' || PKG_REPLICA_SQL.fn_assert_simple_name(p.partition_name) ||
           ' VALUES LESS THAN (' || p.partition_high_value || ')';
 
-        l_rows := PKG_SQL.fn_run_sql(l_log_id, l_add_sql, l_execute_flag);
+        l_rows := PKG_REPLICA_SQL.fn_run_sql(l_log_id, l_add_sql, l_execute_flag);
 
         l_insert_sql :=
-          'INSERT INTO TW_REPLICA_PARTITIONS ' || CHR(10) ||
+          'INSERT INTO TBL_REPLICA_PARTITIONS ' || CHR(10) ||
           '  (source_db_link, source_owner, source_table_name, target_owner, target_table_name, ' || CHR(10) ||
           '   archive_unit_type, source_partition_name, source_subpartition_name, partition_name, subpartition_name, ' || CHR(10) ||
           '   partition_high_value, subpartition_high_value, prev_partition_high_value, ' || CHR(10) ||
@@ -189,7 +189,7 @@ AS
                     subpartition_high_value,
                     prev_partition_high_value,
                     archive_unit_type
-              FROM tw_replica_discovery_partitions_vw
+              FROM vw_replica_discovery_partitions
              WHERE source_db_link = t.source_db_link
                AND source_owner = t.source_owner
                AND source_table_name = t.source_table_name
@@ -210,7 +210,7 @@ AS
               l_target_subpart := '#';
             END IF;
 
-            l_rows := PKG_SQL.fn_run_sql_in_bind
+            l_rows := PKG_REPLICA_SQL.fn_run_sql_in_bind
             (
               p_log_id     => l_log_id,
               p_sql        => l_insert_sql,
@@ -262,14 +262,14 @@ AS
       IF l_execute_flag = 'Y' AND l_table_summary IS NOT NULL THEN
         l_summary := l_summary ||
           '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
-          PKG_SQL.fn_format_table(
+          PKG_REPLICA_SQL.fn_format_table(
             p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE',
             p_rows    => PKG_REPLICA_LOG.fn_summary_cell(t.source_db_link) || '|' ||
                          PKG_REPLICA_LOG.fn_summary_cell(t.source_owner) || '|' ||
                          PKG_REPLICA_LOG.fn_summary_cell(t.source_table_name) || '|' ||
                          PKG_REPLICA_LOG.fn_summary_cell(l_execute_flag) || CHR(10)
           ) || CHR(10) ||
-          PKG_SQL.fn_format_table(
+          PKG_REPLICA_SQL.fn_format_table(
             p_columns    => l_partition_columns,
             p_rows       => l_table_summary
           ) || CHR(10);

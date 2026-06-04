@@ -7,7 +7,7 @@ AS
     Purpose      : Replicate archived layer 2 partitions into layer 3 target
                    tables for the configured online window.
 
-    Prerequisite : PKG_SQL, PKG_REPLICA_LOG, TW_REPLICA_REPLICATE_PARTITIONS_VW
+    Prerequisite : PKG_REPLICA_SQL, PKG_REPLICA_LOG, VW_REPLICA_REPLICATE_PARTITIONS
 
     Change History:
     ------------------------------------------------------------------------------
@@ -26,7 +26,7 @@ AS
       RETURN NULL;
     END IF;
 
-    RETURN PKG_SQL.fn_assert_simple_name(p_name);
+    RETURN PKG_REPLICA_SQL.fn_assert_simple_name(p_name);
   END fn_normalize_name;
 
   PROCEDURE prc_mark_partition
@@ -43,7 +43,7 @@ AS
   )
   IS
   BEGIN
-    UPDATE tw_replica_partitions
+    UPDATE tbl_replica_partitions
        SET replica_status = p_replica_status,
            quality_status = CASE WHEN p_replica_status = 'Y' THEN 'N' ELSE quality_status END,
            target_row_count = COALESCE(p_target_row_count, target_row_count),
@@ -103,11 +103,11 @@ AS
 
     l_sql :=
       'SELECT COUNT(*) ' ||
-      '  FROM TW_REPLICA_REPLICATE_PARTITIONS_VW ' ||
+      '  FROM VW_REPLICA_REPLICATE_PARTITIONS ' ||
       ' WHERE (:1 IS NULL OR target_owner = :1) ' ||
       '   AND (:2 IS NULL OR target_table_name = :2)';
 
-    l_rows_available := PKG_SQL.fn_run_into_sql_in_bind
+    l_rows_available := PKG_REPLICA_SQL.fn_run_into_sql_in_bind
     (
       p_log_id     => l_log_id,
       p_sql        => l_sql,
@@ -121,7 +121,7 @@ AS
              source_table_name,
              target_owner,
              target_table_name
-        FROM tw_replica_replicate_partitions_vw
+        FROM vw_replica_replicate_partitions
        WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
          AND (l_target_table IS NULL OR target_table_name = l_target_table)
        ORDER BY source_db_link, source_owner, source_table_name
@@ -131,7 +131,7 @@ AS
 
       FOR r IN (
         SELECT p.*
-          FROM tw_replica_replicate_partitions_vw p
+          FROM vw_replica_replicate_partitions p
          WHERE p.source_db_link = t.source_db_link
            AND p.source_owner = t.source_owner
            AND p.source_table_name = t.source_table_name
@@ -311,7 +311,7 @@ AS
       IF l_execute_flag = 'Y' AND l_table_summary IS NOT NULL THEN
         l_summary := l_summary ||
           '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
-          PKG_SQL.fn_format_table
+          PKG_REPLICA_SQL.fn_format_table
           (
             p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE',
             p_rows    => PKG_REPLICA_LOG.fn_summary_cell(t.source_db_link) || '|' ||
@@ -319,7 +319,7 @@ AS
                          PKG_REPLICA_LOG.fn_summary_cell(t.source_table_name) || '|' ||
                          PKG_REPLICA_LOG.fn_summary_cell(l_execute_flag) || CHR(10)
           ) || CHR(10) ||
-          PKG_SQL.fn_format_table
+          PKG_REPLICA_SQL.fn_format_table
           (
             p_columns => l_partition_columns,
             p_rows    => l_table_summary

@@ -7,7 +7,7 @@ AS
     Purpose      : Replica process logging - creates runs, logs messages,
                    handles errors, finishes runs
 
-    Prerequisite : PKG_TL_LOGGING, TW_REPLICA_RUNS, MD_PROCESS_LOG_SEQ
+    Prerequisite : PKG_REPLICA_TL_LOGGING, TBL_REPLICA_RUNS, REPLICA_PROCESS_LOG_SEQ
 
     Change History:
     ------------------------------------------------------------------------------
@@ -36,7 +36,7 @@ AS
     p_run_id    IN NUMBER,
     p_log_msg   IN CLOB,
     p_log_type  IN VARCHAR2 DEFAULT 'TEXT',
-    p_log_sttus IN VARCHAR2 DEFAULT PKG_TL_LOGGING.g_sttus_running_const
+    p_log_sttus IN VARCHAR2 DEFAULT PKG_REPLICA_TL_LOGGING.g_sttus_running_const
   );
 
   PROCEDURE prc_log_error_stack

@@ -7,7 +7,7 @@ AS
     Purpose      : Replicate archived layer 2 partitions into layer 3 target
                    tables for the configured online window.
 
-    Prerequisite : PKG_SQL, PKG_REPLICA_LOG, TW_REPLICA_REPLICATE_PARTITIONS_VW
+    Prerequisite : PKG_REPLICA_SQL, PKG_REPLICA_LOG, VW_REPLICA_REPLICATE_PARTITIONS
 
     Change History:
     ------------------------------------------------------------------------------

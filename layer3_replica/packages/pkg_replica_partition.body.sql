@@ -8,7 +8,7 @@ AS
                    create staging, load from L2 source partition,
                    build indexes, exchange, drop staging.
 
-    Prerequisite : PKG_SQL, PKG_REPLICA_LOG
+    Prerequisite : PKG_REPLICA_SQL, PKG_REPLICA_LOG
 
     Change History:
     ------------------------------------------------------------------------------
@@ -31,10 +31,10 @@ AS
   IS
     l_name VARCHAR2(400);
   BEGIN
-    l_name := PKG_SQL.fn_assert_simple_name(p_owner) || '.' || PKG_SQL.fn_assert_simple_name(p_table);
+    l_name := PKG_REPLICA_SQL.fn_assert_simple_name(p_owner) || '.' || PKG_REPLICA_SQL.fn_assert_simple_name(p_table);
 
     IF p_source_db_link IS NOT NULL THEN
-      l_name := l_name || '@' || PKG_SQL.fn_assert_simple_name(p_source_db_link);
+      l_name := l_name || '@' || PKG_REPLICA_SQL.fn_assert_simple_name(p_source_db_link);
     END IF;
 
     RETURN l_name;
@@ -62,7 +62,7 @@ AS
       raise_application_error(-20045, 'TABLESPACE_NAME is required for exchange staging objects');
     END IF;
 
-    RETURN PKG_SQL.fn_assert_simple_name(p_tablespace_name);
+    RETURN PKG_REPLICA_SQL.fn_assert_simple_name(p_tablespace_name);
   END fn_normalize_tablespace_name;
 
   FUNCTION fn_high_value_to_date(p_high_value IN VARCHAR2) RETURN DATE IS
@@ -96,7 +96,7 @@ AS
        AND object_type = 'TABLE'
        AND column_position = 1;
 
-    RETURN PKG_SQL.fn_assert_simple_name(l_column_name);
+    RETURN PKG_REPLICA_SQL.fn_assert_simple_name(l_column_name);
   END fn_first_partition_key_column;
 
   FUNCTION fn_first_subpartition_key_column
@@ -116,7 +116,7 @@ AS
        AND object_type = 'TABLE'
        AND column_position = 1;
 
-    RETURN PKG_SQL.fn_assert_simple_name(l_column_name);
+    RETURN PKG_REPLICA_SQL.fn_assert_simple_name(l_column_name);
   END fn_first_subpartition_key_column;
 
   PROCEDURE prc_build_staging_indexes
@@ -152,7 +152,7 @@ AS
        ORDER BY i.index_name
     ) LOOP
       SELECT LISTAGG(
-               PKG_SQL.fn_assert_simple_name(column_name) ||
+               PKG_REPLICA_SQL.fn_assert_simple_name(column_name) ||
                CASE WHEN descend = 'DESC' THEN ' DESC' END,
                ', '
              ) WITHIN GROUP (ORDER BY column_position)
@@ -168,15 +168,15 @@ AS
       l_sql := 'CREATE ' ||
                CASE WHEN r.uniqueness = 'UNIQUE' THEN 'UNIQUE ' END ||
                'INDEX ' ||
-               PKG_SQL.fn_assert_simple_name(p_target_owner) || '.' ||
-               PKG_SQL.fn_assert_simple_name(l_index_name) ||
+               PKG_REPLICA_SQL.fn_assert_simple_name(p_target_owner) || '.' ||
+               PKG_REPLICA_SQL.fn_assert_simple_name(l_index_name) ||
                ' ON ' ||
                fn_qualified_table(p_target_owner, p_staging_table_name) ||
                '(' || l_column_list || ')' ||
                ' TABLESPACE ' || l_tablespace ||
                ' PARALLEL ' || p_parallel_degree;
 
-      l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+      l_sql_rowcount := PKG_REPLICA_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
     END LOOP;
   END prc_build_staging_indexes;
 
@@ -198,7 +198,7 @@ AS
     l_tablespace := fn_normalize_tablespace_name(p_tablespace_name);
 
     p_staging_table_name := SUBSTR(
-      'STG_TMP_REPLICA_' || TO_CHAR(STG_TMP_REPLICA_SEQ.NEXTVAL),
+      'TBL_REPLICA_STG_TMP_' || TO_CHAR(REPLICA_STG_TMP_SEQ.NEXTVAL),
       1,
       128
     );
@@ -209,7 +209,7 @@ AS
              ' FOR EXCHANGE WITH TABLE ' ||
              fn_qualified_table(p_target_owner, p_target_table);
 
-    l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+    l_sql_rowcount := PKG_REPLICA_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
 
   END prc_create_exchange_staging;
 
@@ -252,7 +252,7 @@ AS
       l_sql := l_sql || ' AND ' || l_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
     END IF;
 
-    p_rows_loaded := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+    p_rows_loaded := PKG_REPLICA_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
   END prc_load_exchange_staging;
 
   PROCEDURE prc_load_exchange_staging_subpartition
@@ -302,7 +302,7 @@ AS
       l_sql := l_sql || ' AND ' || l_part_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
     END IF;
 
-    p_rows_loaded := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+    p_rows_loaded := PKG_REPLICA_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
   END prc_load_exchange_staging_subpartition;
 
   PROCEDURE prc_exchange_partition
@@ -321,12 +321,12 @@ AS
     l_sql := 'ALTER TABLE ' ||
              fn_qualified_table(p_target_owner, p_target_table) ||
              ' EXCHANGE PARTITION ' ||
-             PKG_SQL.fn_assert_simple_name(p_partition_name) ||
+             PKG_REPLICA_SQL.fn_assert_simple_name(p_partition_name) ||
              ' WITH TABLE ' ||
              fn_qualified_table(p_target_owner, p_staging_table_name) ||
              ' INCLUDING INDEXES WITHOUT VALIDATION';
 
-    l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+    l_sql_rowcount := PKG_REPLICA_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
   END prc_exchange_partition;
 
   PROCEDURE prc_exchange_subpartition
@@ -345,12 +345,12 @@ AS
     l_sql := 'ALTER TABLE ' ||
              fn_qualified_table(p_target_owner, p_target_table) ||
              ' EXCHANGE SUBPARTITION ' ||
-             PKG_SQL.fn_assert_simple_name(p_subpartition_name) ||
+             PKG_REPLICA_SQL.fn_assert_simple_name(p_subpartition_name) ||
              ' WITH TABLE ' ||
              fn_qualified_table(p_target_owner, p_staging_table_name) ||
              ' INCLUDING INDEXES WITHOUT VALIDATION';
 
-    l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+    l_sql_rowcount := PKG_REPLICA_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
   END prc_exchange_subpartition;
 
   PROCEDURE prc_drop_staging
@@ -368,7 +368,7 @@ AS
              fn_qualified_table(p_staging_owner, p_staging_table_name) ||
              ' PURGE';
 
-    l_sql_rowcount := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
+    l_sql_rowcount := PKG_REPLICA_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
   END prc_drop_staging;
 
   PROCEDURE prc_cleanup_orphan_staging

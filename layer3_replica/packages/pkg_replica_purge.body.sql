@@ -10,12 +10,12 @@ AS
     IF p_name IS NULL OR TRIM(p_name) IS NULL THEN
       RETURN NULL;
     END IF;
-    RETURN PKG_SQL.fn_assert_simple_name(p_name);
+    RETURN PKG_REPLICA_SQL.fn_assert_simple_name(p_name);
   END;
 
   FUNCTION fn_qualified_table(p_owner IN VARCHAR2, p_table IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
-    RETURN PKG_SQL.fn_assert_simple_name(p_owner) || '.' || PKG_SQL.fn_assert_simple_name(p_table);
+    RETURN PKG_REPLICA_SQL.fn_assert_simple_name(p_owner) || '.' || PKG_REPLICA_SQL.fn_assert_simple_name(p_table);
   END;
 
   PROCEDURE prc_purge
@@ -48,10 +48,10 @@ AS
     PKG_REPLICA_LOG.prc_log_message(l_run_id, 'Started REPLICA PURGE execute=' || l_execute_flag);
 
     l_sql :=
-      'SELECT COUNT(*) FROM TW_REPLICA_PURGE_PARTITIONS_VW ' ||
+      'SELECT COUNT(*) FROM VW_REPLICA_PURGE_PARTITIONS ' ||
       'WHERE (:1 IS NULL OR target_owner = :1) AND (:2 IS NULL OR target_table_name = :2)';
 
-    l_rows_available := PKG_SQL.fn_run_into_sql_in_bind
+    l_rows_available := PKG_REPLICA_SQL.fn_run_into_sql_in_bind
     (
       p_log_id     => l_log_id,
       p_sql        => l_sql,
@@ -61,7 +61,7 @@ AS
 
     FOR t IN (
       SELECT DISTINCT source_db_link, source_owner, source_table_name, target_owner, target_table_name
-        FROM tw_replica_purge_partitions_vw
+        FROM vw_replica_purge_partitions
        WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
          AND (l_target_table IS NULL OR target_table_name = l_target_table)
        ORDER BY source_db_link, source_owner, source_table_name
@@ -70,7 +70,7 @@ AS
 
       FOR r IN (
         SELECT *
-          FROM tw_replica_purge_partitions_vw
+          FROM vw_replica_purge_partitions
          WHERE source_db_link = t.source_db_link
            AND source_owner = t.source_owner
            AND source_table_name = t.source_table_name
@@ -82,10 +82,10 @@ AS
 
         IF r.archive_unit_type = 'SUBPARTITION' THEN
           l_sql := 'ALTER TABLE ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
-                   ' TRUNCATE SUBPARTITION ' || PKG_SQL.fn_assert_simple_name(r.subpartition_name);
+                   ' TRUNCATE SUBPARTITION ' || PKG_REPLICA_SQL.fn_assert_simple_name(r.subpartition_name);
         ELSE
           l_sql := 'ALTER TABLE ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
-                   ' TRUNCATE PARTITION ' || PKG_SQL.fn_assert_simple_name(r.partition_name);
+                   ' TRUNCATE PARTITION ' || PKG_REPLICA_SQL.fn_assert_simple_name(r.partition_name);
         END IF;
 
         DBMS_OUTPUT.PUT_LINE('REPLICA_PURGE target=' || r.target_owner || '.' || r.target_table_name ||
@@ -94,10 +94,10 @@ AS
                              ' cutoff=' || TO_CHAR(r.cutoff_date, 'YYYY-MM-DD') ||
                              ' execute=' || l_execute_flag);
 
-        l_purged := l_purged + PKG_SQL.fn_run_sql(l_log_id, l_sql, l_execute_flag);
+        l_purged := l_purged + PKG_REPLICA_SQL.fn_run_sql(l_log_id, l_sql, l_execute_flag);
 
         IF l_execute_flag = 'Y' THEN
-          UPDATE tw_replica_partitions
+          UPDATE tbl_replica_partitions
              SET purge_status = 'Y',
                  last_run_id = l_run_id,
                  error_message = NULL,
@@ -130,7 +130,7 @@ AS
       IF l_table_summary IS NOT NULL THEN
         l_summary := l_summary ||
           '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
-          PKG_SQL.fn_format_table
+          PKG_REPLICA_SQL.fn_format_table
           (
             p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE',
             p_rows    => PKG_REPLICA_LOG.fn_summary_cell(t.source_db_link) || '|' ||
@@ -138,7 +138,7 @@ AS
                          PKG_REPLICA_LOG.fn_summary_cell(t.source_table_name) || '|' ||
                          PKG_REPLICA_LOG.fn_summary_cell(l_execute_flag) || CHR(10)
           ) || CHR(10) ||
-          PKG_SQL.fn_format_table(l_partition_columns, l_table_summary) || CHR(10);
+          PKG_REPLICA_SQL.fn_format_table(l_partition_columns, l_table_summary) || CHR(10);
       END IF;
     END LOOP;
 

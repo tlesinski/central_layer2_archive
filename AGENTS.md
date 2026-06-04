@@ -16,7 +16,7 @@ Before making changes, read:
 
 ```text
 README.md
-docs/central_layer2_archive_architecture.md
+docs/architecture.md
 ```
 
 When borrowing from the older repository, inspect the relevant `old_archiver`
@@ -96,12 +96,6 @@ not to.
   (or use the call operator: & sqlplus ... `@script.sql)
 ```
 
-## CARCH Password Convention
-
-```text
-CarchDev2026_42  (derived from the Cagent1Dev2026_42 pattern)
-```
-
 ## Central Model Rules
 
 Layer 2 metadata uses the source database link directly in table configuration:
@@ -110,10 +104,10 @@ Layer 2 metadata uses the source database link directly in table configuration:
 SOURCE_DB_LINK + SOURCE_OWNER + SOURCE_TABLE_NAME = source table setup key
 ```
 
-Do not reintroduce `TW_ARCHIVE_SOURCES`, surrogate archive ids, or
+Do not reintroduce `removed source registry table`, surrogate archive ids, or
 `ARCHIVE_METHOD` unless the data model is intentionally redesigned.
 
-`TW_ARCHIVE_PARTITIONS` should support both partitions and subpartitions through
+`TBL_ARCHIVER_PARTITIONS` should support both partitions and subpartitions through
 `ARCHIVE_UNIT_TYPE`. Its identity is based on partition and subpartition
 `HIGH_VALUE`, not physical names. Do not maintain parent partition status as a
 separate operational truth when child subpartition rows already define the state.
@@ -151,12 +145,13 @@ Connect as SYS and run in order:
 2. @full_reinstall.sql
 ```
 
-Step 1 drops all objects in CARCH, CAGENT1, CLIENT1. Step 2 recreates everything
-and seeds metadata. Verify with:
+Step 1 drops all component objects from the configured application schema. Step
+2 recreates the combined topology and seeds metadata. Verify with:
 
 ```text
 - all SHOW ERRORS = "No errors"
-- seed TW_ARCHIVE_TABLES = 1 row merged per table
-- seed TW_ARCHIVE_PARTITIONS = N rows merged per table
-- DB link test: SELECT * FROM dual@CLIENT1_LOOPBACK_LINK
+- seed TBL_ARCHIVER_TABLES = 1 row merged per table
+- seed TBL_ARCHIVER_PARTITIONS = N rows merged per table
+- combined smoke test completes successfully
+- configured component DB links are valid
 ```

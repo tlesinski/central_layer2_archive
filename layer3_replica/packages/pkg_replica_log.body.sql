@@ -7,7 +7,7 @@ AS
     Purpose      : Replica process logging - creates runs, logs messages,
                    handles errors, finishes runs
 
-    Prerequisite : PKG_TL_LOGGING, TW_REPLICA_RUNS, MD_PROCESS_LOG_SEQ
+    Prerequisite : PKG_REPLICA_TL_LOGGING, TBL_REPLICA_RUNS, REPLICA_PROCESS_LOG_SEQ
 
     Change History:
     ------------------------------------------------------------------------------
@@ -34,15 +34,34 @@ AS
     l_log_id       NUMBER;
     l_run_type     VARCHAR2(30);
     l_execute_flag VARCHAR2(1);
+    l_source_db_link VARCHAR2(128);
+    l_source_link_count PLS_INTEGER;
   BEGIN
     l_run_type := UPPER(TRIM(p_run_type));
     l_execute_flag := fn_normalize_execute(p_execute);
-    l_log_id := MD_PROCESS_LOG_SEQ.NEXTVAL;
+    l_log_id := REPLICA_PROCESS_LOG_SEQ.NEXTVAL;
+    l_source_db_link := UPPER(TRIM(p_source_db_link));
 
-    INSERT INTO TW_REPLICA_RUNS
+    IF l_source_db_link IS NULL THEN
+      SELECT MIN(source_db_link),
+             COUNT(DISTINCT source_db_link)
+        INTO l_source_db_link,
+             l_source_link_count
+        FROM TBL_REPLICA_TABLES
+       WHERE enabled_flag = 'Y';
+
+      IF l_source_link_count <> 1 THEN
+        RAISE_APPLICATION_ERROR(
+          -20066,
+          'REPLICA aggregate runs require exactly one enabled ARCHIVER DB link; found ' || l_source_link_count
+        );
+      END IF;
+    END IF;
+
+    INSERT INTO TBL_REPLICA_RUNS
       (RUN_TYPE, RUN_STATUS, SOURCE_DB_LINK, SOURCE_OWNER, SOURCE_TABLE_NAME, MSTR_LOG_ID, EXECUTE_FLAG)
     VALUES
-      (l_run_type, 'RUNNING', UPPER(p_source_db_link), UPPER(p_source_owner), UPPER(p_source_table), l_log_id, l_execute_flag)
+      (l_run_type, 'RUNNING', l_source_db_link, UPPER(p_source_owner), UPPER(p_source_table), l_log_id, l_execute_flag)
     RETURNING RUN_ID INTO l_run_id;
 
     RETURN l_run_id;
@@ -58,7 +77,7 @@ AS
   BEGIN
     SELECT MSTR_LOG_ID
       INTO l_log_id
-      FROM TW_REPLICA_RUNS
+      FROM TBL_REPLICA_RUNS
      WHERE RUN_ID = p_run_id;
 
     RETURN l_log_id;
@@ -69,7 +88,7 @@ AS
     p_run_id    IN NUMBER,
     p_log_msg   IN CLOB,
     p_log_type  IN VARCHAR2 DEFAULT 'TEXT',
-    p_log_sttus IN VARCHAR2 DEFAULT PKG_TL_LOGGING.g_sttus_running_const
+    p_log_sttus IN VARCHAR2 DEFAULT PKG_REPLICA_TL_LOGGING.g_sttus_running_const
   )
   IS
     l_log_id NUMBER;
@@ -80,7 +99,7 @@ AS
 
     l_log_id := fn_get_log_id(p_run_id);
 
-    PKG_TL_LOGGING.prc_log
+    PKG_REPLICA_TL_LOGGING.prc_log
     (
       p_log_id      => l_log_id,
       p_mstr_log_id => l_log_id,
@@ -102,7 +121,7 @@ AS
     END IF;
 
     l_log_id := fn_get_log_id(p_run_id);
-    PKG_TL_LOGGING.prc_error_stack
+    PKG_REPLICA_TL_LOGGING.prc_error_stack
     (
       p_log_id      => l_log_id,
       p_mstr_log_id => l_log_id
@@ -131,21 +150,21 @@ AS
   )
   IS
     l_log_id   NUMBER;
-    l_run_type TW_REPLICA_RUNS.RUN_TYPE%TYPE;
+    l_run_type TBL_REPLICA_RUNS.RUN_TYPE%TYPE;
   BEGIN
     SELECT MSTR_LOG_ID, RUN_TYPE
       INTO l_log_id, l_run_type
-      FROM TW_REPLICA_RUNS
+      FROM TBL_REPLICA_RUNS
      WHERE RUN_ID = p_run_id;
 
-    UPDATE TW_REPLICA_RUNS
+    UPDATE TBL_REPLICA_RUNS
        SET RUN_STATUS = p_status,
            ENDED_AT = SYSTIMESTAMP,
            ERROR_MESSAGE = SUBSTR(p_error_message, 1, 4000),
            UPDATED_AT = SYSTIMESTAMP
      WHERE RUN_ID = p_run_id;
 
-    PKG_TL_LOGGING.prc_log
+    PKG_REPLICA_TL_LOGGING.prc_log
     (
       p_log_id          => l_log_id,
       p_mstr_log_id     => l_log_id,

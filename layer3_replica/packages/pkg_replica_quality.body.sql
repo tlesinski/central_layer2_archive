@@ -10,12 +10,12 @@ AS
     IF p_name IS NULL OR TRIM(p_name) IS NULL THEN
       RETURN NULL;
     END IF;
-    RETURN PKG_SQL.fn_assert_simple_name(p_name);
+    RETURN PKG_REPLICA_SQL.fn_assert_simple_name(p_name);
   END;
 
   FUNCTION fn_qualified_table(p_owner IN VARCHAR2, p_table IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
-    RETURN PKG_SQL.fn_assert_simple_name(p_owner) || '.' || PKG_SQL.fn_assert_simple_name(p_table);
+    RETURN PKG_REPLICA_SQL.fn_assert_simple_name(p_owner) || '.' || PKG_REPLICA_SQL.fn_assert_simple_name(p_table);
   END;
 
   FUNCTION fn_source_table
@@ -34,7 +34,7 @@ AS
 
     l_table := fn_qualified_table(p_source_owner, p_source_table_name);
 
-    l_table := l_table || '@' || PKG_SQL.fn_assert_simple_name(p_source_db_link);
+    l_table := l_table || '@' || PKG_REPLICA_SQL.fn_assert_simple_name(p_source_db_link);
 
     RETURN l_table;
   END;
@@ -70,7 +70,7 @@ AS
        AND object_type = 'TABLE'
        AND column_position = 1;
 
-    RETURN PKG_SQL.fn_assert_simple_name(l_column_name);
+    RETURN PKG_REPLICA_SQL.fn_assert_simple_name(l_column_name);
   END fn_first_partition_key_column;
 
   FUNCTION fn_first_subpartition_key_column
@@ -90,7 +90,7 @@ AS
        AND object_type = 'TABLE'
        AND column_position = 1;
 
-    RETURN PKG_SQL.fn_assert_simple_name(l_column_name);
+    RETURN PKG_REPLICA_SQL.fn_assert_simple_name(l_column_name);
   END fn_first_subpartition_key_column;
 
   PROCEDURE prc_quality
@@ -131,10 +131,10 @@ AS
     PKG_REPLICA_LOG.prc_log_message(l_run_id, 'Started REPLICA QUALITY execute=' || l_execute_flag);
 
     l_sql :=
-      'SELECT COUNT(*) FROM TW_REPLICA_QUALITY_PARTITIONS_VW ' ||
+      'SELECT COUNT(*) FROM VW_REPLICA_QUALITY_PARTITIONS ' ||
       'WHERE (:1 IS NULL OR target_owner = :1) AND (:2 IS NULL OR target_table_name = :2)';
 
-    l_rows_available := PKG_SQL.fn_run_into_sql_in_bind
+    l_rows_available := PKG_REPLICA_SQL.fn_run_into_sql_in_bind
     (
       p_log_id     => l_log_id,
       p_sql        => l_sql,
@@ -144,7 +144,7 @@ AS
 
     FOR t IN (
       SELECT DISTINCT source_db_link, source_owner, source_table_name, target_owner, target_table_name
-        FROM tw_replica_quality_partitions_vw
+        FROM vw_replica_quality_partitions
        WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
          AND (l_target_table IS NULL OR target_table_name = l_target_table)
        ORDER BY source_db_link, source_owner, source_table_name
@@ -153,7 +153,7 @@ AS
 
       FOR r IN (
         SELECT *
-          FROM tw_replica_quality_partitions_vw
+          FROM vw_replica_quality_partitions
          WHERE source_db_link = t.source_db_link
            AND source_owner = t.source_owner
            AND source_table_name = t.source_table_name
@@ -187,17 +187,17 @@ AS
           l_sql := l_sql || ' AND ' || l_sub_key_column || ' IN (' || r.subpartition_high_value || ')';
         END IF;
 
-        l_source_rows := PKG_SQL.fn_run_into_sql(l_log_id, l_sql, 'Y');
+        l_source_rows := PKG_REPLICA_SQL.fn_run_into_sql(l_log_id, l_sql, 'Y');
 
         IF r.archive_unit_type = 'SUBPARTITION' THEN
           l_sql := 'SELECT COUNT(*) FROM ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
-                   ' SUBPARTITION (' || PKG_SQL.fn_assert_simple_name(r.subpartition_name) || ')';
+                   ' SUBPARTITION (' || PKG_REPLICA_SQL.fn_assert_simple_name(r.subpartition_name) || ')';
         ELSE
           l_sql := 'SELECT COUNT(*) FROM ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
-                   ' PARTITION (' || PKG_SQL.fn_assert_simple_name(r.partition_name) || ')';
+                   ' PARTITION (' || PKG_REPLICA_SQL.fn_assert_simple_name(r.partition_name) || ')';
         END IF;
 
-        l_target_rows := PKG_SQL.fn_run_into_sql(l_log_id, l_sql, 'Y');
+        l_target_rows := PKG_REPLICA_SQL.fn_run_into_sql(l_log_id, l_sql, 'Y');
         l_quality_status := CASE WHEN l_source_rows = l_target_rows THEN 'Y' ELSE 'N' END;
 
         IF l_quality_status = 'Y' THEN
@@ -217,7 +217,7 @@ AS
                              ' execute=' || l_execute_flag);
 
         IF l_execute_flag = 'Y' THEN
-          UPDATE tw_replica_partitions
+          UPDATE tbl_replica_partitions
              SET source_row_count = l_source_rows,
                  target_row_count = l_target_rows,
                  quality_status = l_quality_status,
@@ -251,7 +251,7 @@ AS
       IF l_table_summary IS NOT NULL THEN
         l_summary := l_summary ||
           '=== TABLE: ' || t.source_db_link || '.' || t.source_owner || '.' || t.source_table_name || ' ===' || CHR(10) || CHR(10) ||
-          PKG_SQL.fn_format_table
+          PKG_REPLICA_SQL.fn_format_table
           (
             p_columns => 'SOURCE_DB_LINK|TABLE_OWNER|TABLE_NAME|EXECUTE',
             p_rows    => PKG_REPLICA_LOG.fn_summary_cell(t.source_db_link) || '|' ||
@@ -259,7 +259,7 @@ AS
                          PKG_REPLICA_LOG.fn_summary_cell(t.source_table_name) || '|' ||
                          PKG_REPLICA_LOG.fn_summary_cell(l_execute_flag) || CHR(10)
           ) || CHR(10) ||
-          PKG_SQL.fn_format_table(l_partition_columns, l_table_summary) || CHR(10);
+          PKG_REPLICA_SQL.fn_format_table(l_partition_columns, l_table_summary) || CHR(10);
       END IF;
     END LOOP;
 

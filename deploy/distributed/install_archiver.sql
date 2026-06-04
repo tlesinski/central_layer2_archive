@@ -1,0 +1,10 @@
+SET DEFINE ON
+@deploy/config/distributed_topology.local.sql
+
+CONNECT &&DISTRIBUTED_ARCHIVER_SCHEMA/"&&DISTRIBUTED_ARCHIVER_PASSWORD"@&&DISTRIBUTED_ARCHIVER_CONNECT
+SET DEFINE OFF
+@deploy/layer2/install_layer2_core.sql
+
+SET DEFINE ON
+DEFINE DISTRIBUTED_AGENT_ACTION = deploy/distributed/install_agent_link.sql
+@&&DISTRIBUTED_AGENT_MANIFEST

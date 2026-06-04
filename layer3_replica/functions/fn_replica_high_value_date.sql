@@ -1,0 +1,18 @@
+CREATE OR REPLACE FUNCTION FN_REPLICA_HIGH_VALUE_DATE
+(
+  p_high_value IN VARCHAR2
+)
+RETURN DATE
+IS
+  l_date DATE;
+BEGIN
+  IF p_high_value IS NULL THEN
+    RAISE_APPLICATION_ERROR(-20001, 'HIGH_VALUE cannot be NULL');
+  END IF;
+
+  EXECUTE IMMEDIATE 'SELECT ' || p_high_value || ' FROM dual'
+    INTO l_date;
+
+  RETURN l_date;
+END;
+/
