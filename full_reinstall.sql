@@ -57,7 +57,9 @@ BEGIN
     EXECUTE IMMEDIATE 'GRANT CREATE VIEW TO CREPL';
     EXECUTE IMMEDIATE 'GRANT CREATE SYNONYM TO CREPL';
     EXECUTE IMMEDIATE 'GRANT CREATE PROCEDURE TO CREPL';
+    EXECUTE IMMEDIATE 'GRANT CREATE SEQUENCE TO CREPL';
     EXECUTE IMMEDIATE 'GRANT CREATE SESSION TO CREPL';
+    EXECUTE IMMEDIATE 'GRANT CREATE DATABASE LINK TO CREPL';
     DBMS_OUTPUT.PUT_LINE('CREPL user created');
   ELSE
     DBMS_OUTPUT.PUT_LINE('CREPL user already exists');
@@ -66,7 +68,9 @@ BEGIN
     EXECUTE IMMEDIATE 'GRANT CREATE VIEW TO CREPL';
     EXECUTE IMMEDIATE 'GRANT CREATE SYNONYM TO CREPL';
     EXECUTE IMMEDIATE 'GRANT CREATE PROCEDURE TO CREPL';
+    EXECUTE IMMEDIATE 'GRANT CREATE SEQUENCE TO CREPL';
     EXECUTE IMMEDIATE 'GRANT CREATE SESSION TO CREPL';
+    EXECUTE IMMEDIATE 'GRANT CREATE DATABASE LINK TO CREPL';
   END IF;
 END;
 /
@@ -306,7 +310,12 @@ PROMPT ============================================================
 PROMPT Step 11: Installing CREPL layer 3 replica core
 PROMPT ============================================================
 
-ALTER SESSION SET CURRENT_SCHEMA = CREPL;
+CONNECT CREPL/CreplDev2026_42@localhost:1521/freepdb1
+
+SET DEFINE OFF
+SET SERVEROUTPUT ON
+SET FEEDBACK ON
+SET ECHO ON
 
 @deploy/layer3/install_layer3_replica.sql
 
@@ -329,6 +338,17 @@ ALTER SESSION SET CURRENT_SCHEMA = CREPL;
 
 @deploy/layer3/seed_carch_local_replica.sql
 @deploy/layer3/seed_carch_local_replica_subpart.sql
+
+PROMPT ============================================================
+PROMPT Reconnecting as SYS for final summary
+PROMPT ============================================================
+
+CONNECT SYS/r14@localhost:1521/freepdb1 AS SYSDBA
+
+SET DEFINE OFF
+SET SERVEROUTPUT ON
+SET FEEDBACK ON
+SET ECHO ON
 
 PROMPT
 PROMPT ============================================================

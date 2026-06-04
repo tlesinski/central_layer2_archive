@@ -33,12 +33,28 @@ AS
   BEGIN
     l_name := PKG_SQL.fn_assert_simple_name(p_owner) || '.' || PKG_SQL.fn_assert_simple_name(p_table);
 
-    IF p_source_db_link IS NOT NULL AND UPPER(TRIM(p_source_db_link)) NOT IN ('LOCAL', 'NONE') THEN
+    IF p_source_db_link IS NOT NULL THEN
       l_name := l_name || '@' || PKG_SQL.fn_assert_simple_name(p_source_db_link);
     END IF;
 
     RETURN l_name;
   END fn_qualified_table;
+
+  FUNCTION fn_qualified_source_table
+  (
+    p_owner          IN VARCHAR2,
+    p_table          IN VARCHAR2,
+    p_source_db_link IN VARCHAR2
+  )
+  RETURN VARCHAR2
+  IS
+  BEGIN
+    IF p_source_db_link IS NULL OR TRIM(p_source_db_link) IS NULL THEN
+      RAISE_APPLICATION_ERROR(-20046, 'SOURCE_DB_LINK is required for layer 3 source reads');
+    END IF;
+
+    RETURN fn_qualified_table(p_owner, p_table, p_source_db_link);
+  END fn_qualified_source_table;
 
   FUNCTION fn_normalize_tablespace_name(p_tablespace_name IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
@@ -48,6 +64,60 @@ AS
 
     RETURN PKG_SQL.fn_assert_simple_name(p_tablespace_name);
   END fn_normalize_tablespace_name;
+
+  FUNCTION fn_high_value_to_date(p_high_value IN VARCHAR2) RETURN DATE IS
+    l_date DATE;
+  BEGIN
+    IF p_high_value IS NULL OR UPPER(TRIM(p_high_value)) = 'MAXVALUE' THEN
+      RETURN NULL;
+    END IF;
+
+    EXECUTE IMMEDIATE 'SELECT ' || p_high_value || ' FROM dual' INTO l_date;
+    RETURN l_date;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN NULL;
+  END fn_high_value_to_date;
+
+  FUNCTION fn_first_partition_key_column
+  (
+    p_owner IN VARCHAR2,
+    p_table IN VARCHAR2
+  )
+  RETURN VARCHAR2
+  IS
+    l_column_name VARCHAR2(128);
+  BEGIN
+    SELECT column_name
+      INTO l_column_name
+      FROM all_part_key_columns
+     WHERE owner = UPPER(p_owner)
+       AND name = UPPER(p_table)
+       AND object_type = 'TABLE'
+       AND column_position = 1;
+
+    RETURN PKG_SQL.fn_assert_simple_name(l_column_name);
+  END fn_first_partition_key_column;
+
+  FUNCTION fn_first_subpartition_key_column
+  (
+    p_owner IN VARCHAR2,
+    p_table IN VARCHAR2
+  )
+  RETURN VARCHAR2
+  IS
+    l_column_name VARCHAR2(128);
+  BEGIN
+    SELECT column_name
+      INTO l_column_name
+      FROM all_subpart_key_columns
+     WHERE owner = UPPER(p_owner)
+       AND name = UPPER(p_table)
+       AND object_type = 'TABLE'
+       AND column_position = 1;
+
+    RETURN PKG_SQL.fn_assert_simple_name(l_column_name);
+  END fn_first_subpartition_key_column;
 
   PROCEDURE prc_build_staging_indexes
   (
@@ -148,23 +218,39 @@ AS
     p_source_db_link         IN VARCHAR2,
     p_source_owner           IN VARCHAR2,
     p_source_table           IN VARCHAR2,
-    p_source_partition_name  IN VARCHAR2,
     p_target_owner           IN VARCHAR2,
     p_target_table           IN VARCHAR2,
     p_staging_table_name     IN VARCHAR2,
+    p_high_value             IN VARCHAR2,
+    p_prev_high_value        IN VARCHAR2 DEFAULT NULL,
     p_execute                IN VARCHAR2 DEFAULT 'Y',
     p_log_id                 IN NUMBER DEFAULT NULL,
     p_parallel_degree        IN NUMBER DEFAULT 4,
     p_rows_loaded            OUT NUMBER
   )
   IS
-    l_sql CLOB;
+    l_sql        CLOB;
+    l_key_column VARCHAR2(128);
+    l_high_date  DATE;
+    l_low_date   DATE;
   BEGIN
+    l_key_column := fn_first_partition_key_column(p_target_owner, p_target_table);
+    l_high_date := fn_high_value_to_date(p_high_value);
+    l_low_date := fn_high_value_to_date(p_prev_high_value);
+
+    IF l_high_date IS NULL THEN
+      RAISE_APPLICATION_ERROR(-20048, 'REPLICA EXCHANGE requires a DATE high value for target partition');
+    END IF;
+
     l_sql := 'INSERT /*+ APPEND PARALLEL(' || p_parallel_degree || ') */ INTO ' ||
              fn_qualified_table(p_target_owner, p_staging_table_name) ||
              ' SELECT * FROM ' ||
-             fn_qualified_table(p_source_owner, p_source_table, p_source_db_link) ||
-             ' PARTITION (' || PKG_SQL.fn_assert_simple_name(p_source_partition_name) || ')';
+             fn_qualified_source_table(p_source_owner, p_source_table, p_source_db_link) ||
+             ' WHERE ' || l_key_column || ' < DATE ''' || TO_CHAR(l_high_date, 'YYYY-MM-DD') || '''';
+
+    IF l_low_date IS NOT NULL THEN
+      l_sql := l_sql || ' AND ' || l_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
+    END IF;
 
     p_rows_loaded := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
   END prc_load_exchange_staging;
@@ -174,23 +260,47 @@ AS
     p_source_db_link              IN VARCHAR2,
     p_source_owner                IN VARCHAR2,
     p_source_table                IN VARCHAR2,
-    p_source_subpartition_name    IN VARCHAR2,
     p_target_owner                IN VARCHAR2,
     p_target_table                IN VARCHAR2,
     p_staging_table_name          IN VARCHAR2,
+    p_partition_high_value        IN VARCHAR2,
+    p_prev_partition_high_value   IN VARCHAR2 DEFAULT NULL,
+    p_subpartition_high_value     IN VARCHAR2,
     p_execute                     IN VARCHAR2 DEFAULT 'Y',
     p_log_id                      IN NUMBER DEFAULT NULL,
     p_parallel_degree             IN NUMBER DEFAULT 4,
     p_rows_loaded                 OUT NUMBER
   )
   IS
-    l_sql CLOB;
+    l_sql             CLOB;
+    l_part_key_column VARCHAR2(128);
+    l_sub_key_column  VARCHAR2(128);
+    l_high_date       DATE;
+    l_low_date        DATE;
   BEGIN
+    l_part_key_column := fn_first_partition_key_column(p_target_owner, p_target_table);
+    l_sub_key_column := fn_first_subpartition_key_column(p_target_owner, p_target_table);
+    l_high_date := fn_high_value_to_date(p_partition_high_value);
+    l_low_date := fn_high_value_to_date(p_prev_partition_high_value);
+
+    IF l_high_date IS NULL THEN
+      RAISE_APPLICATION_ERROR(-20049, 'REPLICA EXCHANGE SUBPARTITION requires a DATE partition high value');
+    END IF;
+
+    IF p_subpartition_high_value IS NULL OR TRIM(p_subpartition_high_value) = '#' THEN
+      RAISE_APPLICATION_ERROR(-20050, 'REPLICA EXCHANGE SUBPARTITION requires a list subpartition high value');
+    END IF;
+
     l_sql := 'INSERT /*+ APPEND PARALLEL(' || p_parallel_degree || ') */ INTO ' ||
              fn_qualified_table(p_target_owner, p_staging_table_name) ||
              ' SELECT * FROM ' ||
-             fn_qualified_table(p_source_owner, p_source_table, p_source_db_link) ||
-             ' SUBPARTITION (' || PKG_SQL.fn_assert_simple_name(p_source_subpartition_name) || ')';
+             fn_qualified_source_table(p_source_owner, p_source_table, p_source_db_link) ||
+             ' WHERE ' || l_part_key_column || ' < DATE ''' || TO_CHAR(l_high_date, 'YYYY-MM-DD') || '''' ||
+             ' AND ' || l_sub_key_column || ' IN (' || p_subpartition_high_value || ')';
+
+    IF l_low_date IS NOT NULL THEN
+      l_sql := l_sql || ' AND ' || l_part_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
+    END IF;
 
     p_rows_loaded := PKG_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
   END prc_load_exchange_staging_subpartition;

@@ -160,6 +160,7 @@ deploy/
   layer3/
     install_layer3_replica.sql
     recreate_layer3_replica.sql
+    create_carch_loopback_link.sql
     install_orders_replica_target.sql
     install_orders_subpart_replica_target.sql
     seed_carch_local_replica.sql
@@ -195,8 +196,8 @@ Current state:
 - layer 3 packages present: PKG_REPLICA_LOG, PKG_REPLICA_DISCOVERY,
   PKG_REPLICA_PARTITION, PKG_REPLICA_REPLICATE, PKG_REPLICA_QUALITY,
   PKG_REPLICA_PURGE, PKG_REPLICA_RUNNER
-- layer 3 local smoke scripts present for DISCOVER, REPLICATE, QUALITY, PURGE
-  preview, and RUNNER
+- layer 3 DB-link loopback smoke scripts present for DISCOVER, REPLICATE,
+  QUALITY, PURGE preview, and RUNNER
 ```
 
 ## Relationship To old_archiver
@@ -500,9 +501,9 @@ Remote compatibility notes:
 
 Layer 3 replica design is intentionally kept out of this README and captured in
 `docs/central_layer3_replica_architecture.md`. The implemented foundation
-contains the `TW_REPLICA_*` metadata tables, process candidate views, local
-`CREPL` smoke target tables, seed metadata, EXCHANGE-based replication, quality,
-purge preview, and runner smoke coverage.
+contains the `TW_REPLICA_*` metadata tables, process candidate views, `CREPL`
+smoke target tables, DB-link loopback seed metadata, EXCHANGE-based
+replication, quality, purge preview, and runner smoke coverage.
 
 ## Quick Reinstall
 
@@ -520,8 +521,9 @@ Verify success:
 - seed TW_ARCHIVE_TABLES = 1 row merged per source table setup
 - seed TW_ARCHIVE_PARTITIONS = N rows merged per target table setup
 - CLIENT1 and CLIENT2 source schemas installed
-- CREPL layer 3 replica schema installed and seeded
+- CREPL layer 3 replica schema installed and seeded with CARCH_LOOPBACK_LINK
 - DB link test: SELECT * FROM dual@CLIENT1_LOOPBACK_LINK → returns X
+- L3 DB link test: SELECT * FROM dual@CARCH_LOOPBACK_LINK → returns X
 ```
 
 ## Recommended Smoke Path
@@ -536,9 +538,10 @@ After a clean reinstall, run the full smoke suite:
 
 `deploy/smoke_all.sql` runs the L2 range, multisource range, multisource
 subpartition, multisource daily interval, truncate preview, and L3 replica
-runner smoke tests. It also asserts the expected target row counts, checks that
-L3 has no remaining discovery/replicate/quality candidates, and verifies that
-the smoke schemas have no invalid objects.
+runner smoke tests. It also asserts the expected target row counts, verifies
+that L3 source configuration uses a real DB link instead of `LOCAL`/`NONE`,
+checks that L3 has no remaining discovery/replicate/quality candidates, and
+verifies that the smoke schemas have no invalid objects.
 
 On Windows SQL*Plus, `ORA-12638` usually means the local Oracle client is trying
 NTS authentication. For a single session, point `TNS_ADMIN` at a directory with

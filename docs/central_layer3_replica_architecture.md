@@ -27,20 +27,21 @@ Layer 3 nie wykonuje source cleanup na layer 1 i nie modyfikuje layer 2.
 
 ## Model Topologii
 
-Layer 3 musi dzialac zarowno lokalnie, jak i zdalnie:
+Layer 3 always treats `SOURCE_DB_LINK` as a real DB link to layer 2.
+This also applies to the local smoke environment, which uses a loopback link:
 
 ```text
-L2 i L3 w tej samej bazie  => SOURCE_DB_LINK = 'LOCAL'
-L2 i L3 w roznych bazach   => SOURCE_DB_LINK wskazuje DB link do layer 2
+L2 and L3 in the same database       => SOURCE_DB_LINK = 'CARCH_LOOPBACK_LINK'
+L2 and L3 in different databases     => SOURCE_DB_LINK identifies the DB link to layer 2
 ```
 
-Control plane layer 3 dziala po stronie bazy L3. Staging i EXCHANGE sa lokalne
-dla target tabel L3. Layer 2 jest zrodlem czytanym przez `SOURCE_DB_LINK`.
+The layer 3 control plane runs in the L3 database. Staging and EXCHANGE are
+local to the L3 target tables. Layer 2 is the source read through
+`SOURCE_DB_LINK`.
 
-Na L3 moga istniec synonimy o nazwach takich jak obiekty L2, np.
-`TW_ARCHIVE_TABLES` i `TW_ARCHIVE_PARTITIONS`, wskazujace lokalnie albo przez DB
-link na metadane layer 2. Lokalna logika L3 powinna jednak operowac przez wlasne
-widoki procesowe `TW_REPLICA_*_VW`.
+L3 contains synonyms named after L2 objects, such as `TW_ARCHIVE_TABLES` and
+`TW_ARCHIVE_PARTITIONS`, which point to layer 2 metadata through the DB link.
+L3 logic should operate through its own `TW_REPLICA_*_VW` process views.
 
 ## Minimalny Model Layer 3
 
@@ -367,7 +368,8 @@ summary formatting
 
 ```text
 1. prc_create_exchange_staging      CREATE TABLE ... FOR EXCHANGE WITH TABLE
-2. prc_load_exchange_staging        INSERT APPEND SELECT * FROM source PARTITION(name)
+2. prc_load_exchange_staging        INSERT APPEND SELECT * FROM source@link
+                                    using high-value predicates
 3. prc_build_staging_indexes        klonuje lokalne indeksy targetu na staging
 4. prc_exchange_partition/sub       ALTER TABLE ... EXCHANGE PARTITION/SUBPARTITION
 5. prc_drop_staging                 DROP TABLE ... PURGE
@@ -377,7 +379,7 @@ Roznice wzgledem L2:
 
 ```text
 - SEKWENCJA: STG_TMP_REPLICA_SEQ (prefix STG_TMP_REPLICA_)
-- LOAD: uzywa PARTITION(source_partition_name) zamiast zakresu klucza
+- LOAD: uses partition-key ranges so that it works through a DB link
 - CLEANUP: szuka STG_TMP_REPLICA_%
 - nazwy indeksow staging: STG_<original_index>_<timestamp>
 ```
@@ -417,12 +419,13 @@ TARGET_ROW_COUNT
 
 ## Pierwszy Milestone V1
 
-Pierwszy milestone powinien byc lokalnym smoke w tej samej bazie:
+The first milestone is a loopback smoke test in the same database, while still
+using a DB link:
 
 ```text
 L2 schema: CARCH
 L3 schema: CREPL
-SOURCE_DB_LINK = LOCAL
+SOURCE_DB_LINK = CARCH_LOOPBACK_LINK
 ```
 
 Zakres smoke:
@@ -440,9 +443,10 @@ Zakres smoke:
   zaimplementowany w deploy/layer3/smoke_replica_runner.sql
 ```
 
-`full_reinstall.sql` tworzy i przygotowuje schemat `CREPL`, instaluje core L3,
-tworzy lokalne target tabele repliki, seeduje `TW_REPLICA_TABLES` dla lokalnego
-zrodla `CARCH` oraz zaklada synonimy do metadanych layer 2.
+`full_reinstall.sql` creates and prepares the `CREPL` schema, installs the L3
+core, creates local replica target tables, creates `CARCH_LOOPBACK_LINK`, seeds
+`TW_REPLICA_TABLES` for the `CARCH` source through that DB link, and creates
+synonyms for layer 2 metadata through the DB link.
 
 Pierwszy smoke nie musi obejmowac:
 
@@ -458,6 +462,7 @@ Pierwszy smoke nie musi obejmowac:
 
 ```text
 - L3 jest osobna warstwa, nie rozszerzeniem statusow L2.
+- SOURCE_DB_LINK in TW_REPLICA_TABLES always identifies a real DB link.
 - Metadane L3 maja prefix TW_REPLICA_*.
 - Pakiety L3 maja prefix PKG_REPLICA_*.
 - Procesy L3: DISCOVER, REPLICATE, QUALITY, PURGE.

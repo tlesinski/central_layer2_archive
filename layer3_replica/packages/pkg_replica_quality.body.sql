@@ -28,14 +28,70 @@ AS
   IS
     l_table VARCHAR2(4000);
   BEGIN
+    IF p_source_db_link IS NULL OR TRIM(p_source_db_link) IS NULL THEN
+      RAISE_APPLICATION_ERROR(-20047, 'SOURCE_DB_LINK is required for layer 3 source row counts');
+    END IF;
+
     l_table := fn_qualified_table(p_source_owner, p_source_table_name);
 
-    IF UPPER(TRIM(p_source_db_link)) <> 'LOCAL' THEN
-      l_table := l_table || '@' || PKG_SQL.fn_assert_simple_name(p_source_db_link);
-    END IF;
+    l_table := l_table || '@' || PKG_SQL.fn_assert_simple_name(p_source_db_link);
 
     RETURN l_table;
   END;
+
+  FUNCTION fn_high_value_to_date(p_high_value IN VARCHAR2) RETURN DATE IS
+    l_date DATE;
+  BEGIN
+    IF p_high_value IS NULL OR UPPER(TRIM(p_high_value)) = 'MAXVALUE' THEN
+      RETURN NULL;
+    END IF;
+
+    EXECUTE IMMEDIATE 'SELECT ' || p_high_value || ' FROM dual' INTO l_date;
+    RETURN l_date;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN NULL;
+  END fn_high_value_to_date;
+
+  FUNCTION fn_first_partition_key_column
+  (
+    p_owner IN VARCHAR2,
+    p_table IN VARCHAR2
+  )
+  RETURN VARCHAR2
+  IS
+    l_column_name VARCHAR2(128);
+  BEGIN
+    SELECT column_name
+      INTO l_column_name
+      FROM all_part_key_columns
+     WHERE owner = UPPER(p_owner)
+       AND name = UPPER(p_table)
+       AND object_type = 'TABLE'
+       AND column_position = 1;
+
+    RETURN PKG_SQL.fn_assert_simple_name(l_column_name);
+  END fn_first_partition_key_column;
+
+  FUNCTION fn_first_subpartition_key_column
+  (
+    p_owner IN VARCHAR2,
+    p_table IN VARCHAR2
+  )
+  RETURN VARCHAR2
+  IS
+    l_column_name VARCHAR2(128);
+  BEGIN
+    SELECT column_name
+      INTO l_column_name
+      FROM all_subpart_key_columns
+     WHERE owner = UPPER(p_owner)
+       AND name = UPPER(p_table)
+       AND object_type = 'TABLE'
+       AND column_position = 1;
+
+    RETURN PKG_SQL.fn_assert_simple_name(l_column_name);
+  END fn_first_subpartition_key_column;
 
   PROCEDURE prc_quality
   (
@@ -57,6 +113,10 @@ AS
     l_ok                NUMBER := 0;
     l_failed            NUMBER := 0;
     l_quality_status    VARCHAR2(1);
+    l_part_key_column   VARCHAR2(128);
+    l_sub_key_column    VARCHAR2(128);
+    l_high_date         DATE;
+    l_low_date          DATE;
     l_summary           CLOB := NULL;
     l_table_summary     CLOB;
     l_partition_columns VARCHAR2(1000) :=
@@ -103,14 +163,28 @@ AS
       ) LOOP
         l_units := l_units + 1;
 
+        l_part_key_column := fn_first_partition_key_column(r.target_owner, r.target_table_name);
+        l_high_date := fn_high_value_to_date(r.partition_high_value);
+        l_low_date := fn_high_value_to_date(r.prev_partition_high_value);
+
+        IF l_high_date IS NULL THEN
+          RAISE_APPLICATION_ERROR(-20051, 'REPLICA QUALITY requires a DATE partition high value');
+        END IF;
+
+        l_sql := 'SELECT COUNT(*) FROM ' ||
+                 fn_source_table(r.source_db_link, r.source_owner, r.source_table_name) ||
+                 ' WHERE ' || l_part_key_column || ' < DATE ''' || TO_CHAR(l_high_date, 'YYYY-MM-DD') || '''';
+
+        IF l_low_date IS NOT NULL THEN
+          l_sql := l_sql || ' AND ' || l_part_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
+        END IF;
+
         IF r.archive_unit_type = 'SUBPARTITION' THEN
-          l_sql := 'SELECT COUNT(*) FROM ' ||
-                   fn_source_table(r.source_db_link, r.source_owner, r.source_table_name) ||
-                   ' SUBPARTITION (' || PKG_SQL.fn_assert_simple_name(r.source_subpartition_name) || ')';
-        ELSE
-          l_sql := 'SELECT COUNT(*) FROM ' ||
-                   fn_source_table(r.source_db_link, r.source_owner, r.source_table_name) ||
-                   ' PARTITION (' || PKG_SQL.fn_assert_simple_name(r.source_partition_name) || ')';
+          l_sub_key_column := fn_first_subpartition_key_column(r.target_owner, r.target_table_name);
+          IF r.subpartition_high_value IS NULL OR TRIM(r.subpartition_high_value) = '#' THEN
+            RAISE_APPLICATION_ERROR(-20052, 'REPLICA QUALITY requires a list subpartition high value');
+          END IF;
+          l_sql := l_sql || ' AND ' || l_sub_key_column || ' IN (' || r.subpartition_high_value || ')';
         END IF;
 
         l_source_rows := PKG_SQL.fn_run_into_sql(l_log_id, l_sql, 'Y');

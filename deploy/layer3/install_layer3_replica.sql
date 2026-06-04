@@ -13,6 +13,7 @@ PROMPT Installing Central Layer 3 Replica core objects
 @layer2_core/functions/fn_archive_high_value_date.sql
 @layer2_core/packages/pkg_sql.spec.sql
 @layer2_core/packages/pkg_sql.body.sql
+@deploy/layer3/create_carch_loopback_link.sql
 @deploy/layer3/create_carch_synonyms.sql
 @layer3_replica/tables/tw_replica_tables.sql
 @layer3_replica/tables/tw_replica_runs.sql
