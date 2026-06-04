@@ -3,11 +3,11 @@ SET SERVEROUTPUT ON
 SET FEEDBACK ON
 SET ECHO ON
 
-PROMPT Seeding LOCAL.CARCH.ORDERS_ARCH_SRC replica configuration
+PROMPT Seeding CARCH_LOOPBACK_LINK.CARCH.ORDERS_ARCH_SRC replica configuration
 
 MERGE INTO TW_REPLICA_TABLES dst
 USING (
-  SELECT 'LOCAL' AS source_db_link,
+  SELECT 'CARCH_LOOPBACK_LINK' AS source_db_link,
          'CARCH' AS source_owner,
          'ORDERS_ARCH_SRC' AS source_table_name,
          'CREPL' AS target_owner,
@@ -40,7 +40,7 @@ VALUES
 
 MERGE INTO TW_REPLICA_PARTITIONS dst
 USING (
-  SELECT 'LOCAL' AS source_db_link,
+  SELECT 'CARCH_LOOPBACK_LINK' AS source_db_link,
          'CARCH' AS source_owner,
          'ORDERS_ARCH_SRC' AS source_table_name,
          'CREPL' AS target_owner,
@@ -93,4 +93,4 @@ VALUES
 
 COMMIT;
 
-PROMPT LOCAL.CARCH.ORDERS_ARCH_SRC replica configuration seeded
+PROMPT CARCH_LOOPBACK_LINK.CARCH.ORDERS_ARCH_SRC replica configuration seeded

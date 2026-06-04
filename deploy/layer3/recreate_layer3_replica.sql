@@ -94,6 +94,14 @@ BEGIN
   ) LOOP
     EXECUTE IMMEDIATE 'DROP SYNONYM ' || r.synonym_name;
   END LOOP;
+
+  FOR r IN (
+    SELECT db_link
+      FROM user_db_links
+     WHERE db_link = 'CARCH_LOOPBACK_LINK'
+  ) LOOP
+    EXECUTE IMMEDIATE 'DROP DATABASE LINK ' || r.db_link;
+  END LOOP;
 END;
 /
 

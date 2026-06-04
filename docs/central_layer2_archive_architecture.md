@@ -545,9 +545,9 @@ Zakres smoke runnerow:
 - truncate safety: smoke_truncate_preview_client1_loopback.sql
 ```
 
-`full_reinstall.sql` instaluje obecnie CLIENT1, CLIENT2, CAGENT1, CARCH oraz
-CREPL, seeduje metadane L2 dla wszystkich testowych source setupow i przygotowuje
-lokalny layer 3 replica smoke.
+`full_reinstall.sql` currently installs CLIENT1, CLIENT2, CAGENT1, CARCH, and
+CREPL, seeds L2 metadata for all test source setups, and prepares the layer 3
+replica smoke through the `CARCH_LOOPBACK_LINK` loopback DB link.
 
 Layer 3 replica bedzie opisana osobno w
 `docs/central_layer3_replica_architecture.md`.
