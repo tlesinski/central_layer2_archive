@@ -14,6 +14,12 @@ AS
   )
   RETURN VARCHAR2;
 
+  FUNCTION fn_html_escape_clob
+  (
+    p_value IN CLOB
+  )
+  RETURN CLOB;
+
   FUNCTION fn_report_html
   (
     p_report_name IN VARCHAR2,

@@ -79,7 +79,7 @@ SELECT COUNT(r.run_id) AS runs_total,
 ]') sql_code
     FROM dual
   UNION ALL
-  SELECT 'SQL_ARCHIVER_PROCESS_SUMMARY' sql_name,
+SELECT 'SQL_ARCHIVER_PROCESS_SUMMARY' sql_name,
          TO_CLOB(q'[
 WITH cfg AS (
   SELECT TO_NUMBER(NVL(MAX(CASE WHEN config_key = 'REPORT_LOOKBACK_DAYS' THEN config_value END), '7')) lookback_days
@@ -113,10 +113,11 @@ SELECT p.run_type,
 ]') sql_code
     FROM dual
   UNION ALL
-  SELECT 'SQL_ARCHIVER_LATEST_SUMMARIES' sql_name,
+SELECT 'SQL_ARCHIVER_LATEST_SUMMARIES' sql_name,
          TO_CLOB(q'[
 WITH cfg AS (
-  SELECT TO_NUMBER(NVL(MAX(CASE WHEN config_key = 'REPORT_LOOKBACK_DAYS' THEN config_value END), '7')) lookback_days
+  SELECT TO_NUMBER(NVL(MAX(CASE WHEN config_key = 'REPORT_LOOKBACK_DAYS' THEN config_value END), '7')) lookback_days,
+         TO_NUMBER(NVL(MAX(CASE WHEN config_key = 'REPORT_SUMMARY_MAX_CHARS' THEN config_value END), '32000')) summary_max_chars
   FROM TBL_UTIL_CONFIG
 ),
 processes AS (
@@ -144,13 +145,14 @@ summaries AS (
   SELECT log_categ,
          log_sttus,
          start_date,
-         REGEXP_REPLACE(DBMS_LOB.SUBSTR(
+         REGEXP_REPLACE(SUBSTR(
            log_msg,
-           LEAST(2000, end_pos - (begin_pos + LENGTH('<<<PARTMGR_SUMMARY_BEGIN>>>'))),
-           begin_pos + LENGTH('<<<PARTMGR_SUMMARY_BEGIN>>>')
+           begin_pos + LENGTH('<<<PARTMGR_SUMMARY_BEGIN>>>'),
+           LEAST(summary_max_chars, end_pos - (begin_pos + LENGTH('<<<PARTMGR_SUMMARY_BEGIN>>>')))
          ), '^[[:space:]]+|[[:space:]]+$', '') AS summary_text,
          ROW_NUMBER() OVER (PARTITION BY log_categ ORDER BY start_date DESC, log_id DESC) rn
     FROM marked
+         CROSS JOIN cfg
    WHERE end_pos > begin_pos + LENGTH('<<<PARTMGR_SUMMARY_BEGIN>>>')
 )
 SELECT p.run_type,

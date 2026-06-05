@@ -67,7 +67,7 @@ USING (
     th, td { border: 1px solid #c7d0d9; padding: 6px 8px; text-align: left; vertical-align: top; }
     th { background: #eef2f6; }
     .muted { color: #65758b; }
-    td { white-space: pre-wrap; }
+    .log-text { white-space: pre-wrap; font-family: Consolas, "Courier New", monospace; font-size: 12px; line-height: 1.45; background: #f8fafc; }
   </style>
 </head>
 <body>

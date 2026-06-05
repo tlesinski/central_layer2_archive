@@ -42,6 +42,28 @@ AS
            );
   END fn_html_escape;
 
+  FUNCTION fn_html_escape_clob
+  (
+    p_value IN CLOB
+  )
+  RETURN CLOB
+  IS
+  BEGIN
+    RETURN REPLACE(
+             REPLACE(
+               REPLACE(
+                 REPLACE(NVL(p_value, TO_CLOB('')), '&', '&amp;'),
+                 '<',
+                 '&lt;'
+               ),
+               '>',
+               '&gt;'
+             ),
+             '"',
+             '&quot;'
+           );
+  END fn_html_escape_clob;
+
   FUNCTION fn_assert_name
   (
     p_name IN VARCHAR2
@@ -74,10 +96,13 @@ AS
     l_header_sql  VARCHAR2(32767);
     l_row_sql     VARCHAR2(32767);
     l_result      CLOB;
-    l_row_html    VARCHAR2(32767);
+    l_header_html VARCHAR2(32767);
+    l_row_html    CLOB;
     l_rows        PLS_INTEGER := 0;
     l_max_rows    PLS_INTEGER := TO_NUMBER(fn_get_config('REPORT_MAX_ROWS', '100'));
     l_rc          SYS_REFCURSOR;
+    l_summary_col PLS_INTEGER := 0;
+    l_display_cols PLS_INTEGER := 0;
   BEGIN
     DBMS_LOB.CREATETEMPORARY(l_result, TRUE);
 
@@ -87,30 +112,43 @@ AS
     DBMS_SQL.CLOSE_CURSOR(l_cur);
 
     l_header_sql := 'SELECT ''<tr>';
-    l_row_sql := 'SELECT ''<tr>''';
+    l_row_sql := 'SELECT TO_CLOB(''<tr>'')';
 
     FOR i IN 1 .. l_col_cnt LOOP
-      l_header_sql := l_header_sql ||
-                      '<th>' || fn_html_escape(l_desc_tab(i).COL_NAME) || '</th>';
-      l_row_sql := l_row_sql ||
-                   ' || ''<td>'' || PKG_UTIL_REPORT.fn_html_escape(TO_CHAR(' ||
-                   fn_enquote_column(l_desc_tab(i).COL_NAME) ||
-                   ')) || ''</td>''';
+      IF UPPER(l_desc_tab(i).COL_NAME) = 'SUMMARY_TEXT' THEN
+        l_summary_col := i;
+      ELSE
+        l_display_cols := l_display_cols + 1;
+        l_header_sql := l_header_sql ||
+                        '<th>' || fn_html_escape(l_desc_tab(i).COL_NAME) || '</th>';
+        l_row_sql := l_row_sql ||
+                     ' || ''<td>'' || PKG_UTIL_REPORT.fn_html_escape(TO_CHAR(' ||
+                     fn_enquote_column(l_desc_tab(i).COL_NAME) ||
+                     ')) || ''</td>''';
+      END IF;
     END LOOP;
 
     l_header_sql := l_header_sql || '</tr>'' FROM dual';
+    IF l_summary_col > 0 THEN
+      l_row_sql := l_row_sql ||
+                   ' || ''</tr><tr><td colspan="' || TO_CHAR(l_display_cols) ||
+                   '" class="log-text">'' || PKG_UTIL_REPORT.fn_html_escape_clob(' ||
+                   fn_enquote_column(l_desc_tab(l_summary_col).COL_NAME) ||
+                   ') || ''</td>''';
+    END IF;
+
     l_row_sql := l_row_sql || ' || ''</tr>'' FROM (' || DBMS_LOB.SUBSTR(p_sql, 32767, 1) || ')';
 
     DBMS_LOB.APPEND(l_result, TO_CLOB('<table>'));
 
-    EXECUTE IMMEDIATE l_header_sql INTO l_row_html;
-    DBMS_LOB.APPEND(l_result, TO_CLOB(l_row_html));
+    EXECUTE IMMEDIATE l_header_sql INTO l_header_html;
+    DBMS_LOB.APPEND(l_result, TO_CLOB(l_header_html));
 
     OPEN l_rc FOR l_row_sql;
     LOOP
       FETCH l_rc INTO l_row_html;
       EXIT WHEN l_rc%NOTFOUND OR l_rows >= l_max_rows;
-      DBMS_LOB.APPEND(l_result, TO_CLOB(l_row_html));
+      DBMS_LOB.APPEND(l_result, l_row_html);
       l_rows := l_rows + 1;
     END LOOP;
     CLOSE l_rc;
