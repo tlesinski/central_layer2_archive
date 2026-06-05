@@ -74,6 +74,7 @@ AS
   )
   IS
     l_log_id NUMBER;
+    l_log_msg CLOB := p_log_msg;
   BEGIN
     IF p_run_id IS NULL THEN
       RETURN;
@@ -81,11 +82,17 @@ AS
 
     l_log_id := fn_get_log_id(p_run_id);
 
+    IF UPPER(TRIM(p_log_type)) = 'SUMMARY' THEN
+      l_log_msg := TO_CLOB('<<<PARTMGR_SUMMARY_BEGIN>>>') || CHR(10) ||
+                   p_log_msg || CHR(10) ||
+                   TO_CLOB('<<<PARTMGR_SUMMARY_END>>>');
+    END IF;
+
     PKG_ARCHIVER_TL_LOGGING.prc_log
     (
       p_log_id      => l_log_id,
       p_mstr_log_id => l_log_id,
-      p_log_msg     => p_log_msg,
+      p_log_msg     => l_log_msg,
       p_log_sttus   => p_log_sttus,
       p_log_type    => p_log_type
     );

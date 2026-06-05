@@ -67,6 +67,7 @@ USING (
     th, td { border: 1px solid #c7d0d9; padding: 6px 8px; text-align: left; vertical-align: top; }
     th { background: #eef2f6; }
     .muted { color: #65758b; }
+    td { white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -81,6 +82,9 @@ USING (
 
   <h2>Process Summary</h2>
   <SQL>SQL_ARCHIVER_PROCESS_SUMMARY</SQL>
+
+  <h2>Latest Process Summaries</h2>
+  <SQL>SQL_ARCHIVER_LATEST_SUMMARIES</SQL>
 
   <h2>Data Status Summary</h2>
   <SQL>SQL_ARCHIVER_DATA_STATUS</SQL>
