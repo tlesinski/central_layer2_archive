@@ -53,14 +53,15 @@ Avoid copying old design constraints:
 Keep files organized by deployment side:
 
 ```text
-layer1_agent/   source-side helper objects
-layer2_core/    central layer 2 objects
-deploy/layer1/  layer 1 install scripts
-deploy/layer2/  layer 2 install scripts
-docs/           architecture and operational notes
+code_agent/       AGENT source-side helper objects
+code_archiver/    ARCHIVER control-plane objects
+code_replica/     REPLICA objects
+root *.sql        public configuration and installation entry points
+code_root/        low-level schema and database-link helpers
+docs/             architecture and operational notes
 ```
 
-Do not place layer 2 orchestration logic in `layer1_agent`.
+Do not place ARCHIVER orchestration logic in `code_agent`.
 
 ## SQL Style
 
@@ -88,12 +89,14 @@ For PL/SQL:
 Use `VARCHAR2(128)` for Oracle object names unless there is a specific reason
 not to.
 
-## Windows SQL\*Plus
+## SQL Script Paths
 
 ```text
-- @@../../ relative paths fail with SP2-0310 — use @ with paths from repo root
-- In PowerShell, escape the @ operator with backtick: `@path/to/file.sql
-  (or use the call operator: & sqlplus ... `@script.sql)
+- public installation entry points live in the repository root
+- use @@ for nested scripts so paths resolve relative to the current script
+- public install scripts must run when opened directly in SQL Developer with F5
+- public install scripts must not depend on the client's working directory
+- nested installer paths must remain below the repository root
 ```
 
 ## Central Model Rules
@@ -133,25 +136,13 @@ For structural changes, check:
 - README and architecture docs stay aligned
 ```
 
-For database-facing changes, prefer adding a clear install or smoke-test script
-over relying on manual execution order.
+For database-facing changes, keep installation order explicit. Do not add
+test fixtures or smoke suites to root installation scripts. Demo seeds belong
+under `seed/` and are orchestrated only by root-level `seed.sql`.
 
-## Reinstall (Clean Drop + Full Install)
+## Code Installation
 
-Connect as SYS and run in order:
-
-```text
-1. @drop_all_schemas.sql
-2. @full_reinstall.sql
-```
-
-Step 1 drops all component objects from the configured application schema. Step
-2 recreates the combined topology and seeds metadata. Verify with:
-
-```text
-- all SHOW ERRORS = "No errors"
-- seed TBL_ARCHIVER_TABLES = 1 row merged per table
-- seed TBL_ARCHIVER_PARTITIONS = N rows merged per table
-- combined smoke test completes successfully
-- configured component DB links are valid
-```
+`reset_schemas.sql` manages the six configured empty schemas.
+`install_code.sql` installs code according to the SHARED or SPLIT model.
+`reinstall.sql` performs both operations. Component installers install code and
+required component links only.

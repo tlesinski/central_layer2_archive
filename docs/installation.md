@@ -1,117 +1,120 @@
 # Installation
 
-Run SQL*Plus scripts from the repository root.
+Public installation scripts are located in the repository root. Open them
+directly in SQL Developer and run with **F5 (Run Script)**. All nested paths
+remain below the root and are resolved relative to the current script.
 
-## Configuration
+## Central Configuration
 
-Copy committed templates to ignored local files:
-
-```text
-deploy/config/install_config.template.sql
-  -> deploy/config/install_config.local.sql
-
-deploy/config/agent_instances.template.sql
-  -> deploy/config/agent_instances.local.sql
-
-deploy/config/provision_targets.template.sql
-  -> deploy/config/provision_targets.local.sql
-
-deploy/config/distributed_topology.template.sql
-  -> deploy/config/distributed_topology.local.sql
-
-deploy/config/distributed_agents.template.sql
-  -> deploy/config/distributed_agents.local.sql
-```
-
-Validate combined and standalone configuration:
+Copy:
 
 ```text
-@deploy/config/validate_install_config.sql
+config.template.sql -> config.local.sql
 ```
 
-## Schema Provisioning
+The ignored local file defines:
 
-The application schema must be provisioned before component installation.
-Provisioning grants the common AGENT/ARCHIVER/REPLICA privilege superset and
-fails if the schema already exists.
+- `SHARED` or `SPLIT` installation model,
+- three SYS connections: source, ARCHIVER, and REPLICA,
+- six configurable schema names and passwords,
+- default and temporary tablespaces,
+- required real DB-link names.
 
-Combined or shared-name database targets:
+Validate without resetting schemas:
 
 ```text
-@deploy/provision/provision_all_schemas.sql
+@validate_config.sql
 ```
 
-Distributed topology:
+## Schema Reset
+
+`reset_schemas.sql` always drops and recreates all six configured schemas:
 
 ```text
-@deploy/distributed/provision_distributed.sql
+CLIENT1
+CLIENT2
+PARTMGR_AGENT
+PARTMGR_ARCHIVER
+PARTMGR_REPLICA
+PARTMGR_SHARED
 ```
 
-## Standalone Components
+It requires the explicit configuration token:
 
 ```text
-@deploy/layer1/install_agent.sql <agent-connect>
-@deploy/layer2/install_archiver.sql
-@deploy/layer3/install_replica.sql
+RESET_CONFIRMATION = RESET_ALL
 ```
 
-ARCHIVER-to-AGENT and REPLICA-to-ARCHIVER communication must be configured
-through real database links.
-
-## Combined Installation
-
-The configured schema must already exist:
+Run:
 
 ```text
-@drop_all_schemas.sql
-@full_reinstall.sql
-@deploy/smoke_all.sql
+@reset_schemas.sql
 ```
 
-`drop_all_schemas.sql` removes application objects but preserves the schema
-account and its privileges.
+CLIENT schemas receive a standard data-owner profile. AGENT receives
+`SELECT ANY TABLE` and `ALTER ANY TABLE`. SHARED receives the complete component
+privilege superset.
 
-## Distributed Installation
+## Code Installation
 
-The master entry point provisions all configured schemas, installs all AGENT
-instances, installs ARCHIVER, creates ARCHIVER-to-AGENT links, installs REPLICA,
-and creates the REPLICA-to-ARCHIVER link:
+Run:
 
 ```text
-@deploy/distributed/deploy_distributed.sql
+@install_code.sql
 ```
 
-Partial installation entry points:
+For a full destructive reset followed by code installation, run:
 
 ```text
-@deploy/distributed/install_agents.sql
-@deploy/distributed/install_archiver.sql
-@deploy/distributed/install_replica.sql
+@reinstall.sql
 ```
 
-## Local Distributed Simulation
+## Optional Demo Seeds
 
-Separate schemas in one PDB can simulate separate databases:
+The following `config.local.sql` flags control demo seed rebuilding:
+
+```sql
+DEFINE RUN_SEEDS_AFTER_REINSTALL = N
+DEFINE REBUILD_SEED_CLIENT = N
+DEFINE REBUILD_SEED_ARCHIVER = N
+DEFINE REBUILD_SEED_REPLICA = N
+```
+
+Run `@seed.sql` manually, or set `RUN_SEEDS_AFTER_REINSTALL=Y` to invoke it
+after `reinstall.sql`. ARCHIVER cascades to CLIENT. REPLICA cascades to
+ARCHIVER and CLIENT.
+
+Seed modules destructively recreate only their demo tables, metadata, and
+related runs. Component sequences, process logs, code, links, and unrelated
+metadata are preserved.
+
+For `SHARED`, all component code and two distinct loopback links are installed
+in the configured SHARED schema on the source database.
+
+For `SPLIT`, component code is installed in AGENT, ARCHIVER, and REPLICA schemas
+on their configured databases. ARCHIVER-to-AGENT and REPLICA-to-ARCHIVER links
+are created automatically.
+
+## Component Installers
+
+The following code-only installers remain available:
 
 ```text
-@deploy/distributed/reset_local_simulation.sql
-@deploy/distributed/deploy_distributed.sql
-@deploy/distributed/prepare_smoke.sql
-@deploy/distributed/smoke_distributed.sql
+@install_agent.sql
+@install_archiver.sql
+@install_replica.sql
+@install_combined.sql
+@deploy_distributed.sql
 ```
 
-Different local schema names are required because one PDB cannot contain
-multiple users with the same name. Production databases may each use `PARTMGR`.
+All use root-level `config.local.sql`.
 
-## Client Onboarding
+## Post-Installation Check
 
-Use the templates:
+Run in every active component schema:
 
-```text
-deploy/onboarding/grant_source_table.template.sql
-deploy/onboarding/seed_archiver_table.template.sql
+```sql
+SELECT object_name, object_type
+FROM user_objects
+WHERE status <> 'VALID';
 ```
-
-Grant source `SELECT` to the AGENT schema. Grant source `ALTER` only when
-executed source cleanup is required. Create the ARCHIVER target table and seed
-`TBL_ARCHIVER_TABLES` with a real DB link.

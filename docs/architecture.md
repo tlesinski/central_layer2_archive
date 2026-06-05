@@ -67,7 +67,8 @@ and defaults to preview.
 
 ### Combined
 
-AGENT, ARCHIVER, and REPLICA coexist in one configurable schema. Logical
+The `SHARED` model installs AGENT, ARCHIVER, and REPLICA in one configurable
+schema on the source database. Logical
 component boundaries are still crossed through two distinct loopback links:
 
 ```text
@@ -77,10 +78,10 @@ REPLICA  -> ARCHIVER
 
 ### Distributed
 
-Any number of AGENT databases feed one ARCHIVER database, which feeds one
-REPLICA database. The same schema name, commonly `PARTMGR`, may exist on every
-database. Each connection, schema, password, admin account, and DB-link name is
-configured per location.
+The `SPLIT` model installs AGENT on the source database, ARCHIVER on the archive
+database, and REPLICA on the replica database. CLIENT1 and CLIENT2 are located
+beside AGENT. Three SYS connections manage schema lifecycle for the source,
+ARCHIVER, and REPLICA locations.
 
 ## Data and Safety Rules
 

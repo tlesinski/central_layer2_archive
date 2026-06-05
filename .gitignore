@@ -1,7 +1,3 @@
 .codex_tmp
 *.log
-deploy/config/install_config.local.sql
-deploy/config/agent_instances.local.sql
-deploy/config/provision_targets.local.sql
-deploy/config/distributed_agents.local.sql
-deploy/config/distributed_topology.local.sql
+config.local.sql

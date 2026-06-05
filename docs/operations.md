@@ -109,19 +109,8 @@ VW_REPLICA_QUALITY_PARTITIONS
 VW_REPLICA_PURGE_PARTITIONS
 ```
 
-## Smoke Suites
+## Deployment Boundary
 
-Combined:
-
-```text
-@deploy/smoke_all.sql
-```
-
-Distributed local simulation:
-
-```text
-@deploy/distributed/prepare_smoke.sql
-@deploy/distributed/smoke_distributed.sql
-```
-
-Smoke suites never execute source truncate or REPLICA purge.
+Installation scripts install code only unless `RUN_SEEDS_AFTER_REINSTALL=Y`.
+Demo tables, targets, and metadata are managed by the independent cascading
+`seed.sql` entry point. Automated tests remain separate.

@@ -1,0 +1,17 @@
+SET DEFINE ON
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+SET FEEDBACK ON
+WHENEVER OSERROR EXIT FAILURE
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+
+@@validate_config.sql
+
+COLUMN install_script NEW_VALUE INSTALL_SCRIPT NOPRINT
+SELECT CASE UPPER(TRIM('&&INSTALL_MODEL'))
+         WHEN 'SHARED' THEN 'install_combined.sql'
+         ELSE 'deploy_distributed.sql'
+       END AS install_script
+  FROM dual;
+
+@@&&INSTALL_SCRIPT
