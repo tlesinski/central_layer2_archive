@@ -1,0 +1,26 @@
+CREATE OR REPLACE PACKAGE PKG_UTIL_REPORT
+AUTHID CURRENT_USER
+AS
+  FUNCTION fn_get_config
+  (
+    p_config_key IN VARCHAR2,
+    p_default    IN VARCHAR2 DEFAULT NULL
+  )
+  RETURN VARCHAR2;
+
+  FUNCTION fn_html_escape
+  (
+    p_value IN VARCHAR2
+  )
+  RETURN VARCHAR2;
+
+  FUNCTION fn_report_html
+  (
+    p_report_name IN VARCHAR2,
+    p_parm1       IN VARCHAR2 DEFAULT NULL,
+    p_parm2       IN VARCHAR2 DEFAULT NULL,
+    p_parm3       IN VARCHAR2 DEFAULT NULL
+  )
+  RETURN CLOB;
+END PKG_UTIL_REPORT;
+/

@@ -14,7 +14,8 @@
   RUN_SEEDS_AFTER_REINSTALL controls whether reinstall.sql invokes seed.sql
   after code installation. REBUILD_SEED_* flags control destructive demo seed
   rebuilds. CLIENT cascades to ARCHIVER and REPLICA; ARCHIVER cascades to
-  REPLICA; REPLICA rebuilds only REPLICA.
+  REPLICA; REPLICA rebuilds only REPLICA. REBUILD_SEED_MAIL updates only
+  utility mail metadata in the active ARCHIVER/REPLICA or SHARED schema.
   Seeds rebuild only their demo tables, metadata, and related runs. They do not
   reset component sequences or process logs.
 
@@ -39,6 +40,10 @@
   logical components. SPLIT uses ARCHIVER_AGENT_DB_LINK and
   REPLICA_ARCHIVER_DB_LINK. SHARED uses the two SHARED_* DB links.
 
+  CONFIGURE_MAIL_ACL controls whether reinstall.sql grants Oracle network ACLs
+  for SMTP after code installation. MAIL_* values are used by the optional
+  mail seed and by the ACL script. Local smtp4dev defaults to localhost:2525.
+
   Keep this local file private because it contains passwords.
 */
 
@@ -54,6 +59,14 @@ DEFINE REINSTALL_TEST_ID = ALL
 DEFINE REBUILD_SEED_CLIENT = N
 DEFINE REBUILD_SEED_ARCHIVER = N
 DEFINE REBUILD_SEED_REPLICA = N
+DEFINE REBUILD_SEED_MAIL = N
+
+DEFINE CONFIGURE_MAIL_ACL = N
+DEFINE MAIL_SMTP_HOST = localhost
+DEFINE MAIL_SMTP_PORT = 2525
+DEFINE MAIL_ENABLED = N
+DEFINE MAIL_FROM = partmgr@localhost
+DEFINE MAIL_TO = test@localhost
 
 DEFINE DEFAULT_TABLESPACE = USERS
 DEFINE TEMPORARY_TABLESPACE = TEMP

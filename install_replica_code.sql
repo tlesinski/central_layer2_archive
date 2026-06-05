@@ -9,11 +9,18 @@ PROMPT Installing standalone REPLICA core objects
 @@code_replica/sequences/seq_replica_process_log.sql
 @@code_replica/sequences/seq_replica_stg_tmp.sql
 @@code_replica/tables/tbl_replica_process_log.sql
+@@code_replica/tables/tbl_util_config.sql
+@@code_replica/tables/tbl_util_reports.sql
+@@code_replica/tables/tbl_util_report_sql.sql
 @@code_replica/functions/fn_replica_high_value_date.sql
 @@code_replica/packages/pkg_replica_tl_logging.spec.sql
 @@code_replica/packages/pkg_replica_tl_logging.body.sql
 @@code_replica/packages/pkg_replica_sql.spec.sql
 @@code_replica/packages/pkg_replica_sql.body.sql
+@@code_replica/packages/pkg_util_report.spec.sql
+@@code_replica/packages/pkg_util_report.body.sql
+@@code_replica/packages/pkg_util_mail.spec.sql
+@@code_replica/packages/pkg_util_mail.body.sql
 @@code_replica/tables/tbl_replica_tables.sql
 @@code_replica/tables/tbl_replica_runs.sql
 @@code_replica/tables/tbl_replica_partitions.sql
@@ -41,6 +48,10 @@ SHOW ERRORS PACKAGE PKG_REPLICA_TL_LOGGING
 SHOW ERRORS PACKAGE BODY PKG_REPLICA_TL_LOGGING
 SHOW ERRORS PACKAGE PKG_REPLICA_SQL
 SHOW ERRORS PACKAGE BODY PKG_REPLICA_SQL
+SHOW ERRORS PACKAGE PKG_UTIL_REPORT
+SHOW ERRORS PACKAGE BODY PKG_UTIL_REPORT
+SHOW ERRORS PACKAGE PKG_UTIL_MAIL
+SHOW ERRORS PACKAGE BODY PKG_UTIL_MAIL
 SHOW ERRORS PACKAGE PKG_REPLICA_LOG
 SHOW ERRORS PACKAGE BODY PKG_REPLICA_LOG
 SHOW ERRORS PACKAGE PKG_REPLICA_DISCOVERY

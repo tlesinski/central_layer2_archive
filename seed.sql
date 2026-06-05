@@ -31,6 +31,7 @@ SELECT CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN UPPER('&&SHARED_SC
 COLUMN client_seed_script NEW_VALUE CLIENT_SEED_SCRIPT NOPRINT
 COLUMN archiver_seed_script NEW_VALUE ARCHIVER_SEED_SCRIPT NOPRINT
 COLUMN replica_seed_script NEW_VALUE REPLICA_SEED_SCRIPT NOPRINT
+COLUMN mail_seed_script NEW_VALUE MAIL_SEED_SCRIPT NOPRINT
 
 SELECT CASE
          WHEN UPPER(TRIM('&&REBUILD_SEED_CLIENT')) = 'Y'
@@ -49,11 +50,17 @@ SELECT CASE
            OR UPPER(TRIM('&&REBUILD_SEED_REPLICA')) = 'Y'
          THEN 'seed/seed_replica/seed_replica.sql'
          ELSE 'seed/skip_seed.sql'
-       END replica_seed_script
+       END replica_seed_script,
+       CASE
+         WHEN UPPER(TRIM('&&REBUILD_SEED_MAIL')) = 'Y'
+         THEN 'seed/seed_mail/seed_mail.sql'
+         ELSE 'seed/skip_seed.sql'
+       END mail_seed_script
   FROM dual;
 
 PROMPT Starting configured seed cascade
 @@&&CLIENT_SEED_SCRIPT
 @@&&ARCHIVER_SEED_SCRIPT
 @@&&REPLICA_SEED_SCRIPT
+@@&&MAIL_SEED_SCRIPT
 PROMPT Configured seed cascade completed

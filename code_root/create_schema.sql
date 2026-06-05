@@ -61,6 +61,8 @@ BEGIN
     grant_privilege('CREATE TYPE');
     grant_privilege('CREATE DATABASE LINK');
     grant_privilege('ALTER SESSION');
+    grant_privilege('EXECUTE ON SYS.UTL_SMTP');
+    grant_privilege('EXECUTE ON SYS.UTL_TCP');
 
     IF l_profile = 'SHARED' THEN
       grant_privilege('SELECT ANY TABLE');

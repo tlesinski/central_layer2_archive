@@ -9,6 +9,9 @@ PROMPT Installing standalone ARCHIVER core objects
 @@code_archiver/sequences/seq_archiver_process_log.sql
 @@code_archiver/sequences/seq_archiver_stg_tmp.sql
 @@code_archiver/tables/tbl_archiver_process_log.sql
+@@code_archiver/tables/tbl_util_config.sql
+@@code_archiver/tables/tbl_util_reports.sql
+@@code_archiver/tables/tbl_util_report_sql.sql
 @@code_archiver/tables/tbl_archiver_tables.sql
 @@code_archiver/tables/tbl_archiver_runs.sql
 @@code_archiver/tables/tbl_archiver_partitions.sql
@@ -26,6 +29,10 @@ PROMPT Installing standalone ARCHIVER core objects
 @@code_archiver/packages/pkg_archiver_tl_logging.body.sql
 @@code_archiver/packages/pkg_archiver_sql.spec.sql
 @@code_archiver/packages/pkg_archiver_sql.body.sql
+@@code_archiver/packages/pkg_util_report.spec.sql
+@@code_archiver/packages/pkg_util_report.body.sql
+@@code_archiver/packages/pkg_util_mail.spec.sql
+@@code_archiver/packages/pkg_util_mail.body.sql
 @@code_archiver/packages/pkg_archiver_log.spec.sql
 @@code_archiver/packages/pkg_archiver_log.body.sql
 @@code_archiver/packages/pkg_archiver_partition.spec.sql
@@ -45,6 +52,10 @@ SHOW ERRORS PACKAGE PKG_ARCHIVER_TL_LOGGING
 SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_TL_LOGGING
 SHOW ERRORS PACKAGE PKG_ARCHIVER_SQL
 SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_SQL
+SHOW ERRORS PACKAGE PKG_UTIL_REPORT
+SHOW ERRORS PACKAGE BODY PKG_UTIL_REPORT
+SHOW ERRORS PACKAGE PKG_UTIL_MAIL
+SHOW ERRORS PACKAGE BODY PKG_UTIL_MAIL
 SHOW ERRORS PACKAGE PKG_ARCHIVER_LOG
 SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_LOG
 SHOW ERRORS PACKAGE PKG_ARCHIVER_PARTITION

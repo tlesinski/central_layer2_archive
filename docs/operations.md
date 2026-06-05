@@ -124,3 +124,26 @@ Examples:
 @test.sql REPLICA ALL
 @test.sql ALL ALL
 ```
+
+## Local Mail Reports
+
+Start a local SMTP collector, for example `smtp4dev`, with SMTP exposed on
+`localhost:2525` and its web UI on `localhost:8081`.
+
+Grant Oracle network ACLs as SYS:
+
+```text
+@configure_mail_acl.sql
+```
+
+Update mail metadata with `REBUILD_SEED_MAIL=Y` and `@seed.sql`, then send a
+report from ARCHIVER or REPLICA:
+
+```sql
+BEGIN
+  PKG_UTIL_MAIL.prc_send_report('UTIL_SMOKE_REPORT');
+END;
+/
+```
+
+Keep `MAIL_ENABLED=N` unless report mail should be sent by that schema.

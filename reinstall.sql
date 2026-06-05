@@ -8,6 +8,15 @@ PROMPT Starting destructive schema reset and code reinstallation
 @@reset_schemas.sql
 @@install_code.sql
 
+COLUMN mail_acl_script NEW_VALUE MAIL_ACL_SCRIPT NOPRINT
+SELECT CASE UPPER(TRIM('&&CONFIGURE_MAIL_ACL'))
+         WHEN 'Y' THEN 'configure_mail_acl.sql'
+         ELSE 'seed/skip_seed.sql'
+       END AS mail_acl_script
+  FROM dual;
+
+@@&&MAIL_ACL_SCRIPT
+
 COLUMN seed_script NEW_VALUE SEED_SCRIPT NOPRINT
 SELECT CASE UPPER(TRIM('&&RUN_SEEDS_AFTER_REINSTALL'))
          WHEN 'Y' THEN 'seed.sql'

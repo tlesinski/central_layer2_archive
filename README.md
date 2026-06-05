@@ -71,10 +71,12 @@ RUN_SEEDS_AFTER_REINSTALL
 REBUILD_SEED_CLIENT
 REBUILD_SEED_ARCHIVER
 REBUILD_SEED_REPLICA
+REBUILD_SEED_MAIL
 ```
 
 `CLIENT` rebuild cascades to `ARCHIVER` and `REPLICA`. `ARCHIVER` rebuild
-cascades to `REPLICA`. `REPLICA` rebuilds only REPLICA. Run manually with:
+cascades to `REPLICA`. `REPLICA` rebuilds only REPLICA. `MAIL` updates only
+utility mail metadata. Run manually with:
 
 ```text
 @seed.sql
@@ -85,6 +87,13 @@ tables. Daily interval partitions are normalized to `PYYYYMMDD` names.
 
 When `RUN_SEEDS_AFTER_REINSTALL=Y`, `reinstall.sql` runs the configured seed
 cascade after installing code.
+
+## Local Mail Reports
+
+`PKG_UTIL_MAIL` sends through plain SMTP. For local development, run `smtp4dev`
+on `localhost:2525`, set `CONFIGURE_MAIL_ACL=Y` to grant Oracle network ACLs,
+and set `REBUILD_SEED_MAIL=Y` with the desired `MAIL_*` values to update
+`TBL_UTIL_CONFIG`. Mail remains disabled by default.
 
 ## Smoke Tests
 

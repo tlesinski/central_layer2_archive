@@ -63,6 +63,14 @@ DECLARE
       RAISE_APPLICATION_ERROR(-20308, p_name || ' must be ALL or a three-digit test id');
     END IF;
   END;
+
+  PROCEDURE assert_number(p_name IN VARCHAR2, p_value IN VARCHAR2) IS
+  BEGIN
+    assert_present(p_name, p_value);
+    IF NOT REGEXP_LIKE(TRIM(p_value), '^[0-9]+$') THEN
+      RAISE_APPLICATION_ERROR(-20309, p_name || ' must be numeric');
+    END IF;
+  END;
 BEGIN
   IF UPPER(TRIM(q'[&&INSTALL_MODEL]')) NOT IN ('SHARED', 'SPLIT') THEN
     RAISE_APPLICATION_ERROR(-20303, 'INSTALL_MODEL must be SHARED or SPLIT');
@@ -75,6 +83,20 @@ BEGIN
   assert_yes_no('REBUILD_SEED_CLIENT', q'[&&REBUILD_SEED_CLIENT]');
   assert_yes_no('REBUILD_SEED_ARCHIVER', q'[&&REBUILD_SEED_ARCHIVER]');
   assert_yes_no('REBUILD_SEED_REPLICA', q'[&&REBUILD_SEED_REPLICA]');
+  assert_yes_no('REBUILD_SEED_MAIL', q'[&&REBUILD_SEED_MAIL]');
+  assert_yes_no('CONFIGURE_MAIL_ACL', q'[&&CONFIGURE_MAIL_ACL]');
+  assert_yes_no('MAIL_ENABLED', q'[&&MAIL_ENABLED]');
+  assert_number('MAIL_SMTP_PORT', q'[&&MAIL_SMTP_PORT]');
+
+  IF UPPER(TRIM(q'[&&MAIL_ENABLED]')) = 'Y'
+     OR UPPER(TRIM(q'[&&CONFIGURE_MAIL_ACL]')) = 'Y' THEN
+    assert_present('MAIL_SMTP_HOST', q'[&&MAIL_SMTP_HOST]');
+  END IF;
+
+  IF UPPER(TRIM(q'[&&MAIL_ENABLED]')) = 'Y' THEN
+    assert_present('MAIL_FROM', q'[&&MAIL_FROM]');
+    assert_present('MAIL_TO', q'[&&MAIL_TO]');
+  END IF;
 
   assert_name('DEFAULT_TABLESPACE', q'[&&DEFAULT_TABLESPACE]');
   assert_name('TEMPORARY_TABLESPACE', q'[&&TEMPORARY_TABLESPACE]');

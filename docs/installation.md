@@ -81,6 +81,7 @@ DEFINE REINSTALL_TEST_ID = ALL
 DEFINE REBUILD_SEED_CLIENT = N
 DEFINE REBUILD_SEED_ARCHIVER = N
 DEFINE REBUILD_SEED_REPLICA = N
+DEFINE REBUILD_SEED_MAIL = N
 ```
 
 Run `@seed.sql` manually, or set `RUN_SEEDS_AFTER_REINSTALL=Y` to invoke it
@@ -94,6 +95,26 @@ and optional seeds. `REINSTALL_TEST_LEVEL` accepts `CLIENT`, `ARCHIVER`,
 Seed modules destructively recreate only their demo tables, metadata, and
 related runs. Component sequences, process logs, code, links, and unrelated
 metadata are preserved.
+
+`REBUILD_SEED_MAIL=Y` is independent from the data cascade. It updates only
+`TBL_UTIL_CONFIG` mail rows in the active ARCHIVER/REPLICA schemas for `SPLIT`,
+or once in the SHARED schema for `SHARED`.
+
+## Optional Mail ACL
+
+Local report mail uses plain SMTP through `PKG_UTIL_MAIL`. For `smtp4dev`,
+configure:
+
+```sql
+DEFINE CONFIGURE_MAIL_ACL = Y
+DEFINE MAIL_SMTP_HOST = localhost
+DEFINE MAIL_SMTP_PORT = 2525
+```
+
+Run `@configure_mail_acl.sql` manually, or let `@reinstall.sql` invoke it when
+`CONFIGURE_MAIL_ACL=Y`. The script grants `connect` on the configured SMTP port
+and `resolve` without ports for ARCHIVER/REPLICA in `SPLIT`, or SHARED in
+`SHARED`.
 
 For `SHARED`, all component code and two distinct loopback links are installed
 in the configured SHARED schema on the source database.
