@@ -16,4 +16,13 @@ SELECT CASE UPPER(TRIM('&&RUN_SEEDS_AFTER_REINSTALL'))
   FROM dual;
 
 @@&&SEED_SCRIPT
+
+COLUMN test_script NEW_VALUE TEST_SCRIPT NOPRINT
+SELECT CASE UPPER(TRIM('&&RUN_TESTS_AFTER_REINSTALL'))
+         WHEN 'Y' THEN 'test.sql'
+         ELSE 'tests/skip_test.sql'
+       END AS test_script
+  FROM dual;
+
+@@&&TEST_SCRIPT &&REINSTALL_TEST_LEVEL &&REINSTALL_TEST_ID
 PROMPT Reinstallation completed successfully

@@ -9,8 +9,8 @@ Run the configured seed cascade from the repository root:
 The cascade is controlled by `REBUILD_SEED_CLIENT`, `REBUILD_SEED_ARCHIVER`,
 and `REBUILD_SEED_REPLICA` in `config.local.sql`.
 
-ARCHIVER rebuild automatically includes CLIENT. REPLICA rebuild automatically
-includes CLIENT and ARCHIVER.
+CLIENT rebuild automatically includes ARCHIVER and REPLICA. ARCHIVER rebuild
+automatically includes REPLICA. REPLICA rebuilds only REPLICA.
 
 Each module destructively recreates only its owned demo tables, metadata, and
 related runs. Component code, schemas, database links, sequences, process logs,

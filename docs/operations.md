@@ -113,4 +113,14 @@ VW_REPLICA_PURGE_PARTITIONS
 
 Installation scripts install code only unless `RUN_SEEDS_AFTER_REINSTALL=Y`.
 Demo tables, targets, and metadata are managed by the independent cascading
-`seed.sql` entry point. Automated tests remain separate.
+`seed.sql` entry point. Automated tests remain separate and are launched through
+root-level `test.sql`.
+
+Examples:
+
+```text
+@test.sql CLIENT ALL
+@test.sql ARCHIVER 003
+@test.sql REPLICA ALL
+@test.sql ALL ALL
+```

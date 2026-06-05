@@ -34,19 +34,20 @@ COLUMN replica_seed_script NEW_VALUE REPLICA_SEED_SCRIPT NOPRINT
 
 SELECT CASE
          WHEN UPPER(TRIM('&&REBUILD_SEED_CLIENT')) = 'Y'
-           OR UPPER(TRIM('&&REBUILD_SEED_ARCHIVER')) = 'Y'
-           OR UPPER(TRIM('&&REBUILD_SEED_REPLICA')) = 'Y'
          THEN 'seed/seed_client/seed_clients.sql'
          ELSE 'seed/skip_seed.sql'
        END client_seed_script,
        CASE
-         WHEN UPPER(TRIM('&&REBUILD_SEED_ARCHIVER')) = 'Y'
-           OR UPPER(TRIM('&&REBUILD_SEED_REPLICA')) = 'Y'
+         WHEN UPPER(TRIM('&&REBUILD_SEED_CLIENT')) = 'Y'
+           OR UPPER(TRIM('&&REBUILD_SEED_ARCHIVER')) = 'Y'
          THEN 'seed/seed_archiver/seed_archiver.sql'
          ELSE 'seed/skip_seed.sql'
        END archiver_seed_script,
-       CASE UPPER(TRIM('&&REBUILD_SEED_REPLICA'))
-         WHEN 'Y' THEN 'seed/seed_replica/seed_replica.sql'
+       CASE
+         WHEN UPPER(TRIM('&&REBUILD_SEED_CLIENT')) = 'Y'
+           OR UPPER(TRIM('&&REBUILD_SEED_ARCHIVER')) = 'Y'
+           OR UPPER(TRIM('&&REBUILD_SEED_REPLICA')) = 'Y'
+         THEN 'seed/seed_replica/seed_replica.sql'
          ELSE 'seed/skip_seed.sql'
        END replica_seed_script
   FROM dual;
@@ -56,4 +57,3 @@ PROMPT Starting configured seed cascade
 @@&&ARCHIVER_SEED_SCRIPT
 @@&&REPLICA_SEED_SCRIPT
 PROMPT Configured seed cascade completed
-

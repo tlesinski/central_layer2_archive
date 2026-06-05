@@ -13,9 +13,15 @@
 
   RUN_SEEDS_AFTER_REINSTALL controls whether reinstall.sql invokes seed.sql
   after code installation. REBUILD_SEED_* flags control destructive demo seed
-  rebuilds. ARCHIVER cascades to CLIENT; REPLICA cascades to ARCHIVER and CLIENT.
+  rebuilds. CLIENT cascades to ARCHIVER and REPLICA; ARCHIVER cascades to
+  REPLICA; REPLICA rebuilds only REPLICA.
   Seeds rebuild only their demo tables, metadata, and related runs. They do not
   reset component sequences or process logs.
+
+  RUN_TESTS_AFTER_REINSTALL controls whether reinstall.sql invokes test.sql
+  after code installation and optional seeds. REINSTALL_TEST_LEVEL accepts
+  CLIENT, ARCHIVER, REPLICA, or ALL. REINSTALL_TEST_ID accepts ALL or a
+  three-digit test id such as 001.
 
   DEFAULT_TABLESPACE and TEMPORARY_TABLESPACE are assigned to every schema
   created by reset_schemas.sql.
@@ -41,6 +47,9 @@
 DEFINE INSTALL_MODEL = SPLIT
 DEFINE RESET_CONFIRMATION = NOT_CONFIRMED
 DEFINE RUN_SEEDS_AFTER_REINSTALL = N
+DEFINE RUN_TESTS_AFTER_REINSTALL = N
+DEFINE REINSTALL_TEST_LEVEL = ALL
+DEFINE REINSTALL_TEST_ID = ALL
 
 DEFINE REBUILD_SEED_CLIENT = N
 DEFINE REBUILD_SEED_ARCHIVER = N

@@ -14,6 +14,7 @@ code_root/      low-level schema and database-link helpers
 code_agent/     AGENT database objects
 code_archiver/  ARCHIVER database objects
 code_replica/   REPLICA database objects
+tests/          independent smoke tests
 docs/           architecture and operations
 ```
 
@@ -72,8 +73,8 @@ REBUILD_SEED_ARCHIVER
 REBUILD_SEED_REPLICA
 ```
 
-`ARCHIVER` rebuild cascades to `CLIENT`. `REPLICA` rebuild cascades to
-`ARCHIVER` and `CLIENT`. Run manually with:
+`CLIENT` rebuild cascades to `ARCHIVER` and `REPLICA`. `ARCHIVER` rebuild
+cascades to `REPLICA`. `REPLICA` rebuilds only REPLICA. Run manually with:
 
 ```text
 @seed.sql
@@ -84,6 +85,26 @@ tables. Daily interval partitions are normalized to `PYYYYMMDD` names.
 
 When `RUN_SEEDS_AFTER_REINSTALL=Y`, `reinstall.sql` runs the configured seed
 cascade after installing code.
+
+## Smoke Tests
+
+Smoke tests are independent from installation and seeds. They assume the
+required code and demo seed state already exists. Run from the repository root:
+
+```text
+@test.sql CLIENT ALL
+@test.sql ARCHIVER 003
+@test.sql REPLICA ALL
+@test.sql ALL ALL
+```
+
+Configure optional post-reinstall execution with:
+
+```text
+RUN_TESTS_AFTER_REINSTALL
+REINSTALL_TEST_LEVEL
+REINSTALL_TEST_ID
+```
 
 ## Core Rules
 

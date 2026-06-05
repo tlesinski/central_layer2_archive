@@ -1,0 +1,53 @@
+PROMPT ARCHIVER 003 - archive flow
+
+CONNECT &&ACTIVE_ARCHIVER_SCHEMA/"&&ACTIVE_ARCHIVER_PASSWORD"@&&ACTIVE_ARCHIVER_CONNECT
+
+BEGIN
+  PKG_ARCHIVER_RUNNER.prc_run_all
+  (
+    p_execute          => 'Y',
+    p_stop_after_step  => 'TRUNCATE',
+    p_truncate_execute => 'N'
+  );
+END;
+/
+
+DECLARE
+  l_count NUMBER;
+  l_total_rows NUMBER := 0;
+  l_sql VARCHAR2(4000);
+BEGIN
+  SELECT COUNT(*)
+    INTO l_count
+    FROM TBL_ARCHIVER_PARTITIONS
+   WHERE SOURCE_OWNER IN (UPPER('&&CLIENT1_SCHEMA'), UPPER('&&CLIENT2_SCHEMA'))
+     AND SOURCE_TABLE_NAME IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
+     AND ARCHIVE_STATUS = 'Y'
+     AND QUALITY_STATUS = 'Y'
+     AND NVL(SOURCE_ROW_COUNT, -1) = NVL(TARGET_ROW_COUNT, -2)
+     AND NVL(TARGET_ROW_COUNT, 0) > 0;
+
+  IF l_count = 0 THEN
+    RAISE_APPLICATION_ERROR(-20560, 'ARCHIVER flow did not produce any positive quality rows');
+  END IF;
+
+  FOR r IN (
+    SELECT DISTINCT TARGET_OWNER, TARGET_TABLE_NAME
+      FROM TBL_ARCHIVER_TABLES
+     WHERE SOURCE_OWNER IN (UPPER('&&CLIENT1_SCHEMA'), UPPER('&&CLIENT2_SCHEMA'))
+       AND SOURCE_TABLE_NAME IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
+  ) LOOP
+    l_sql := 'SELECT COUNT(*) FROM ' ||
+             DBMS_ASSERT.SIMPLE_SQL_NAME(r.TARGET_OWNER) || '.' ||
+             DBMS_ASSERT.SIMPLE_SQL_NAME(r.TARGET_TABLE_NAME);
+    EXECUTE IMMEDIATE l_sql INTO l_count;
+    l_total_rows := l_total_rows + l_count;
+  END LOOP;
+
+  IF l_total_rows = 0 THEN
+    RAISE_APPLICATION_ERROR(-20561, 'ARCHIVER targets are empty after archive flow');
+  END IF;
+END;
+/
+
+PROMPT ARCHIVER 003 completed

@@ -48,12 +48,30 @@ DECLARE
       RAISE_APPLICATION_ERROR(-20306, p_name || ' must be Y or N');
     END IF;
   END;
+
+  PROCEDURE assert_test_level(p_name IN VARCHAR2, p_value IN VARCHAR2) IS
+  BEGIN
+    IF UPPER(TRIM(p_value)) NOT IN ('CLIENT', 'ARCHIVER', 'REPLICA', 'ALL') THEN
+      RAISE_APPLICATION_ERROR(-20307, p_name || ' must be CLIENT, ARCHIVER, REPLICA, or ALL');
+    END IF;
+  END;
+
+  PROCEDURE assert_test_id(p_name IN VARCHAR2, p_value IN VARCHAR2) IS
+  BEGIN
+    IF UPPER(TRIM(p_value)) <> 'ALL'
+       AND NOT REGEXP_LIKE(TRIM(p_value), '^[0-9]{3}$') THEN
+      RAISE_APPLICATION_ERROR(-20308, p_name || ' must be ALL or a three-digit test id');
+    END IF;
+  END;
 BEGIN
   IF UPPER(TRIM(q'[&&INSTALL_MODEL]')) NOT IN ('SHARED', 'SPLIT') THEN
     RAISE_APPLICATION_ERROR(-20303, 'INSTALL_MODEL must be SHARED or SPLIT');
   END IF;
 
   assert_yes_no('RUN_SEEDS_AFTER_REINSTALL', q'[&&RUN_SEEDS_AFTER_REINSTALL]');
+  assert_yes_no('RUN_TESTS_AFTER_REINSTALL', q'[&&RUN_TESTS_AFTER_REINSTALL]');
+  assert_test_level('REINSTALL_TEST_LEVEL', q'[&&REINSTALL_TEST_LEVEL]');
+  assert_test_id('REINSTALL_TEST_ID', q'[&&REINSTALL_TEST_ID]');
   assert_yes_no('REBUILD_SEED_CLIENT', q'[&&REBUILD_SEED_CLIENT]');
   assert_yes_no('REBUILD_SEED_ARCHIVER', q'[&&REBUILD_SEED_ARCHIVER]');
   assert_yes_no('REBUILD_SEED_REPLICA', q'[&&REBUILD_SEED_REPLICA]');

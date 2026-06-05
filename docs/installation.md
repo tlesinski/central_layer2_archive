@@ -75,14 +75,21 @@ The following `config.local.sql` flags control demo seed rebuilding:
 
 ```sql
 DEFINE RUN_SEEDS_AFTER_REINSTALL = N
+DEFINE RUN_TESTS_AFTER_REINSTALL = N
+DEFINE REINSTALL_TEST_LEVEL = ALL
+DEFINE REINSTALL_TEST_ID = ALL
 DEFINE REBUILD_SEED_CLIENT = N
 DEFINE REBUILD_SEED_ARCHIVER = N
 DEFINE REBUILD_SEED_REPLICA = N
 ```
 
 Run `@seed.sql` manually, or set `RUN_SEEDS_AFTER_REINSTALL=Y` to invoke it
-after `reinstall.sql`. ARCHIVER cascades to CLIENT. REPLICA cascades to
-ARCHIVER and CLIENT.
+after `reinstall.sql`. CLIENT cascades to ARCHIVER and REPLICA. ARCHIVER
+cascades to REPLICA. REPLICA rebuilds only REPLICA.
+
+Set `RUN_TESTS_AFTER_REINSTALL=Y` to invoke `test.sql` after code installation
+and optional seeds. `REINSTALL_TEST_LEVEL` accepts `CLIENT`, `ARCHIVER`,
+`REPLICA`, or `ALL`; `REINSTALL_TEST_ID` accepts `ALL` or a three-digit test id.
 
 Seed modules destructively recreate only their demo tables, metadata, and
 related runs. Component sequences, process logs, code, links, and unrelated
@@ -110,6 +117,17 @@ The following code-only installers remain available:
 All use root-level `config.local.sql`.
 
 ## Post-Installation Check
+
+Run smoke tests from the repository root:
+
+```text
+@test.sql CLIENT ALL
+@test.sql ARCHIVER 003
+@test.sql REPLICA ALL
+@test.sql ALL ALL
+```
+
+Tests do not create schemas, install code, or rebuild seeds.
 
 Run in every active component schema:
 
