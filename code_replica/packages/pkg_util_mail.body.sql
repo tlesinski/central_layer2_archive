@@ -396,10 +396,59 @@ AS
     p_subject     IN VARCHAR2 DEFAULT NULL
   )
   IS
-    l_report CLOB;
+    l_report      CLOB;
+    l_conn        UTL_SMTP.CONNECTION;
+    l_sender      VARCHAR2(4000) := fn_get_config('MAIL_FROM');
+    l_recipients  VARCHAR2(4000) := NVL(p_recipients, fn_get_config('MAIL_TO'));
+    l_report_name VARCHAR2(128) := UPPER(TRIM(p_report_name));
+
+    PROCEDURE attach_summary
+    (
+      p_component IN VARCHAR2,
+      p_process   IN VARCHAR2,
+      p_last      IN BOOLEAN DEFAULT FALSE
+    )
+    IS
+      l_file_name VARCHAR2(255);
+    BEGIN
+      l_file_name := LOWER(p_component) || '_' || LOWER(p_process) || '_summary.html';
+      prc_attach_clob(
+        l_conn,
+        PKG_UTIL_REPORT.fn_latest_summary_html(p_component, p_process),
+        'text/html; charset=UTF-8',
+        FALSE,
+        l_file_name,
+        p_last
+      );
+    END attach_summary;
   BEGIN
+    IF fn_mail_enabled <> 'Y' THEN
+      RETURN;
+    END IF;
+
     l_report := PKG_UTIL_REPORT.fn_report_html(p_report_name);
-    prc_send_html(p_recipients, NVL(p_subject, p_report_name), l_report);
+
+    IF l_report_name = 'ARCHIVER_SUMMARY' THEN
+      l_conn := fn_begin_mail(l_sender, l_recipients, NVL(p_subject, p_report_name), g_multipart_mime_type);
+      prc_attach_clob(l_conn, l_report, 'text/html; charset=UTF-8', TRUE, NULL, FALSE);
+      attach_summary('ARCHIVER', 'DISCOVER');
+      attach_summary('ARCHIVER', 'ARCHIVE');
+      attach_summary('ARCHIVER', 'QUALITY');
+      attach_summary('ARCHIVER', 'TRUNCATE');
+      attach_summary('ARCHIVER', 'RUNNER', TRUE);
+      prc_end_mail(l_conn);
+    ELSIF l_report_name = 'REPLICA_SUMMARY' THEN
+      l_conn := fn_begin_mail(l_sender, l_recipients, NVL(p_subject, p_report_name), g_multipart_mime_type);
+      prc_attach_clob(l_conn, l_report, 'text/html; charset=UTF-8', TRUE, NULL, FALSE);
+      attach_summary('REPLICA', 'DISCOVER');
+      attach_summary('REPLICA', 'REPLICATE');
+      attach_summary('REPLICA', 'QUALITY');
+      attach_summary('REPLICA', 'PURGE');
+      attach_summary('REPLICA', 'RUNNER', TRUE);
+      prc_end_mail(l_conn);
+    ELSE
+      prc_send_html(p_recipients, NVL(p_subject, p_report_name), l_report);
+    END IF;
   END prc_send_report;
 END PKG_UTIL_MAIL;
 /

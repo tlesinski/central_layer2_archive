@@ -160,4 +160,4 @@ END;
 
 The reporting window is controlled by `TBL_UTIL_CONFIG.REPORT_LOOKBACK_DAYS`
 and defaults to `7`. Latest process summary excerpts are limited by
-`TBL_UTIL_CONFIG.REPORT_SUMMARY_MAX_CHARS` and default to `32000`.
+`TBL_UTIL_CONFIG.REPORT_SUMMARY_MAX_CHARS` and default to `4000` per process.

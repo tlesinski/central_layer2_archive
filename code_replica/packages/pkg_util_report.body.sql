@@ -217,5 +217,101 @@ AS
 
     RETURN l_report;
   END fn_report_html;
+
+  FUNCTION fn_latest_summary_html
+  (
+    p_component IN VARCHAR2,
+    p_process   IN VARCHAR2
+  )
+  RETURN CLOB
+  IS
+    l_component VARCHAR2(30) := UPPER(TRIM(p_component));
+    l_process   VARCHAR2(30) := UPPER(TRIM(p_process));
+    l_table     VARCHAR2(128);
+    l_sql       VARCHAR2(32767);
+    l_log_sttus VARCHAR2(30);
+    l_start_date DATE;
+    l_end_date DATE;
+    l_log_id NUMBER;
+    l_begin_pos PLS_INTEGER;
+    l_end_pos PLS_INTEGER;
+    l_log_msg CLOB;
+    l_summary CLOB;
+    l_html CLOB;
+    l_amount PLS_INTEGER;
+  BEGIN
+    IF l_component = 'ARCHIVER' THEN
+      IF l_process NOT IN ('DISCOVER', 'ARCHIVE', 'QUALITY', 'TRUNCATE', 'RUNNER') THEN
+        RAISE_APPLICATION_ERROR(-20750, 'Invalid ARCHIVER process: ' || p_process);
+      END IF;
+      l_table := 'TBL_ARCHIVER_PROCESS_LOG';
+    ELSIF l_component = 'REPLICA' THEN
+      IF l_process NOT IN ('DISCOVER', 'REPLICATE', 'QUALITY', 'PURGE', 'RUNNER') THEN
+        RAISE_APPLICATION_ERROR(-20751, 'Invalid REPLICA process: ' || p_process);
+      END IF;
+      l_table := 'TBL_REPLICA_PROCESS_LOG';
+    ELSE
+      RAISE_APPLICATION_ERROR(-20752, 'Invalid component: ' || p_component);
+    END IF;
+
+    l_sql :=
+      'SELECT log_sttus, start_date, end_date, log_id, ' ||
+      '       DBMS_LOB.INSTR(log_msg, ''<<<PARTMGR_SUMMARY_BEGIN>>>'') begin_pos, ' ||
+      '       DBMS_LOB.INSTR(log_msg, ''<<<PARTMGR_SUMMARY_END>>>'') end_pos, ' ||
+      '       log_msg ' ||
+      '  FROM (SELECT log_sttus, start_date, end_date, log_id, log_msg ' ||
+      '          FROM ' || l_table ||
+      '         WHERE log_categ = :process ' ||
+      '           AND DBMS_LOB.INSTR(log_msg, ''<<<PARTMGR_SUMMARY_BEGIN>>>'') > 0 ' ||
+      '           AND DBMS_LOB.INSTR(log_msg, ''<<<PARTMGR_SUMMARY_END>>>'') > 0 ' ||
+      '         ORDER BY start_date DESC, log_id DESC) ' ||
+      ' WHERE ROWNUM = 1';
+
+    EXECUTE IMMEDIATE l_sql
+      INTO l_log_sttus, l_start_date, l_end_date, l_log_id, l_begin_pos, l_end_pos, l_log_msg
+      USING l_process;
+
+    DBMS_LOB.CREATETEMPORARY(l_summary, TRUE);
+    l_amount := GREATEST(0, l_end_pos - (l_begin_pos + LENGTH('<<<PARTMGR_SUMMARY_BEGIN>>>')));
+
+    IF l_amount > 0 THEN
+      DBMS_LOB.COPY(
+        dest_lob    => l_summary,
+        src_lob     => l_log_msg,
+        amount      => l_amount,
+        dest_offset => 1,
+        src_offset  => l_begin_pos + LENGTH('<<<PARTMGR_SUMMARY_BEGIN>>>')
+      );
+    END IF;
+
+    l_summary := REGEXP_REPLACE(l_summary, '^[[:space:]]+|[[:space:]]+$', '');
+
+    l_html := TO_CLOB('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>') ||
+              fn_html_escape(l_component || ' ' || l_process || ' summary') ||
+              TO_CLOB('</title><style>body{font-family:Arial,sans-serif;font-size:13px;color:#1f2933;}') ||
+              TO_CLOB('table{border-collapse:collapse;margin:10px 0 16px;}th,td{border:1px solid #c7d0d9;padding:6px 8px;text-align:left;}') ||
+              TO_CLOB('th{background:#eef2f6;}pre{white-space:pre-wrap;font-family:Consolas,"Courier New",monospace;font-size:12px;line-height:1.45;background:#f8fafc;border:1px solid #c7d0d9;padding:10px;}') ||
+              TO_CLOB('</style></head><body><h1>') ||
+              fn_html_escape(l_component || ' ' || l_process || ' summary') ||
+              TO_CLOB('</h1><table><tr><th>Component</th><th>Process</th><th>Status</th><th>Started</th><th>Ended</th><th>Log ID</th></tr><tr><td>') ||
+              fn_html_escape(l_component) || TO_CLOB('</td><td>') ||
+              fn_html_escape(l_process) || TO_CLOB('</td><td>') ||
+              fn_html_escape(l_log_sttus) || TO_CLOB('</td><td>') ||
+              fn_html_escape(TO_CHAR(l_start_date, 'YYYY-MM-DD HH24:MI:SS')) || TO_CLOB('</td><td>') ||
+              fn_html_escape(TO_CHAR(l_end_date, 'YYYY-MM-DD HH24:MI:SS')) || TO_CLOB('</td><td>') ||
+              fn_html_escape(TO_CHAR(l_log_id)) ||
+              TO_CLOB('</td></tr></table><pre>') ||
+              fn_html_escape_clob(l_summary) ||
+              TO_CLOB('</pre></body></html>');
+
+    RETURN l_html;
+  EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+      RETURN TO_CLOB('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>') ||
+             fn_html_escape(l_component || ' ' || l_process || ' summary') ||
+             TO_CLOB('</title></head><body><h1>') ||
+             fn_html_escape(l_component || ' ' || l_process || ' summary') ||
+             TO_CLOB('</h1><p>No summary available.</p></body></html>');
+  END fn_latest_summary_html;
 END PKG_UTIL_REPORT;
 /

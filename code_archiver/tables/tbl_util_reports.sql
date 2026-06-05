@@ -83,8 +83,8 @@ USING (
   <h2>Process Summary</h2>
   <SQL>SQL_ARCHIVER_PROCESS_SUMMARY</SQL>
 
-  <h2>Latest Process Summaries</h2>
-  <SQL>SQL_ARCHIVER_LATEST_SUMMARIES</SQL>
+  <h2>Latest Process Summary Attachments</h2>
+  <p>Full latest process summaries are attached to this mail as separate HTML files.</p>
 
   <h2>Data Status Summary</h2>
   <SQL>SQL_ARCHIVER_DATA_STATUS</SQL>

@@ -117,7 +117,7 @@ SELECT 'SQL_REPLICA_LATEST_SUMMARIES' sql_name,
          TO_CLOB(q'[
 WITH cfg AS (
   SELECT TO_NUMBER(NVL(MAX(CASE WHEN config_key = 'REPORT_LOOKBACK_DAYS' THEN config_value END), '7')) lookback_days,
-         TO_NUMBER(NVL(MAX(CASE WHEN config_key = 'REPORT_SUMMARY_MAX_CHARS' THEN config_value END), '32000')) summary_max_chars
+         TO_NUMBER(NVL(MAX(CASE WHEN config_key = 'REPORT_SUMMARY_MAX_CHARS' THEN config_value END), '4000')) summary_max_chars
   FROM TBL_UTIL_CONFIG
 ),
 processes AS (

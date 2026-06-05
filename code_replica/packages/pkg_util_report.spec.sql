@@ -28,5 +28,12 @@ AS
     p_parm3       IN VARCHAR2 DEFAULT NULL
   )
   RETURN CLOB;
+
+  FUNCTION fn_latest_summary_html
+  (
+    p_component IN VARCHAR2,
+    p_process   IN VARCHAR2
+  )
+  RETURN CLOB;
 END PKG_UTIL_REPORT;
 /

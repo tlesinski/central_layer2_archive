@@ -98,7 +98,7 @@ and set `REBUILD_SEED_MAIL=Y` with the desired `MAIL_*` values to update
 The standard summary reports are `ARCHIVER_SUMMARY` and `REPLICA_SUMMARY`.
 Their lookback window is configured by `TBL_UTIL_CONFIG.REPORT_LOOKBACK_DAYS`
 and defaults to `7`. Latest process summary excerpts are limited by
-`TBL_UTIL_CONFIG.REPORT_SUMMARY_MAX_CHARS` and default to `32000`.
+`TBL_UTIL_CONFIG.REPORT_SUMMARY_MAX_CHARS` and default to `4000` per process.
 
 ## Smoke Tests
 

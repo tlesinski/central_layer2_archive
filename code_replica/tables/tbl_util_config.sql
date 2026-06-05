@@ -31,7 +31,7 @@ USING (
   SELECT 'MAIL_TO', NULL, 'Default recipient list' FROM dual UNION ALL
   SELECT 'REPORT_MAX_ROWS', '100', 'Maximum rows rendered by report SQL sections' FROM dual UNION ALL
   SELECT 'REPORT_LOOKBACK_DAYS', '7', 'Default report lookback window in days' FROM dual UNION ALL
-  SELECT 'REPORT_SUMMARY_MAX_CHARS', '32000', 'Maximum characters rendered from latest process summary logs' FROM dual
+  SELECT 'REPORT_SUMMARY_MAX_CHARS', '4000', 'Maximum characters rendered per process in latest process summary logs' FROM dual
 ) s
 ON (t.CONFIG_KEY = s.CONFIG_KEY)
 WHEN NOT MATCHED THEN
