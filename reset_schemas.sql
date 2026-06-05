@@ -1,0 +1,35 @@
+SET DEFINE ON
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+SET FEEDBACK ON
+WHENEVER OSERROR EXIT FAILURE
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+
+@@validate_config.sql
+
+BEGIN
+  IF UPPER(TRIM(q'[&&RESET_CONFIRMATION]')) <> 'RESET_ALL' THEN
+    RAISE_APPLICATION_ERROR(-20320, 'Set RESET_CONFIRMATION=RESET_ALL before resetting schemas');
+  END IF;
+END;
+/
+
+CONNECT SYS/"&&SOURCE_SYS_PASSWORD"@&&SOURCE_SYS_CONNECT AS SYSDBA
+@@code_root/drop_schema.sql &&CLIENT1_SCHEMA
+@@code_root/drop_schema.sql &&CLIENT2_SCHEMA
+@@code_root/drop_schema.sql &&AGENT_SCHEMA
+@@code_root/drop_schema.sql &&SHARED_SCHEMA
+@@code_root/create_schema.sql &&CLIENT1_SCHEMA "&&CLIENT1_PASSWORD" CLIENT
+@@code_root/create_schema.sql &&CLIENT2_SCHEMA "&&CLIENT2_PASSWORD" CLIENT
+@@code_root/create_schema.sql &&AGENT_SCHEMA "&&AGENT_PASSWORD" AGENT
+@@code_root/create_schema.sql &&SHARED_SCHEMA "&&SHARED_PASSWORD" SHARED
+
+CONNECT SYS/"&&ARCHIVER_SYS_PASSWORD"@&&ARCHIVER_SYS_CONNECT AS SYSDBA
+@@code_root/drop_schema.sql &&ARCHIVER_SCHEMA
+@@code_root/create_schema.sql &&ARCHIVER_SCHEMA "&&ARCHIVER_PASSWORD" ARCHIVER
+
+CONNECT SYS/"&&REPLICA_SYS_PASSWORD"@&&REPLICA_SYS_CONNECT AS SYSDBA
+@@code_root/drop_schema.sql &&REPLICA_SCHEMA
+@@code_root/create_schema.sql &&REPLICA_SCHEMA "&&REPLICA_PASSWORD" REPLICA
+
+PROMPT All configured schemas reset successfully

@@ -1,0 +1,66 @@
+SET DEFINE ON
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+SET FEEDBACK ON
+WHENEVER OSERROR EXIT FAILURE
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+
+@@validate_config.sql
+
+COLUMN active_archiver_schema NEW_VALUE ACTIVE_ARCHIVER_SCHEMA NOPRINT
+COLUMN active_archiver_password NEW_VALUE ACTIVE_ARCHIVER_PASSWORD NOPRINT
+COLUMN active_archiver_connect NEW_VALUE ACTIVE_ARCHIVER_CONNECT NOPRINT
+COLUMN active_agent_schema NEW_VALUE ACTIVE_AGENT_SCHEMA NOPRINT
+COLUMN active_agent_link NEW_VALUE ACTIVE_AGENT_LINK NOPRINT
+COLUMN active_replica_schema NEW_VALUE ACTIVE_REPLICA_SCHEMA NOPRINT
+COLUMN active_replica_password NEW_VALUE ACTIVE_REPLICA_PASSWORD NOPRINT
+COLUMN active_replica_connect NEW_VALUE ACTIVE_REPLICA_CONNECT NOPRINT
+COLUMN active_archiver_link NEW_VALUE ACTIVE_ARCHIVER_LINK NOPRINT
+
+SELECT CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN UPPER('&&SHARED_SCHEMA') ELSE UPPER('&&ARCHIVER_SCHEMA') END active_archiver_schema,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN '&&SHARED_PASSWORD' ELSE '&&ARCHIVER_PASSWORD' END active_archiver_password,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN '&&SOURCE_SYS_CONNECT' ELSE '&&ARCHIVER_SYS_CONNECT' END active_archiver_connect,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN UPPER('&&SHARED_SCHEMA') ELSE UPPER('&&AGENT_SCHEMA') END active_agent_schema,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN UPPER('&&SHARED_AGENT_DB_LINK') ELSE UPPER('&&ARCHIVER_AGENT_DB_LINK') END active_agent_link,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN UPPER('&&SHARED_SCHEMA') ELSE UPPER('&&REPLICA_SCHEMA') END active_replica_schema,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN '&&SHARED_PASSWORD' ELSE '&&REPLICA_PASSWORD' END active_replica_password,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN '&&SOURCE_SYS_CONNECT' ELSE '&&REPLICA_SYS_CONNECT' END active_replica_connect,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN UPPER('&&SHARED_ARCHIVER_DB_LINK') ELSE UPPER('&&REPLICA_ARCHIVER_DB_LINK') END active_archiver_link
+  FROM dual;
+
+COLUMN client_seed_script NEW_VALUE CLIENT_SEED_SCRIPT NOPRINT
+COLUMN archiver_seed_script NEW_VALUE ARCHIVER_SEED_SCRIPT NOPRINT
+COLUMN replica_seed_script NEW_VALUE REPLICA_SEED_SCRIPT NOPRINT
+COLUMN mail_seed_script NEW_VALUE MAIL_SEED_SCRIPT NOPRINT
+
+SELECT CASE
+         WHEN UPPER(TRIM('&&REBUILD_SEED_CLIENT')) = 'Y'
+         THEN 'seed/seed_client/seed_clients.sql'
+         ELSE 'seed/skip_seed.sql'
+       END client_seed_script,
+       CASE
+         WHEN UPPER(TRIM('&&REBUILD_SEED_CLIENT')) = 'Y'
+           OR UPPER(TRIM('&&REBUILD_SEED_ARCHIVER')) = 'Y'
+         THEN 'seed/seed_archiver/seed_archiver.sql'
+         ELSE 'seed/skip_seed.sql'
+       END archiver_seed_script,
+       CASE
+         WHEN UPPER(TRIM('&&REBUILD_SEED_CLIENT')) = 'Y'
+           OR UPPER(TRIM('&&REBUILD_SEED_ARCHIVER')) = 'Y'
+           OR UPPER(TRIM('&&REBUILD_SEED_REPLICA')) = 'Y'
+         THEN 'seed/seed_replica/seed_replica.sql'
+         ELSE 'seed/skip_seed.sql'
+       END replica_seed_script,
+       CASE
+         WHEN UPPER(TRIM('&&REBUILD_SEED_MAIL')) = 'Y'
+         THEN 'seed/seed_mail/seed_mail.sql'
+         ELSE 'seed/skip_seed.sql'
+       END mail_seed_script
+  FROM dual;
+
+PROMPT Starting configured seed cascade
+@@&&CLIENT_SEED_SCRIPT
+@@&&ARCHIVER_SEED_SCRIPT
+@@&&REPLICA_SEED_SCRIPT
+@@&&MAIL_SEED_SCRIPT
+PROMPT Configured seed cascade completed

@@ -1,0 +1,85 @@
+SET DEFINE ON
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+SET FEEDBACK ON
+WHENEVER OSERROR EXIT FAILURE
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+
+DEFINE TEST_LEVEL = &1
+DEFINE TEST_ID = &2
+
+@@validate_config.sql
+
+DECLARE
+BEGIN
+  IF UPPER(TRIM(q'[&&TEST_LEVEL]')) NOT IN ('CLIENT', 'ARCHIVER', 'REPLICA', 'ALL') THEN
+    RAISE_APPLICATION_ERROR(-20500, 'TEST_LEVEL must be CLIENT, ARCHIVER, REPLICA, or ALL');
+  END IF;
+
+  IF UPPER(TRIM(q'[&&TEST_ID]')) <> 'ALL'
+     AND NOT REGEXP_LIKE(TRIM(q'[&&TEST_ID]'), '^[0-9]{3}$') THEN
+    RAISE_APPLICATION_ERROR(-20501, 'TEST_ID must be ALL or a three-digit test id');
+  END IF;
+END;
+/
+
+COLUMN active_agent_schema NEW_VALUE ACTIVE_AGENT_SCHEMA NOPRINT
+COLUMN active_agent_password NEW_VALUE ACTIVE_AGENT_PASSWORD NOPRINT
+COLUMN active_agent_connect NEW_VALUE ACTIVE_AGENT_CONNECT NOPRINT
+COLUMN active_archiver_schema NEW_VALUE ACTIVE_ARCHIVER_SCHEMA NOPRINT
+COLUMN active_archiver_password NEW_VALUE ACTIVE_ARCHIVER_PASSWORD NOPRINT
+COLUMN active_archiver_connect NEW_VALUE ACTIVE_ARCHIVER_CONNECT NOPRINT
+COLUMN active_replica_schema NEW_VALUE ACTIVE_REPLICA_SCHEMA NOPRINT
+COLUMN active_replica_password NEW_VALUE ACTIVE_REPLICA_PASSWORD NOPRINT
+COLUMN active_replica_connect NEW_VALUE ACTIVE_REPLICA_CONNECT NOPRINT
+COLUMN active_agent_link NEW_VALUE ACTIVE_AGENT_LINK NOPRINT
+COLUMN active_archiver_link NEW_VALUE ACTIVE_ARCHIVER_LINK NOPRINT
+
+SELECT CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN UPPER('&&SHARED_SCHEMA') ELSE UPPER('&&AGENT_SCHEMA') END active_agent_schema,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN '&&SHARED_PASSWORD' ELSE '&&AGENT_PASSWORD' END active_agent_password,
+       '&&SOURCE_SYS_CONNECT' active_agent_connect,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN UPPER('&&SHARED_SCHEMA') ELSE UPPER('&&ARCHIVER_SCHEMA') END active_archiver_schema,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN '&&SHARED_PASSWORD' ELSE '&&ARCHIVER_PASSWORD' END active_archiver_password,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN '&&SOURCE_SYS_CONNECT' ELSE '&&ARCHIVER_SYS_CONNECT' END active_archiver_connect,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN UPPER('&&SHARED_SCHEMA') ELSE UPPER('&&REPLICA_SCHEMA') END active_replica_schema,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN '&&SHARED_PASSWORD' ELSE '&&REPLICA_PASSWORD' END active_replica_password,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN '&&SOURCE_SYS_CONNECT' ELSE '&&REPLICA_SYS_CONNECT' END active_replica_connect,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN UPPER('&&SHARED_AGENT_DB_LINK') ELSE UPPER('&&ARCHIVER_AGENT_DB_LINK') END active_agent_link,
+       CASE UPPER(TRIM('&&INSTALL_MODEL')) WHEN 'SHARED' THEN UPPER('&&SHARED_ARCHIVER_DB_LINK') ELSE UPPER('&&REPLICA_ARCHIVER_DB_LINK') END active_archiver_link
+  FROM dual;
+
+COLUMN client_test_script NEW_VALUE CLIENT_TEST_SCRIPT NOPRINT
+COLUMN archiver_test_script NEW_VALUE ARCHIVER_TEST_SCRIPT NOPRINT
+COLUMN replica_test_script NEW_VALUE REPLICA_TEST_SCRIPT NOPRINT
+
+SELECT CASE
+         WHEN UPPER(TRIM('&&TEST_LEVEL')) IN ('CLIENT', 'ALL')
+          AND UPPER(TRIM('&&TEST_ID')) = 'ALL'
+         THEN 'tests/test_client/run_all.sql'
+         WHEN UPPER(TRIM('&&TEST_LEVEL')) IN ('CLIENT', 'ALL')
+         THEN 'tests/test_client/run_one.sql'
+         ELSE 'tests/skip_test.sql'
+       END client_test_script,
+       CASE
+         WHEN UPPER(TRIM('&&TEST_LEVEL')) IN ('ARCHIVER', 'ALL')
+          AND UPPER(TRIM('&&TEST_ID')) = 'ALL'
+         THEN 'tests/test_archiver/run_all.sql'
+         WHEN UPPER(TRIM('&&TEST_LEVEL')) IN ('ARCHIVER', 'ALL')
+         THEN 'tests/test_archiver/run_one.sql'
+         ELSE 'tests/skip_test.sql'
+       END archiver_test_script,
+       CASE
+         WHEN UPPER(TRIM('&&TEST_LEVEL')) IN ('REPLICA', 'ALL')
+          AND UPPER(TRIM('&&TEST_ID')) = 'ALL'
+         THEN 'tests/test_replica/run_all.sql'
+         WHEN UPPER(TRIM('&&TEST_LEVEL')) IN ('REPLICA', 'ALL')
+         THEN 'tests/test_replica/run_one.sql'
+         ELSE 'tests/skip_test.sql'
+       END replica_test_script
+  FROM dual;
+
+PROMPT Starting test run level=&&TEST_LEVEL test_id=&&TEST_ID
+@@&&CLIENT_TEST_SCRIPT
+@@&&ARCHIVER_TEST_SCRIPT
+@@&&REPLICA_TEST_SCRIPT
+PROMPT Test run completed successfully
