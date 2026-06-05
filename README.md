@@ -95,6 +95,10 @@ on `localhost:2525`, set `CONFIGURE_MAIL_ACL=Y` to grant Oracle network ACLs,
 and set `REBUILD_SEED_MAIL=Y` with the desired `MAIL_*` values to update
 `TBL_UTIL_CONFIG`. Mail remains disabled by default.
 
+The standard summary reports are `ARCHIVER_SUMMARY` and `REPLICA_SUMMARY`.
+Their lookback window is configured by `TBL_UTIL_CONFIG.REPORT_LOOKBACK_DAYS`
+and defaults to `7`.
+
 ## Smoke Tests
 
 Smoke tests are independent from installation and seeds. They assume the

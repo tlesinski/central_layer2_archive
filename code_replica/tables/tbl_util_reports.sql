@@ -1,3 +1,5 @@
+SET SQLBLANKLINES ON
+
 DECLARE
   l_count PLS_INTEGER;
 BEGIN
@@ -48,8 +50,56 @@ USING (
 </html>
 ]') report_html
     FROM dual
+  UNION ALL
+  SELECT 'REPLICA_SUMMARY' report_name,
+         'REPLICA component summary report for the configured lookback window' report_comment,
+         TO_CLOB(q'[
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>REPLICA summary</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 13px; color: #1f2933; }
+    h1 { margin-bottom: 4px; }
+    h2 { margin-top: 22px; border-bottom: 1px solid #c7d0d9; padding-bottom: 4px; }
+    table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; }
+    th, td { border: 1px solid #c7d0d9; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #eef2f6; }
+    .muted { color: #65758b; }
+  </style>
+</head>
+<body>
+  <h1>REPLICA summary</h1>
+  <p class="muted">Generated at <PARM1>. Window is controlled by TBL_UTIL_CONFIG.REPORT_LOOKBACK_DAYS.</p>
+
+  <h2>Report Window</h2>
+  <SQL>SQL_REPLICA_REPORT_WINDOW</SQL>
+
+  <h2>Executive Summary</h2>
+  <SQL>SQL_REPLICA_EXEC_SUMMARY</SQL>
+
+  <h2>Process Summary</h2>
+  <SQL>SQL_REPLICA_PROCESS_SUMMARY</SQL>
+
+  <h2>Data Status Summary</h2>
+  <SQL>SQL_REPLICA_DATA_STATUS</SQL>
+
+  <h2>Current Pending Work</h2>
+  <SQL>SQL_REPLICA_PENDING_WORK</SQL>
+
+  <h2>Recent Failures And Warnings</h2>
+  <SQL>SQL_REPLICA_RECENT_ISSUES</SQL>
+</body>
+</html>
+]') report_html
+    FROM dual
 ) s
 ON (t.REPORT_NAME = s.REPORT_NAME)
+WHEN MATCHED THEN
+  UPDATE SET t.REPORT_COMMENT = s.REPORT_COMMENT,
+             t.REPORT_HTML = s.REPORT_HTML,
+             t.UPDATED_AT = SYSTIMESTAMP
 WHEN NOT MATCHED THEN
   INSERT (REPORT_NAME, REPORT_COMMENT, REPORT_HTML)
   VALUES (s.REPORT_NAME, s.REPORT_COMMENT, s.REPORT_HTML);

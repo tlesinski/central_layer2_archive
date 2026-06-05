@@ -147,3 +147,16 @@ END;
 ```
 
 Keep `MAIL_ENABLED=N` unless report mail should be sent by that schema.
+
+Standard weekly-style component summaries are available as:
+
+```sql
+BEGIN
+  PKG_UTIL_MAIL.prc_send_report('ARCHIVER_SUMMARY');
+  PKG_UTIL_MAIL.prc_send_report('REPLICA_SUMMARY');
+END;
+/
+```
+
+The reporting window is controlled by `TBL_UTIL_CONFIG.REPORT_LOOKBACK_DAYS`
+and defaults to `7`.

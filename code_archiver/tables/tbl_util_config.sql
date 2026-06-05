@@ -29,7 +29,8 @@ USING (
   SELECT 'SMTP_PORT', '25', 'SMTP port used by PKG_UTIL_MAIL' FROM dual UNION ALL
   SELECT 'MAIL_FROM', NULL, 'Default sender address' FROM dual UNION ALL
   SELECT 'MAIL_TO', NULL, 'Default recipient list' FROM dual UNION ALL
-  SELECT 'REPORT_MAX_ROWS', '100', 'Maximum rows rendered by report SQL sections' FROM dual
+  SELECT 'REPORT_MAX_ROWS', '100', 'Maximum rows rendered by report SQL sections' FROM dual UNION ALL
+  SELECT 'REPORT_LOOKBACK_DAYS', '7', 'Default report lookback window in days' FROM dual
 ) s
 ON (t.CONFIG_KEY = s.CONFIG_KEY)
 WHEN NOT MATCHED THEN

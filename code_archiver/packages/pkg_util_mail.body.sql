@@ -18,6 +18,24 @@ AS
     RETURN CASE WHEN UPPER(TRIM(fn_get_config('MAIL_ENABLED', 'N'))) = 'Y' THEN 'Y' ELSE 'N' END;
   END fn_mail_enabled;
 
+  FUNCTION fn_smtp_text
+  (
+    p_text IN VARCHAR2
+  )
+  RETURN VARCHAR2
+  IS
+  BEGIN
+    RETURN REPLACE(
+             REPLACE(
+               REPLACE(NVL(p_text, ''), UTL_TCP.CRLF, CHR(10)),
+               CHR(13),
+               CHR(10)
+             ),
+             CHR(10),
+             UTL_TCP.CRLF
+           );
+  END fn_smtp_text;
+
   FUNCTION fn_get_address
   (
     p_addr_list IN OUT VARCHAR2
@@ -195,7 +213,7 @@ AS
   )
   IS
   BEGIN
-    UTL_SMTP.WRITE_DATA(p_conn, p_message);
+    UTL_SMTP.WRITE_DATA(p_conn, fn_smtp_text(p_message));
   END prc_write_text;
 
   PROCEDURE prc_write_mb_text
