@@ -1,0 +1,471 @@
+---
+PARTMGR - Technical Overview
+
+* Oracle partition archive control plane
+* Core chain: CLIENT tables -> AGENT -> ARCHIVER
+* Optional downstream chain: ARCHIVER -> REPLICA
+* Purpose: move old partitioned data out of source schemas safely
+* Guarantees: metadata tracking, row-count quality, preview-first cleanup
+* Scope: discovery, archive, quality, cleanup preview, optional replica, reports
+
+
+---
+System Components
+
+AGENT:
+  - runs near source schemas
+  - exposes source partition metadata
+  - provides controlled source row counts
+  - executes source cleanup only when requested
+  - owns no archive policy
+
+ARCHIVER:
+  - owns archive configuration, targets, runs, statuses
+  - executes DISCOVER -> ARCHIVE -> QUALITY -> TRUNCATE preview
+  - is the main operational component
+
+REPLICA:
+  - optional downstream bounded copy of archived data
+  - owns replica configuration, targets, runs, statuses
+  - executes DISCOVER -> REPLICATE -> QUALITY -> PURGE preview
+
+
+---
+Core Goal
+
+* Centralize archive logic outside source applications
+* Track every archive unit explicitly
+* Use real DB links between components
+* Validate source vs target row counts before cleanup
+* Keep destructive operations controlled and auditable
+
+Source identity:
+  SOURCE_DB_LINK + SOURCE_OWNER + SOURCE_TABLE_NAME
+
+Minimum useful deployment:
+  AGENT + ARCHIVER
+
+Optional extension:
+  REPLICA for downstream bounded archive copies
+
+
+---
+Partition Detection
+
+Detection basis:
+  HIGH_VALUE / subpartition HIGH_VALUE
+
+Supported setups:
+  RANGE
+  RANGE-LIST
+  INTERVAL
+  INTERVAL-LIST
+
+Partition key rule:
+  partition level is based on a DATE column
+  supported partition boundaries are time-based
+
+Identity rule:
+  logical archive unit identity is based on HIGH_VALUE
+  physical partition names are metadata, not the primary key
+
+Interval rule:
+  Oracle can generate internal SYS_P... partition names
+  do not copy SYS_P... names to archive/replica targets
+  normalize interval partitions to controlled names, e.g. PYYYYMMDD
+
+
+---
+Example Table
+
+Source table:
+  CLIENT1.ORDERS_SUBPART_SRC
+
+Partitioning:
+  RANGE (ORDER_DATE)
+  LIST subpartitioning by STATUS_CODE
+
+Source partitions:
+  P202401, P202402, P202403, P202404
+  P202512, P202601, P202602, P202603, P202604, P202605
+
+Target flow:
+  CLIENT1.ORDERS_SUBPART_SRC
+    -> PARTMGR_ARCHIVER.TBL_ARCHIVER_CLIENT1_SUBPART
+    -> PARTMGR_REPLICA.TBL_REPLICA_CLIENT1_SUBPART
+
+DB links:
+  ARCHIVER uses AGENT_LINK
+  REPLICA uses ARCHIVER_LINK
+
+
+---
+CLIENT Example DDL
+
+Source table shape:
+  CREATE TABLE CLIENT1.ORDERS_SUBPART_SRC
+  (
+    ORDER_ID     NUMBER NOT NULL,
+    CUSTOMER_ID  NUMBER NOT NULL,
+    ORDER_DATE   DATE   NOT NULL,
+    STATUS_CODE  VARCHAR2(20) NOT NULL,
+    REGION_CODE  VARCHAR2(10) NOT NULL,
+    AMOUNT       NUMBER(12,2) NOT NULL
+  )
+  PARTITION BY RANGE (ORDER_DATE)
+  SUBPARTITION BY LIST (STATUS_CODE)
+  SUBPARTITION TEMPLATE
+  (
+    SUBPARTITION SP_OPEN VALUES ('NEW', 'PAID'),
+    SUBPARTITION SP_DONE VALUES ('SHIPPED', 'CLOSED')
+  )
+  (
+    PARTITION P_ERROR VALUES LESS THAN (DATE '1800-01-01'),
+    PARTITION P202401 VALUES LESS THAN (DATE '2024-02-01'),
+    PARTITION P202402 VALUES LESS THAN (DATE '2024-03-01'),
+    PARTITION P202403 VALUES LESS THAN (DATE '2024-04-01'),
+    PARTITION P202404 VALUES LESS THAN (DATE '2024-05-01'),
+    PARTITION PMAX VALUES LESS THAN (MAXVALUE)
+  );
+
+
+---
+ARCHIVER Data Flow
+
+  CLIENT partitioned table
+      |
+      | source metadata / row counts
+      v
+  AGENT
+      |
+      | DB link
+      v
+  ARCHIVER metadata
+      |
+      | archive execution
+      v
+  ARCHIVER target table
+
+Metadata flow:
+  VW_AGENT_PARTITION_INFO@AGENT_LINK
+    -> VW_ARCHIVER_SOURCE_PARTITIONS
+    -> VW_ARCHIVER_DISCOVERY_PARTITIONS
+    -> TBL_ARCHIVER_PARTITIONS
+
+
+---
+ARCHIVER Metadata
+
+TBL_ARCHIVER_TABLES:
+  SOURCE_DB_LINK
+  SOURCE_OWNER
+  SOURCE_TABLE_NAME
+  TARGET_OWNER
+  TARGET_TABLE_NAME
+  LAST_BUSINESS_DATE
+  DAYS_ONLINE
+  PRESERVE_RULE
+  ENABLED_FLAG
+
+Control rules:
+  LAST_BUSINESS_DATE: archive upper boundary, e.g. DAT.fn_eod
+  DAYS_ONLINE: retention window before source cleanup
+  PRESERVE_RULE: SQL returning dates that must stay online
+
+
+---
+ARCHIVER Target DDL
+
+Archive target shape:
+  CREATE TABLE PARTMGR_ARCHIVER.TBL_ARCHIVER_CLIENT1_SUBPART
+  (
+    ORDER_ID     NUMBER NOT NULL,
+    CUSTOMER_ID  NUMBER NOT NULL,
+    ORDER_DATE   DATE   NOT NULL,
+    STATUS_CODE  VARCHAR2(20) NOT NULL,
+    REGION_CODE  VARCHAR2(10) NOT NULL,
+    AMOUNT       NUMBER(12,2) NOT NULL,
+    CREATED_AT   TIMESTAMP NOT NULL
+  )
+  PARTITION BY RANGE (ORDER_DATE)
+  SUBPARTITION BY LIST (STATUS_CODE)
+  SUBPARTITION TEMPLATE
+  (
+    SUBPARTITION SP_OPEN VALUES ('NEW', 'PAID'),
+    SUBPARTITION SP_DONE VALUES ('SHIPPED', 'CLOSED')
+  )
+  (
+    PARTITION P_ERROR VALUES LESS THAN (DATE '1800-01-01')
+  );
+
+ARCHIVER adds real data partitions during archive processing.
+
+
+---
+ARCHIVER Example Setup
+
+Target table:
+  PARTMGR_ARCHIVER.TBL_ARCHIVER_CLIENT1_SUBPART
+
+Configuration row:
+  SOURCE_DB_LINK     = AGENT_LINK
+  SOURCE_OWNER       = CLIENT1
+  SOURCE_TABLE_NAME  = ORDERS_SUBPART_SRC
+  TARGET_OWNER       = PARTMGR_ARCHIVER
+  TARGET_TABLE_NAME  = TBL_ARCHIVER_CLIENT1_SUBPART
+  LAST_BUSINESS_DATE = DAT.fn_eod
+  DAYS_ONLINE        = 30
+  PRESERVE_RULE      = SELECT DAT.fn_boy FROM dual
+                       UNION ALL
+                       SELECT DAT.fn_eoy FROM dual
+  ENABLED_FLAG       = Y
+
+
+---
+ARCHIVER Flow
+
+DISCOVER:
+  - read source partitions from AGENT through DB link
+  - create missing metadata in TBL_ARCHIVER_PARTITIONS
+
+ARCHIVE:
+  - select units with ARCHIVE_STATUS = N
+  - require partition HIGH_VALUE < LAST_BUSINESS_DATE
+  - load units into ARCHIVER targets
+  - set ARCHIVE_STATUS and TARGET_ROW_COUNT
+
+QUALITY:
+  - compare AGENT source count with ARCHIVER target count
+  - set QUALITY_STATUS
+
+TRUNCATE:
+  - select quality-passed cleanup candidates
+  - apply DAYS_ONLINE cutoff and PRESERVE_RULE
+  - call AGENT cleanup in preview/execute mode
+
+
+---
+Run ARCHIVER Example
+
+Discover only:
+  PKG_ARCHIVER_RUNNER.prc_run_table(
+    p_source_db_link   => 'AGENT_LINK',
+    p_owner            => 'CLIENT1',
+    p_table_name       => 'ORDERS_SUBPART_SRC',
+    p_execute          => 'Y',
+    p_stop_after_step  => 'DISCOVER',
+    p_truncate_execute => 'N'
+  );
+
+Archive + quality:
+  PKG_ARCHIVER_RUNNER.prc_run_table(
+    p_source_db_link   => 'AGENT_LINK',
+    p_owner            => 'CLIENT1',
+    p_table_name       => 'ORDERS_SUBPART_SRC',
+    p_execute          => 'Y',
+    p_stop_after_step  => 'QUALITY',
+    p_truncate_execute => 'N'
+  );
+
+Full flow with cleanup preview:
+  PKG_ARCHIVER_RUNNER.prc_run_table(
+    p_source_db_link   => 'AGENT_LINK',
+    p_owner            => 'CLIENT1',
+    p_table_name       => 'ORDERS_SUBPART_SRC',
+    p_execute          => 'Y',
+    p_stop_after_step  => 'TRUNCATE',
+    p_truncate_execute => 'N'
+  );
+
+
+---
+ARCHIVER Results
+
+Tables:
+  TBL_ARCHIVER_TABLES       configuration
+  TBL_ARCHIVER_PARTITIONS   unit statuses and row counts
+  TBL_ARCHIVER_RUNS         process runs
+  TBL_ARCHIVER_PROCESS_LOG  logs and summaries
+
+Views:
+  VW_ARCHIVER_SOURCE_PARTITIONS
+  VW_ARCHIVER_DISCOVERY_PARTITIONS
+  VW_ARCHIVER_IMPORT_PARTITIONS
+  VW_ARCHIVER_QUALITY_PARTITIONS
+  VW_ARCHIVER_TRUNCATE_PARTITIONS
+
+Status flags:
+  ARCHIVE_STATUS
+  QUALITY_STATUS
+  TRUNCATE_STATUS
+
+
+---
+ARCHIVER Post-Run Checks
+
+Runs:
+  - latest RUN_STATUS
+  - RUN_TYPE
+  - STARTED_AT / ENDED_AT
+  - ERROR_MESSAGE
+
+Partitions:
+  - ARCHIVE_STATUS
+  - QUALITY_STATUS
+  - TRUNCATE_STATUS
+  - SOURCE_ROW_COUNT vs TARGET_ROW_COUNT
+
+Logs:
+  - latest summary marker output
+  - warnings/errors
+  - generated preview SQL
+
+
+---
+ARCHIVER Reports
+
+Send:
+  PKG_UTIL_MAIL.prc_send_report('ARCHIVER_SUMMARY');
+
+Report content:
+  - lookback summary
+  - run counts and latest statuses
+  - data status summary
+  - pending archive / quality / truncate work
+  - latest warnings and failures
+  - full process summaries as HTML attachments
+
+Config:
+  REPORT_LOOKBACK_DAYS = 7
+  REPORT_SUMMARY_MAX_CHARS = 4000 per process
+  REPORT_MAX_ROWS = 100
+
+
+---
+ARCHIVER Safety Rules
+
+* SOURCE_DB_LINK must be real and non-null
+* LOCAL and NONE are invalid source-link values
+* Object names are validated before dynamic SQL
+* Cleanup is preview-first
+* TRUNCATE requires p_truncate_execute = 'Y'
+* Quality must pass before cleanup candidates are selected
+* Runs and process logs remain auditable
+
+Short rule:
+  discover -> archive -> quality -> preview truncate -> approve -> execute
+
+
+---
+REPLICA Purpose
+
+REPLICA is optional.
+
+Use it when archived data must be copied further downstream:
+  - reporting database
+  - bounded operational copy
+  - isolated archive consumer
+
+REPLICA reads ARCHIVER through a real DB link.
+It does not need direct access to CLIENT schemas or AGENT.
+
+Base system can stop at:
+  CLIENT -> AGENT -> ARCHIVER
+
+Extended system continues to:
+  ARCHIVER -> REPLICA
+
+
+---
+REPLICA Flow
+
+DISCOVER:
+  - read qualified ARCHIVER metadata through DB link
+  - create/align REPLICA metadata and targets
+
+REPLICATE:
+  - load pending units from ARCHIVER targets
+  - set REPLICA_STATUS and TARGET_ROW_COUNT
+
+QUALITY:
+  - compare ARCHIVER source count with REPLICA target count
+  - set QUALITY_STATUS
+
+PURGE:
+  - select quality-passed local purge candidates
+  - truncate local REPLICA target units in preview/execute mode
+
+
+---
+REPLICA Example Setup
+
+Source for REPLICA:
+  PARTMGR_ARCHIVER.TBL_ARCHIVER_CLIENT1_SUBPART@ARCHIVER_LINK
+
+Target table:
+  PARTMGR_REPLICA.TBL_REPLICA_CLIENT1_SUBPART
+
+Configuration row:
+  SOURCE_DB_LINK     = ARCHIVER_LINK
+  SOURCE_OWNER       = PARTMGR_ARCHIVER
+  SOURCE_TABLE_NAME  = TBL_ARCHIVER_CLIENT1_SUBPART
+  TARGET_OWNER       = PARTMGR_REPLICA
+  TARGET_TABLE_NAME  = TBL_REPLICA_CLIENT1_SUBPART
+  ENABLED_FLAG       = Y
+
+REPLICA depends on ARCHIVER metadata and archived target data.
+
+
+---
+Run REPLICA Example
+
+  PKG_REPLICA_RUNNER.prc_run(
+    p_execute          => 'Y',
+    p_stop_after_step  => 'PURGE',
+    p_purge_execute    => 'N'
+  );
+
+Default operating pattern:
+  replicate + quality execute, purge preview
+
+Use p_stop_after_step to stop at:
+  DISCOVER / REPLICATE / QUALITY / PURGE
+
+
+---
+REPLICA Results And Reports
+
+Tables:
+  TBL_REPLICA_TABLES
+  TBL_REPLICA_PARTITIONS
+  TBL_REPLICA_RUNS
+  TBL_REPLICA_PROCESS_LOG
+
+Views:
+  VW_REPLICA_DISCOVERY_PARTITIONS
+  VW_REPLICA_REPLICATE_PARTITIONS
+  VW_REPLICA_QUALITY_PARTITIONS
+  VW_REPLICA_PURGE_PARTITIONS
+
+Send:
+  PKG_UTIL_MAIL.prc_send_report('REPLICA_SUMMARY');
+
+Safety:
+  PURGE requires p_purge_execute = 'Y'
+
+
+---
+Operating Pattern
+
+1. Configure source table in TBL_ARCHIVER_TABLES
+2. Run ARCHIVER discovery
+3. Review TBL_ARCHIVER_PARTITIONS
+4. Run archive + quality
+5. Review row counts and process logs
+6. Review truncate preview
+7. Execute truncate only after approval
+8. Optionally run REPLICA
+9. Send summary reports
+
+Short rule:
+  configure -> discover -> archive -> quality -> preview cleanup -> approve -> report

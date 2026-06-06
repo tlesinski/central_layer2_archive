@@ -35,6 +35,44 @@ BEGIN
   IF l_count != 10 THEN
     RAISE_APPLICATION_ERROR(-20542, 'ARCHIVER expected 10 seeded P_ERROR partition rows, got ' || l_count);
   END IF;
+
+  SELECT COUNT(*)
+    INTO l_count
+    FROM USER_OBJECTS
+   WHERE OBJECT_NAME = 'DAT'
+     AND OBJECT_TYPE IN ('PACKAGE', 'PACKAGE BODY')
+     AND STATUS = 'VALID';
+
+  IF l_count != 2 THEN
+    RAISE_APPLICATION_ERROR(-20543, 'ARCHIVER seed package DAT is missing or invalid');
+  END IF;
+
+  SELECT COUNT(*)
+    INTO l_count
+    FROM TBL_ARCHIVER_TABLES
+   WHERE SOURCE_OWNER IN (UPPER('&&CLIENT1_SCHEMA'), UPPER('&&CLIENT2_SCHEMA'))
+     AND SOURCE_TABLE_NAME IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
+     AND LAST_BUSINESS_DATE = 'DAT.fn_eod';
+
+  IF l_count != 6 THEN
+    RAISE_APPLICATION_ERROR(-20544, 'ARCHIVER expected 6 DAT.fn_eod last business date configs, got ' || l_count);
+  END IF;
+
+  SELECT COUNT(*)
+    INTO l_count
+    FROM TBL_ARCHIVER_TABLES
+   WHERE SOURCE_OWNER IN (UPPER('&&CLIENT1_SCHEMA'), UPPER('&&CLIENT2_SCHEMA'))
+     AND SOURCE_TABLE_NAME IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC')
+     AND PRESERVE_RULE IS NOT NULL
+     AND PRESERVE_CALC = 'CORRECT';
+
+  IF l_count != 4 THEN
+    RAISE_APPLICATION_ERROR(-20545, 'ARCHIVER expected 4 valid DAT preserve configs, got ' || l_count);
+  END IF;
+
+  IF FN_ARCHIVER_HIGH_VALUE_DATE('DAT.fn_eod') != DATE '2026-06-01' THEN
+    RAISE_APPLICATION_ERROR(-20546, 'ARCHIVER DAT.fn_eod returned unexpected value');
+  END IF;
 END;
 /
 

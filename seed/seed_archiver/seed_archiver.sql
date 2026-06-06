@@ -50,6 +50,8 @@ DELETE FROM TBL_ARCHIVER_TABLES
 
 COMMIT;
 
+@@seed_archiver_dat.sql
+
 @@seed_archiver_target.sql TBL_ARCHIVER_CLIENT1_ORDERS
 @@seed_archiver_target.sql TBL_ARCHIVER_CLIENT2_ORDERS
 @@seed_archiver_list_target.sql TBL_ARCHIVER_CLIENT1_SUBPART

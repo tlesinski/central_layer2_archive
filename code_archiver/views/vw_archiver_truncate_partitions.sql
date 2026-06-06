@@ -8,7 +8,6 @@ WITH w_preserve_data as
 ) ,
 candidate_partitions AS (
 SELECT p.source_db_link,
-       t.source_agent_schema,
        p.source_owner,
        p.source_table_name,
        p.target_owner,
@@ -38,13 +37,11 @@ SELECT p.source_db_link,
    AND t.source_owner = p.source_owner
    AND t.source_table_name = p.source_table_name
    AND t.enabled_flag = 'Y'
-   AND t.truncate_mode = 'TRUNCATE'
  WHERE p.archive_status = 'Y'
    AND p.quality_status = 'Y'
    AND p.truncate_status = 'N'
 )
 SELECT source_db_link,
-       source_agent_schema,
        source_owner,
        source_table_name,
        target_owner,

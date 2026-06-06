@@ -1,0 +1,54 @@
+CREATE OR REPLACE PACKAGE DAT
+AS
+  FUNCTION fn_eod RETURN DATE;
+  FUNCTION fn_eoy RETURN DATE;
+  FUNCTION fn_boy RETURN DATE;
+
+  FUNCTION prod_date RETURN DATE;
+  FUNCTION cur_eoy_date RETURN DATE;
+  FUNCTION cur_boy_date RETURN DATE;
+END DAT;
+/
+
+CREATE OR REPLACE PACKAGE BODY DAT
+AS
+  FUNCTION fn_eod RETURN DATE
+  IS
+  BEGIN
+    RETURN DATE '2026-06-01';
+  END fn_eod;
+
+  FUNCTION fn_eoy RETURN DATE
+  IS
+  BEGIN
+    RETURN DATE '2025-12-31';
+  END fn_eoy;
+
+  FUNCTION fn_boy RETURN DATE
+  IS
+  BEGIN
+    RETURN DATE '2026-01-01';
+  END fn_boy;
+
+  FUNCTION prod_date RETURN DATE
+  IS
+  BEGIN
+    RETURN fn_eod;
+  END prod_date;
+
+  FUNCTION cur_eoy_date RETURN DATE
+  IS
+  BEGIN
+    RETURN fn_eoy;
+  END cur_eoy_date;
+
+  FUNCTION cur_boy_date RETURN DATE
+  IS
+  BEGIN
+    RETURN fn_boy;
+  END cur_boy_date;
+END DAT;
+/
+
+SHOW ERRORS PACKAGE DAT
+SHOW ERRORS PACKAGE BODY DAT

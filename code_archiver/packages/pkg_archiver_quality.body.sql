@@ -32,11 +32,10 @@ AS
     RETURN PKG_ARCHIVER_SQL.fn_assert_simple_name(p_name);
   END;
 
-  FUNCTION fn_qualified_agent_function(p_agent_schema IN VARCHAR2, p_source_db_link IN VARCHAR2) RETURN VARCHAR2 IS
+  FUNCTION fn_qualified_agent_function(p_source_db_link IN VARCHAR2) RETURN VARCHAR2 IS
     l_name VARCHAR2(400);
   BEGIN
-    l_name := PKG_ARCHIVER_SQL.fn_assert_simple_name(p_agent_schema) || '.PKG_AGENT_ARCHIVE.FN_GET_ROW_COUNT';
-    l_name := l_name || '@' || PKG_ARCHIVER_SQL.fn_assert_simple_name(p_source_db_link);
+    l_name := 'PKG_AGENT_ARCHIVE.FN_GET_ROW_COUNT@' || PKG_ARCHIVER_SQL.fn_assert_simple_name(p_source_db_link);
     RETURN l_name;
   END;
 
@@ -97,7 +96,6 @@ AS
 
     FOR t IN (
       SELECT DISTINCT source_db_link,
-             source_agent_schema,
              source_owner,
              source_table_name,
              target_owner,
@@ -109,7 +107,7 @@ AS
     ) LOOP
       l_tables := l_tables + 1;
       l_table_summary := NULL;
-      l_agent_function := fn_qualified_agent_function(t.source_agent_schema, t.source_db_link);
+      l_agent_function := fn_qualified_agent_function(t.source_db_link);
       l_sql := 'SELECT ' || l_agent_function || '(:1, :2, :3, :4) FROM dual';
 
       FOR r IN (

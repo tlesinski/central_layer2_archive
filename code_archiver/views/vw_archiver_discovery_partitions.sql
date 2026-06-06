@@ -1,7 +1,6 @@
 CREATE OR REPLACE VIEW VW_ARCHIVER_DISCOVERY_PARTITIONS
 AS
 SELECT s.source_db_link,
-       s.source_agent_schema,
        s.source_owner,
        s.source_table_name,
        s.target_owner,

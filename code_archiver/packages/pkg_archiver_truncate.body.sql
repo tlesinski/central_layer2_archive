@@ -36,11 +36,10 @@ AS
     RETURN PKG_ARCHIVER_SQL.fn_assert_simple_name(p_name);
   END;
 
-  FUNCTION fn_qualified_agent_procedure(p_agent_schema IN VARCHAR2, p_source_db_link IN VARCHAR2) RETURN VARCHAR2 IS
+  FUNCTION fn_qualified_agent_procedure(p_source_db_link IN VARCHAR2) RETURN VARCHAR2 IS
     l_name VARCHAR2(400);
   BEGIN
-    l_name := PKG_ARCHIVER_SQL.fn_assert_simple_name(p_agent_schema) || '.PKG_AGENT_ARCHIVE.PRC_CLEANUP_UNIT';
-    l_name := l_name || '@' || PKG_ARCHIVER_SQL.fn_assert_simple_name(p_source_db_link);
+    l_name := 'PKG_AGENT_ARCHIVE.PRC_CLEANUP_UNIT@' || PKG_ARCHIVER_SQL.fn_assert_simple_name(p_source_db_link);
     RETURN l_name;
   END;
 
@@ -144,7 +143,6 @@ AS
 
     FOR t IN (
       SELECT DISTINCT source_db_link,
-             source_agent_schema,
              source_owner,
              source_table_name,
              target_owner,
@@ -156,7 +154,7 @@ AS
     ) LOOP
       l_tables := l_tables + 1;
       l_table_summary := NULL;
-      l_agent_procedure := fn_qualified_agent_procedure(t.source_agent_schema, t.source_db_link);
+      l_agent_procedure := fn_qualified_agent_procedure(t.source_db_link);
       l_sql := 'BEGIN ' || l_agent_procedure || '(:1, :2, :3, :4, :5, :6); END;';
 
       SELECT TO_CHAR(FN_ARCHIVER_HIGH_VALUE_DATE(a.last_business_date)),

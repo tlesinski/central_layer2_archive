@@ -1,7 +1,6 @@
 CREATE OR REPLACE VIEW VW_ARCHIVER_QUALITY_PARTITIONS
 AS
 SELECT p.source_db_link,
-       t.source_agent_schema,
        p.source_owner,
        p.source_table_name,
        p.target_owner,

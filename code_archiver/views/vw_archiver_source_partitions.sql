@@ -2,7 +2,6 @@ CREATE OR REPLACE VIEW VW_ARCHIVER_SOURCE_PARTITIONS
 AS
 WITH cfg AS (
   SELECT source_db_link,
-         source_agent_schema,
          source_owner,
          source_table_name,
          target_owner,
@@ -12,7 +11,6 @@ WITH cfg AS (
 ),
 src AS (
   SELECT c.source_db_link,
-         c.source_agent_schema,
          c.source_owner,
          c.source_table_name,
          c.target_owner,
@@ -35,8 +33,7 @@ src AS (
            '/ROWSET/ROW'
            PASSING DBMS_XMLGEN.GETXMLTYPE(
              'SELECT * FROM ' ||
-             DBMS_ASSERT.SIMPLE_SQL_NAME(c.source_agent_schema) ||
-             '.VW_AGENT_PARTITION_INFO' ||
+             'VW_AGENT_PARTITION_INFO' ||
              '@' || DBMS_ASSERT.SIMPLE_SQL_NAME(c.source_db_link) ||
              ' WHERE schema_name = ''' || REPLACE(UPPER(c.source_owner), '''', '''''') || '''' ||
              ' AND table_name = ''' || REPLACE(UPPER(c.source_table_name), '''', '''''') || ''''
@@ -55,7 +52,6 @@ src AS (
     WHERE UPPER(TRIM(x.partition_high_value)) <> 'MAXVALUE'
 )
 SELECT source_db_link,
-       source_agent_schema,
        source_owner,
        source_table_name,
        target_owner,
