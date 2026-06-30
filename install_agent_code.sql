@@ -8,9 +8,9 @@ PROMPT Installing standalone AGENT objects
 @@code_agent/tables/tbl_agent_client_tables.sql
 @@code_agent/types/type_agent_partition_info_obj.sql
 @@code_agent/types/type_agent_partition_info_tab.sql
-@@code_agent/views/vw_agent_partition_info.sql
 @@code_agent/packages/pkg_agent_archive.spec.sql
 @@code_agent/packages/pkg_agent_archive.body.sql
+@@code_agent/views/vw_agent_partition_info.sql
 
 SHOW ERRORS TYPE TYPE_AGENT_PARTITION_INFO_OBJ
 SHOW ERRORS TYPE TYPE_AGENT_PARTITION_INFO_TAB

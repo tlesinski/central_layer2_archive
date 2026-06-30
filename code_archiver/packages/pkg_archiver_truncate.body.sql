@@ -130,7 +130,8 @@ AS
     l_sql :=
       'SELECT COUNT(*) ' ||
       '  FROM VW_ARCHIVER_TRUNCATE_PARTITIONS ' ||
-      ' WHERE (:1 IS NULL OR target_owner = :1) ' ||
+      ' WHERE truncate_flag = ''Y'' ' ||
+      '   AND (:1 IS NULL OR target_owner = :1) ' ||
       '   AND (:2 IS NULL OR target_table_name = :2)';
 
     l_rows_available := PKG_ARCHIVER_SQL.fn_run_into_sql_in_bind
@@ -148,7 +149,8 @@ AS
              target_owner,
              target_table_name
         FROM VW_ARCHIVER_TRUNCATE_PARTITIONS
-       WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
+       WHERE truncate_flag = 'Y'
+         AND (l_target_owner IS NULL OR target_owner = l_target_owner)
          AND (l_target_table IS NULL OR target_table_name = l_target_table)
        ORDER BY source_db_link, source_owner, source_table_name
     ) LOOP
@@ -169,7 +171,8 @@ AS
       FOR r IN (
         SELECT p.*
           FROM VW_ARCHIVER_TRUNCATE_PARTITIONS p
-         WHERE p.source_db_link = t.source_db_link
+         WHERE p.truncate_flag = 'Y'
+           AND p.source_db_link = t.source_db_link
            AND p.source_owner = t.source_owner
            AND p.source_table_name = t.source_table_name
            AND p.target_owner = t.target_owner

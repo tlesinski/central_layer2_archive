@@ -50,6 +50,34 @@ AS
     RETURN fn_assert_simple_name(p_owner) || '.' || fn_assert_simple_name(p_table_name);
   END fn_assert_qualified_table;
 
+  PROCEDURE prc_assert_allowed_table
+  (
+    p_owner      IN VARCHAR2,
+    p_table_name IN VARCHAR2
+  )
+  IS
+    l_owner      VARCHAR2(128);
+    l_table_name VARCHAR2(128);
+    l_count      PLS_INTEGER;
+  BEGIN
+    l_owner := fn_assert_simple_name(p_owner);
+    l_table_name := fn_assert_simple_name(p_table_name);
+
+    SELECT COUNT(*)
+      INTO l_count
+      FROM TBL_AGENT_CLIENT_TABLES
+     WHERE SOURCE_OWNER = l_owner
+       AND SOURCE_TABLE_NAME = l_table_name;
+
+    IF l_count = 0 THEN
+      RAISE_APPLICATION_ERROR
+      (
+        -20005,
+        'AGENT access denied for table ' || l_owner || '.' || l_table_name
+      );
+    END IF;
+  END prc_assert_allowed_table;
+
   FUNCTION fn_get_partition_info
   (
     p_owner      IN VARCHAR2,
@@ -72,6 +100,7 @@ AS
 
     l_owner := fn_assert_simple_name(p_owner);
     l_table_name := fn_assert_simple_name(p_table_name);
+    prc_assert_allowed_table(l_owner, l_table_name);
 
     l_sql := q'[
       SELECT p.table_owner,
@@ -139,6 +168,7 @@ AS
       raise_application_error(-20002, 'Owner, table name, and partition name are required');
     END IF;
 
+    prc_assert_allowed_table(p_owner, p_table_name);
     l_table_name := fn_assert_qualified_table(p_owner, p_table_name);
 
     IF p_subpartition_name IS NOT NULL THEN
@@ -172,6 +202,7 @@ AS
       raise_application_error(-20003, 'Owner, table name, and partition name are required');
     END IF;
 
+    prc_assert_allowed_table(p_owner, p_table_name);
     l_mode := UPPER(NVL(TRIM(p_mode), 'TRUNCATE'));
 
     IF l_mode NOT IN ('TRUNCATE', 'DROP', 'DELETE') THEN

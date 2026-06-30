@@ -3,6 +3,8 @@ PROMPT CLIENT 003 - AGENT controlled row counts
 CONNECT &&ACTIVE_AGENT_SCHEMA/"&&ACTIVE_AGENT_PASSWORD"@&&ACTIVE_AGENT_CONNECT
 
 DECLARE
+  l_denied_count NUMBER;
+
   PROCEDURE assert_agent_count
   (
     p_owner             IN VARCHAR2,
@@ -83,6 +85,37 @@ BEGIN
     'P202401',
     first_subpartition(UPPER('&&CLIENT2_SCHEMA'), 'ORDERS_SUBPART_SRC', 'P202401')
   );
+
+  BEGIN
+    l_denied_count := PKG_AGENT_ARCHIVE.fn_get_row_count
+                      (
+                        UPPER('&&ACTIVE_AGENT_SCHEMA'),
+                        'TBL_AGENT_CLIENT_TABLES',
+                        'P_NOT_USED'
+                      );
+    RAISE_APPLICATION_ERROR(-20531, 'AGENT row count accepted a table outside the allowlist');
+  EXCEPTION
+    WHEN OTHERS THEN
+      IF SQLCODE != -20005 THEN
+        RAISE;
+      END IF;
+  END;
+
+  BEGIN
+    PKG_AGENT_ARCHIVE.prc_cleanup_unit
+    (
+      p_owner          => UPPER('&&ACTIVE_AGENT_SCHEMA'),
+      p_table_name     => 'TBL_AGENT_CLIENT_TABLES',
+      p_partition_name => 'P_NOT_USED',
+      p_execute        => 'N'
+    );
+    RAISE_APPLICATION_ERROR(-20532, 'AGENT cleanup accepted a table outside the allowlist');
+  EXCEPTION
+    WHEN OTHERS THEN
+      IF SQLCODE != -20005 THEN
+        RAISE;
+      END IF;
+  END;
 END;
 /
 

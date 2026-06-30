@@ -2,19 +2,21 @@ INSERT INTO TBL_ARCHIVER_TABLES
 (
   SOURCE_DB_LINK, SOURCE_OWNER, SOURCE_TABLE_NAME,
   TARGET_OWNER, TARGET_TABLE_NAME, PARALLEL_DEGREE,
-  TABLESPACE_NAME, LAST_BUSINESS_DATE, DAYS_ONLINE, PRESERVE_RULE, ENABLED_FLAG
+  TABLESPACE_NAME, IMPORT_EXPRESSION, TRUNCATE_EXPRESSION, ENABLED_FLAG
 )
 VALUES
 (
   UPPER('&&ACTIVE_AGENT_LINK'), UPPER('&1'), UPPER('&2'),
   UPPER('&&ACTIVE_ARCHIVER_SCHEMA'), UPPER('&3'), 4,
   UPPER('&&DEFAULT_TABLESPACE'),
-  'DAT.fn_eod',
-  30,
+  '<partition_high_value> < DAT.fn_eod',
   CASE UPPER('&2')
-    WHEN 'ORDERS_ARCH_SRC' THEN 'SELECT DAT.fn_eoy FROM dual'
-    WHEN 'ORDERS_SUBPART_SRC' THEN 'SELECT DAT.fn_boy FROM dual UNION ALL SELECT DAT.fn_eoy FROM dual'
-    ELSE NULL
+    WHEN 'ORDERS_ARCH_SRC' THEN
+      '<partition_high_value> < DAT.fn_eod - 30 and NOT(DAT.fn_eoy between <prev_partition_high_value> and <partition_high_value>)'
+    WHEN 'ORDERS_SUBPART_SRC' THEN
+      '<partition_high_value> < DAT.fn_eod - 30 and NOT(DAT.fn_boy between <prev_partition_high_value> and <partition_high_value>) and NOT(DAT.fn_eoy between <prev_partition_high_value> and <partition_high_value>)'
+    WHEN 'ORDERS_DAILY_INT_SRC' THEN
+      '1=2'
   END,
   'Y'
 );

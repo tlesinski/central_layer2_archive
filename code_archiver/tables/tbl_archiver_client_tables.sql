@@ -1,7 +1,0 @@
-CREATE TABLE tbl_agent_client_tables
- (
-    SOURCE_OWNER        VARCHAR2(128) NOT NULL,
-  SOURCE_TABLE_NAME   VARCHAR2(128) NOT NULL,
-  CONSTRAINT tbl_agent_client_tables_pk PRIMARY KEY
-    (SOURCE_OWNER, SOURCE_TABLE_NAME)
-);

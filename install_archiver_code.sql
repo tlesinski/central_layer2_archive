@@ -18,6 +18,7 @@ PROMPT Installing standalone ARCHIVER core objects
 @@code_archiver/functions/fn_archiver_high_value_date.sql
 @@code_archiver/functions/fn_archiver_calculate_retention.sql
 @@code_archiver/functions/fn_archiver_validate_preserve.sql
+@@code_archiver/functions/fn_expr_calc.sql
 @@code_archiver/triggers/trg_archiver_tables_retention_calc.sql
 @@code_archiver/triggers/trg_archiver_tables_preserve_calc.sql
 @@code_archiver/views/vw_archiver_source_partitions.sql
@@ -50,6 +51,7 @@ PROMPT Installing standalone ARCHIVER core objects
 
 SHOW ERRORS PACKAGE PKG_ARCHIVER_TL_LOGGING
 SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_TL_LOGGING
+SHOW ERRORS FUNCTION FN_EXPR_CALC
 SHOW ERRORS PACKAGE PKG_ARCHIVER_SQL
 SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_SQL
 SHOW ERRORS PACKAGE PKG_UTIL_REPORT
