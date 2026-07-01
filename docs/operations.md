@@ -28,6 +28,27 @@ FROM TBL_REPLICA_TABLES;
 
 Every listed source link must exist in `USER_DB_LINKS`.
 
+ARCHIVER table setup also defines partition methods and expressions:
+
+```sql
+SELECT partition_method,
+       subpartition_method,
+       import_expression,
+       truncate_expression
+FROM TBL_ARCHIVER_TABLES;
+```
+
+Supported method pairs are `RANGE/NULL`, `RANGE/LIST`, `LIST/NULL`, and
+`LIST/LIST`. Inspect `IMPORT_FLAG`, `IMPORT_VALUE`, `TRUNCATE_FLAG`, and
+`TRUNCATE_VALUE` in the operational views before execution. Rows with `N` or
+`ERROR: ...` flags are not executed.
+
+ARCHIVER does not hardcode partition-name or `HIGH_VALUE` exclusions. Register
+technical and boundary units such as `P_ERROR`, `MAXVALUE`, `DEFAULT`, or LIST
+`NULL` in `TBL_ARCHIVER_PARTITIONS` with completed archive, quality, and
+truncate statuses. Existing metadata is the control that keeps those units out
+of discovery.
+
 ## ARCHIVER Run
 
 Run one configured source table:

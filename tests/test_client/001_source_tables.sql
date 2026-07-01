@@ -49,6 +49,9 @@ BEGIN
   assert_table('ORDERS_ARCH_SRC', 430, 'RANGE', 'NONE');
   assert_table('ORDERS_SUBPART_SRC', 540, 'RANGE', 'LIST');
   assert_table('ORDERS_DAILY_INT_SRC', 96, 'RANGE', 'LIST');
+  assert_table('ORDERS_LIST_DATE_SRC', 40, 'LIST', 'NONE');
+  assert_table('ORDERS_LIST_NUMBER_SRC', 40, 'LIST', 'NONE');
+  assert_table('ORDERS_LIST_VARCHAR_SRC', 80, 'LIST', 'LIST');
 
   SELECT COUNT(*)
     INTO l_count

@@ -69,6 +69,8 @@ BEGIN
   assert_agent_count(UPPER('&&CLIENT2_SCHEMA'), 'ORDERS_ARCH_SRC', 'P202401');
   assert_agent_count(UPPER('&&CLIENT1_SCHEMA'), 'ORDERS_DAILY_INT_SRC', 'P20240501');
   assert_agent_count(UPPER('&&CLIENT2_SCHEMA'), 'ORDERS_DAILY_INT_SRC', 'P20240501');
+  assert_agent_count(UPPER('&&CLIENT1_SCHEMA'), 'ORDERS_LIST_DATE_SRC', 'P_DATE_1');
+  assert_agent_count(UPPER('&&CLIENT1_SCHEMA'), 'ORDERS_LIST_NUMBER_SRC', 'P_BUCKET_LOW');
 
   assert_agent_count
   (
@@ -84,6 +86,14 @@ BEGIN
     'ORDERS_SUBPART_SRC',
     'P202401',
     first_subpartition(UPPER('&&CLIENT2_SCHEMA'), 'ORDERS_SUBPART_SRC', 'P202401')
+  );
+
+  assert_agent_count
+  (
+    UPPER('&&CLIENT1_SCHEMA'),
+    'ORDERS_LIST_VARCHAR_SRC',
+    'P_REGION_NS',
+    first_subpartition(UPPER('&&CLIENT1_SCHEMA'), 'ORDERS_LIST_VARCHAR_SRC', 'P_REGION_NS')
   );
 
   BEGIN

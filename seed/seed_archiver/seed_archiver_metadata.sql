@@ -2,14 +2,35 @@ INSERT INTO TBL_ARCHIVER_TABLES
 (
   SOURCE_DB_LINK, SOURCE_OWNER, SOURCE_TABLE_NAME,
   TARGET_OWNER, TARGET_TABLE_NAME, PARALLEL_DEGREE,
-  TABLESPACE_NAME, IMPORT_EXPRESSION, TRUNCATE_EXPRESSION, ENABLED_FLAG
+  TABLESPACE_NAME, PARTITION_METHOD, SUBPARTITION_METHOD,
+  IMPORT_EXPRESSION, TRUNCATE_EXPRESSION, ENABLED_FLAG
 )
 VALUES
 (
   UPPER('&&ACTIVE_AGENT_LINK'), UPPER('&1'), UPPER('&2'),
   UPPER('&&ACTIVE_ARCHIVER_SCHEMA'), UPPER('&3'), 4,
   UPPER('&&DEFAULT_TABLESPACE'),
-  '<partition_high_value> < DAT.fn_eod',
+  CASE UPPER('&2')
+    WHEN 'ORDERS_ARCH_SRC' THEN 'RANGE'
+    WHEN 'ORDERS_SUBPART_SRC' THEN 'RANGE'
+    WHEN 'ORDERS_DAILY_INT_SRC' THEN 'RANGE'
+    WHEN 'ORDERS_LIST_DATE_SRC' THEN 'LIST'
+    WHEN 'ORDERS_LIST_NUMBER_SRC' THEN 'LIST'
+    WHEN 'ORDERS_LIST_VARCHAR_SRC' THEN 'LIST'
+  END,
+  CASE UPPER('&2')
+    WHEN 'ORDERS_SUBPART_SRC' THEN 'LIST'
+    WHEN 'ORDERS_DAILY_INT_SRC' THEN 'LIST'
+    WHEN 'ORDERS_LIST_VARCHAR_SRC' THEN 'LIST'
+  END,
+  CASE UPPER('&2')
+    WHEN 'ORDERS_LIST_NUMBER_SRC' THEN
+      '10 IN (<partition_high_value>) OR 20 IN (<partition_high_value>)'
+    WHEN 'ORDERS_LIST_VARCHAR_SRC' THEN
+      '''N'' IN (<partition_high_value>) OR ''W'' IN (<partition_high_value>)'
+    ELSE
+      '<partition_high_value> < DAT.fn_eod'
+  END,
   CASE UPPER('&2')
     WHEN 'ORDERS_ARCH_SRC' THEN
       '<partition_high_value> < DAT.fn_eod - 30 and NOT(DAT.fn_eoy between <prev_partition_high_value> and <partition_high_value>)'
@@ -17,6 +38,12 @@ VALUES
       '<partition_high_value> < DAT.fn_eod - 30 and NOT(DAT.fn_boy between <prev_partition_high_value> and <partition_high_value>) and NOT(DAT.fn_eoy between <prev_partition_high_value> and <partition_high_value>)'
     WHEN 'ORDERS_DAILY_INT_SRC' THEN
       '1=2'
+    WHEN 'ORDERS_LIST_DATE_SRC' THEN
+      '<partition_high_value> < DAT.fn_eod - 30'
+    WHEN 'ORDERS_LIST_NUMBER_SRC' THEN
+      '10 IN (<partition_high_value>)'
+    WHEN 'ORDERS_LIST_VARCHAR_SRC' THEN
+      '''N'' IN (<partition_high_value>) AND ''CLOSED'' IN (<subpartition_high_value>)'
   END,
   'Y'
 );
@@ -36,6 +63,11 @@ SELECT SOURCE_DB_LINK, SOURCE_OWNER, SOURCE_TABLE_NAME, TARGET_OWNER, TARGET_TAB
  WHERE SOURCE_DB_LINK = UPPER('&&ACTIVE_AGENT_LINK')
    AND SOURCE_OWNER = UPPER('&1')
    AND SOURCE_TABLE_NAME = UPPER('&2')
-   AND SOURCE_PARTITION_NAME = 'P_ERROR';
+   AND
+   (
+     SOURCE_PARTITION_NAME = 'P_ERROR'
+     OR UPPER(TRIM(PARTITION_HIGH_VALUE)) IN ('MAXVALUE', 'DEFAULT', 'NULL')
+     OR UPPER(TRIM(SUBPARTITION_HIGH_VALUE)) IN ('DEFAULT', 'NULL')
+   );
 
 COMMIT;
