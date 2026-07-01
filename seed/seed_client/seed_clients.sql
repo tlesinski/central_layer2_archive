@@ -4,6 +4,9 @@ CONNECT &&CLIENT1_SCHEMA/"&&CLIENT1_PASSWORD"@&&SOURCE_SYS_CONNECT
 @@seed_client_source.sql 430
 @@seed_client_subpart_source.sql 2000 540 20 2.11
 @@seed_client_daily_interval_source.sql 3000 30 1.91
+@@seed_client_list_date_source.sql
+@@seed_client_list_number_source.sql
+@@seed_client_list_varchar_source.sql
 
 CONNECT &&CLIENT2_SCHEMA/"&&CLIENT2_PASSWORD"@&&SOURCE_SYS_CONNECT
 @@seed_client_source.sql 250

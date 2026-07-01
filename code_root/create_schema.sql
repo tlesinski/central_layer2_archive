@@ -46,6 +46,7 @@ BEGIN
     grant_privilege('CREATE TRIGGER');
     grant_privilege('CREATE TYPE');
   ELSIF l_profile = 'AGENT' THEN
+    grant_privilege('CREATE TABLE');
     grant_privilege('CREATE VIEW');
     grant_privilege('CREATE PROCEDURE');
     grant_privilege('CREATE TYPE');

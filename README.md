@@ -74,6 +74,12 @@ REPLICA reads qualified ARCHIVER metadata and physical archive targets through a
 real DB link, loads replica targets, performs quality checks, and identifies
 local purge candidates. REPLICA purge remains preview-first.
 
+ARCHIVER supports single-column `RANGE` and `LIST` partition keys with optional
+single-column `LIST` subpartitioning. `INTERVAL` sources use the `RANGE`
+execution path. Eligibility is configured with `IMPORT_EXPRESSION` and
+`TRUNCATE_EXPRESSION`, using raw Oracle `HIGH_VALUE` placeholders, so DATE,
+NUMBER, and VARCHAR2 keys are supported without type-specific configuration.
+
 ## Code Layout
 
 ```text
@@ -165,8 +171,9 @@ Run manually with:
 @seed.sql
 ```
 
-Each seeded client receives RANGE, RANGE-LIST, and daily INTERVAL-LIST source
-tables. Daily interval partitions are normalized to `PYYYYMMDD` names.
+The demo seed covers RANGE, RANGE-LIST, daily INTERVAL-LIST, LIST on DATE, LIST
+on NUMBER, and LIST-LIST on VARCHAR2. Daily interval partitions are normalized
+to `PYYYYMMDD` names.
 
 `REBUILD_SEED_MAIL` updates application mail settings in `TBL_UTIL_CONFIG`.
 Oracle network ACLs are not a seed; they are SYS-level infrastructure managed by
@@ -232,6 +239,8 @@ END;
 
 - Component communication uses real Oracle database links.
 - `SOURCE_DB_LINK` never uses `LOCAL`, `NONE`, or `NULL`.
+- Technical partitions and boundary values are excluded through completed
+  `TBL_ARCHIVER_PARTITIONS` metadata, not hardcoded names or values.
 - Source truncate and local replica purge are preview-first.
 - `RESET_CONFIRMATION=RESET_ALL` is required before schema reset drops users.
 - Code installation, demo seeds, tests, mail metadata, and ACL setup are separate

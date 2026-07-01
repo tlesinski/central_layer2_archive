@@ -41,6 +41,23 @@ staging tables and exchanges partitions into ARCHIVER targets. QUALITY compares
 source and target counts. TRUNCATE calls AGENT only for qualified units and
 defaults to preview.
 
+ARCHIVER configuration stores `PARTITION_METHOD` (`RANGE` or `LIST`) and an
+optional `SUBPARTITION_METHOD` (`LIST`). AGENT exposes source key columns,
+methods, and dictionary data types; discovery validates them against the target.
+Raw Oracle `HIGH_VALUE` expressions drive target DDL and load predicates:
+
+```text
+RANGE -> key >= previous HIGH_VALUE and key < HIGH_VALUE
+LIST  -> key IN (HIGH_VALUE)
+```
+
+`IMPORT_EXPRESSION` and `TRUNCATE_EXPRESSION` determine eligibility.
+Multi-column partition keys are outside the supported operational set.
+Technical or boundary units such as `P_ERROR`, `MAXVALUE`, `DEFAULT`, and LIST
+`NULL` are not hardcoded exclusions. Administrators register them in
+`TBL_ARCHIVER_PARTITIONS` with completed statuses so discovery treats them as
+already processed.
+
 ### REPLICA
 
 REPLICA is an independent Layer 3 component. Primary metadata:
@@ -88,6 +105,8 @@ ARCHIVER, and REPLICA locations.
 - `SOURCE_DB_LINK` is real and non-null in component configuration and run data.
 - `LOCAL` and `NONE` are invalid source-link values.
 - Partition identity is based on high values, not only physical names.
+- ARCHIVER supports RANGE, RANGE-LIST, LIST, LIST-LIST, INTERVAL, and
+  INTERVAL-LIST for single-column keys.
 - ARCHIVER and REPLICA use local staging plus partition exchange.
 - Generated object names are validated before dynamic SQL execution.
 - Destructive operations require an explicit execute switch.

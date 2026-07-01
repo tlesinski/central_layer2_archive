@@ -9,10 +9,12 @@ BEGIN
     INTO l_count
     FROM TBL_ARCHIVER_TABLES
    WHERE SOURCE_OWNER IN (UPPER('&&CLIENT1_SCHEMA'), UPPER('&&CLIENT2_SCHEMA'))
-     AND SOURCE_TABLE_NAME IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC');
+     AND SOURCE_TABLE_NAME IN
+         ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC',
+          'ORDERS_LIST_DATE_SRC', 'ORDERS_LIST_NUMBER_SRC', 'ORDERS_LIST_VARCHAR_SRC');
 
-  IF l_count != 6 THEN
-    RAISE_APPLICATION_ERROR(-20540, 'ARCHIVER expected 6 seeded table configs, got ' || l_count);
+  IF l_count != 9 THEN
+    RAISE_APPLICATION_ERROR(-20540, 'ARCHIVER expected 9 seeded table configs, got ' || l_count);
   END IF;
 
   SELECT COUNT(*)
@@ -29,49 +31,41 @@ BEGIN
     INTO l_count
     FROM TBL_ARCHIVER_PARTITIONS
    WHERE SOURCE_OWNER IN (UPPER('&&CLIENT1_SCHEMA'), UPPER('&&CLIENT2_SCHEMA'))
-     AND SOURCE_TABLE_NAME IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
+     AND SOURCE_TABLE_NAME IN
+         ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC',
+          'ORDERS_LIST_DATE_SRC', 'ORDERS_LIST_NUMBER_SRC', 'ORDERS_LIST_VARCHAR_SRC')
      AND SOURCE_PARTITION_NAME = 'P_ERROR';
 
-  IF l_count != 10 THEN
-    RAISE_APPLICATION_ERROR(-20542, 'ARCHIVER expected 10 seeded P_ERROR partition rows, got ' || l_count);
-  END IF;
-
-  SELECT COUNT(*)
-    INTO l_count
-    FROM USER_OBJECTS
-   WHERE OBJECT_NAME = 'DAT'
-     AND OBJECT_TYPE IN ('PACKAGE', 'PACKAGE BODY')
-     AND STATUS = 'VALID';
-
-  IF l_count != 2 THEN
-    RAISE_APPLICATION_ERROR(-20543, 'ARCHIVER seed package DAT is missing or invalid');
+  IF l_count != 14 THEN
+    RAISE_APPLICATION_ERROR(-20542, 'ARCHIVER expected 14 seeded P_ERROR partition rows, got ' || l_count);
   END IF;
 
   SELECT COUNT(*)
     INTO l_count
     FROM TBL_ARCHIVER_TABLES
    WHERE SOURCE_OWNER IN (UPPER('&&CLIENT1_SCHEMA'), UPPER('&&CLIENT2_SCHEMA'))
-     AND SOURCE_TABLE_NAME IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC', 'ORDERS_DAILY_INT_SRC')
-     AND LAST_BUSINESS_DATE = 'DAT.fn_eod';
+     AND PARTITION_METHOD = 'LIST';
 
-  IF l_count != 6 THEN
-    RAISE_APPLICATION_ERROR(-20544, 'ARCHIVER expected 6 DAT.fn_eod last business date configs, got ' || l_count);
+  IF l_count != 3 THEN
+    RAISE_APPLICATION_ERROR(-20544, 'ARCHIVER expected 3 LIST configs, got ' || l_count);
   END IF;
 
   SELECT COUNT(*)
     INTO l_count
     FROM TBL_ARCHIVER_TABLES
    WHERE SOURCE_OWNER IN (UPPER('&&CLIENT1_SCHEMA'), UPPER('&&CLIENT2_SCHEMA'))
-     AND SOURCE_TABLE_NAME IN ('ORDERS_ARCH_SRC', 'ORDERS_SUBPART_SRC')
-     AND PRESERVE_RULE IS NOT NULL
-     AND PRESERVE_CALC = 'CORRECT';
+     AND IMPORT_EXPRESSION IS NOT NULL
+     AND TRUNCATE_EXPRESSION IS NOT NULL;
 
-  IF l_count != 4 THEN
-    RAISE_APPLICATION_ERROR(-20545, 'ARCHIVER expected 4 valid DAT preserve configs, got ' || l_count);
+  IF l_count != 9 THEN
+    RAISE_APPLICATION_ERROR(-20545, 'ARCHIVER expected 9 expression configs, got ' || l_count);
   END IF;
 
-  IF FN_ARCHIVER_HIGH_VALUE_DATE('DAT.fn_eod') != DATE '2026-06-01' THEN
-    RAISE_APPLICATION_ERROR(-20546, 'ARCHIVER DAT.fn_eod returned unexpected value');
+  IF FN_EXPR_CALC('10, 11', NULL, '#', '10 IN (<partition_high_value>)', 'FLAG') != 'Y'
+     OR FN_EXPR_CALC('''N'', ''S''', NULL, '''SHIPPED'', ''CLOSED''',
+                     '''N'' IN (<partition_high_value>) AND ''CLOSED'' IN (<subpartition_high_value>)',
+                     'FLAG') != 'Y' THEN
+    RAISE_APPLICATION_ERROR(-20546, 'ARCHIVER expression evaluation failed');
   END IF;
 END;
 /

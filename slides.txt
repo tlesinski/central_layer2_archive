@@ -60,10 +60,13 @@ Supported setups:
   RANGE-LIST
   INTERVAL
   INTERVAL-LIST
+  LIST
+  LIST-LIST
 
 Partition key rule:
-  partition level is based on a DATE column
-  supported partition boundaries are time-based
+  one partition key column
+  optional one LIST subpartition key column
+  DATE, NUMBER and VARCHAR2 are supported
 
 Identity rule:
   logical archive unit identity is based on HIGH_VALUE
@@ -162,15 +165,16 @@ TBL_ARCHIVER_TABLES:
   SOURCE_TABLE_NAME
   TARGET_OWNER
   TARGET_TABLE_NAME
-  LAST_BUSINESS_DATE
-  DAYS_ONLINE
-  PRESERVE_RULE
+  PARTITION_METHOD
+  SUBPARTITION_METHOD
+  IMPORT_EXPRESSION
+  TRUNCATE_EXPRESSION
   ENABLED_FLAG
 
 Control rules:
-  LAST_BUSINESS_DATE: archive upper boundary, e.g. DAT.fn_eod
-  DAYS_ONLINE: retention window before source cleanup
-  PRESERVE_RULE: SQL returning dates that must stay online
+  RANGE uses VALUES LESS THAN and range predicates
+  LIST uses VALUES and IN predicates
+  expressions evaluate raw HIGH_VALUE placeholders
 
 
 ---
@@ -213,11 +217,10 @@ Configuration row:
   SOURCE_TABLE_NAME  = ORDERS_SUBPART_SRC
   TARGET_OWNER       = PARTMGR_ARCHIVER
   TARGET_TABLE_NAME  = TBL_ARCHIVER_CLIENT1_SUBPART
-  LAST_BUSINESS_DATE = DAT.fn_eod
-  DAYS_ONLINE        = 30
-  PRESERVE_RULE      = SELECT DAT.fn_boy FROM dual
-                       UNION ALL
-                       SELECT DAT.fn_eoy FROM dual
+  PARTITION_METHOD    = RANGE
+  SUBPARTITION_METHOD = LIST
+  IMPORT_EXPRESSION   = <partition_high_value> < DAT.fn_eod
+  TRUNCATE_EXPRESSION = <partition_high_value> < DAT.fn_eod - 30
   ENABLED_FLAG       = Y
 
 
@@ -230,7 +233,7 @@ DISCOVER:
 
 ARCHIVE:
   - select units with ARCHIVE_STATUS = N
-  - require partition HIGH_VALUE < LAST_BUSINESS_DATE
+  - require IMPORT_EXPRESSION result Y
   - load units into ARCHIVER targets
   - set ARCHIVE_STATUS and TARGET_ROW_COUNT
 
@@ -240,7 +243,7 @@ QUALITY:
 
 TRUNCATE:
   - select quality-passed cleanup candidates
-  - apply DAYS_ONLINE cutoff and PRESERVE_RULE
+  - require TRUNCATE_EXPRESSION result Y
   - call AGENT cleanup in preview/execute mode
 
 
