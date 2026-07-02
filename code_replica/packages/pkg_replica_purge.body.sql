@@ -91,7 +91,7 @@ AS
         DBMS_OUTPUT.PUT_LINE('REPLICA_PURGE target=' || r.target_owner || '.' || r.target_table_name ||
                              ' ' || r.partition_name ||
                              CASE WHEN r.subpartition_name <> '#' THEN '.' || r.subpartition_name END ||
-                             ' cutoff=' || TO_CHAR(r.cutoff_date, 'YYYY-MM-DD') ||
+                             ' replicate_flag=' || r.replicate_flag ||
                              ' execute=' || l_execute_flag);
 
         l_purged := l_purged + PKG_REPLICA_SQL.fn_run_sql(l_log_id, l_sql, l_execute_flag);

@@ -4,8 +4,7 @@ AS
     Package      : PKG_REPLICA_REPLICATE
     Developer    : Tomasz Lesinski
     Date         : 2026-06-01
-    Purpose      : Replicate archived layer 2 partitions into layer 3 target
-                   tables for the configured online window.
+    Purpose      : Replicate ARCHIVER units selected by REPLICATE_EXPRESSION.
 
     Prerequisite : PKG_REPLICA_SQL, PKG_REPLICA_LOG, VW_REPLICA_REPLICATE_PARTITIONS
 

@@ -39,19 +39,47 @@ AS
     RETURN l_table;
   END;
 
-  FUNCTION fn_high_value_to_date(p_high_value IN VARCHAR2) RETURN DATE IS
-    l_date DATE;
+  FUNCTION fn_partition_method
+  (
+    p_owner IN VARCHAR2,
+    p_table IN VARCHAR2
+  )
+  RETURN VARCHAR2
+  IS
+    l_method VARCHAR2(20);
   BEGIN
-    IF p_high_value IS NULL OR UPPER(TRIM(p_high_value)) = 'MAXVALUE' THEN
-      RETURN NULL;
-    END IF;
+    SELECT partitioning_type
+      INTO l_method
+      FROM all_part_tables
+     WHERE owner = UPPER(p_owner)
+       AND table_name = UPPER(p_table);
+    RETURN l_method;
+  END fn_partition_method;
 
-    EXECUTE IMMEDIATE 'SELECT ' || p_high_value || ' FROM dual' INTO l_date;
-    RETURN l_date;
-  EXCEPTION
-    WHEN OTHERS THEN
-      RETURN NULL;
-  END fn_high_value_to_date;
+  FUNCTION fn_partition_predicate
+  (
+    p_key_column      IN VARCHAR2,
+    p_method          IN VARCHAR2,
+    p_high_value      IN VARCHAR2,
+    p_prev_high_value IN VARCHAR2 DEFAULT NULL
+  )
+  RETURN VARCHAR2
+  IS
+    l_key VARCHAR2(128) := PKG_REPLICA_SQL.fn_assert_simple_name(p_key_column);
+  BEGIN
+    IF p_method = 'RANGE' THEN
+      RETURN CASE
+               WHEN p_prev_high_value IS NULL THEN
+                 l_key || ' < (' || p_high_value || ')'
+               ELSE
+                 l_key || ' >= (' || p_prev_high_value || ') AND ' ||
+                 l_key || ' < (' || p_high_value || ')'
+             END;
+    ELSIF p_method = 'LIST' THEN
+      RETURN l_key || ' IN (' || p_high_value || ')';
+    END IF;
+    RAISE_APPLICATION_ERROR(-20244, 'Unsupported partition method: ' || p_method);
+  END fn_partition_predicate;
 
   FUNCTION fn_first_partition_key_column
   (
@@ -115,8 +143,8 @@ AS
     l_quality_status    VARCHAR2(1);
     l_part_key_column   VARCHAR2(128);
     l_sub_key_column    VARCHAR2(128);
-    l_high_date         DATE;
-    l_low_date          DATE;
+    l_part_method       VARCHAR2(20);
+    l_predicate         VARCHAR2(32767);
     l_summary           CLOB := NULL;
     l_table_summary     CLOB;
     l_partition_columns VARCHAR2(1000) :=
@@ -164,20 +192,14 @@ AS
         l_units := l_units + 1;
 
         l_part_key_column := fn_first_partition_key_column(r.target_owner, r.target_table_name);
-        l_high_date := fn_high_value_to_date(r.partition_high_value);
-        l_low_date := fn_high_value_to_date(r.prev_partition_high_value);
-
-        IF l_high_date IS NULL THEN
-          RAISE_APPLICATION_ERROR(-20051, 'REPLICA QUALITY requires a DATE partition high value');
-        END IF;
+        l_part_method := fn_partition_method(r.target_owner, r.target_table_name);
+        l_predicate := fn_partition_predicate
+                       (l_part_key_column, l_part_method, r.partition_high_value,
+                        r.prev_partition_high_value);
 
         l_sql := 'SELECT COUNT(*) FROM ' ||
                  fn_source_table(r.source_db_link, r.source_owner, r.source_table_name) ||
-                 ' WHERE ' || l_part_key_column || ' < DATE ''' || TO_CHAR(l_high_date, 'YYYY-MM-DD') || '''';
-
-        IF l_low_date IS NOT NULL THEN
-          l_sql := l_sql || ' AND ' || l_part_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
-        END IF;
+                 ' WHERE ' || l_predicate;
 
         IF r.archive_unit_type = 'SUBPARTITION' THEN
           l_sub_key_column := fn_first_subpartition_key_column(r.target_owner, r.target_table_name);

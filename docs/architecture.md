@@ -75,10 +75,24 @@ The REPLICA runner executes:
 DISCOVER -> REPLICATE -> QUALITY -> PURGE
 ```
 
-REPLICA reads qualified ARCHIVER metadata through
-`REPLICA_ARCHIVER_PARTITIONS_SRC` and reads physical ARCHIVER targets through
-the configured real database link. PURGE operates only on local REPLICA targets
-and defaults to preview.
+REPLICA reads qualified ARCHIVER metadata dynamically in
+`VW_REPLICA_SOURCE_PARTITIONS`. Each configuration row queries
+`TBL_ARCHIVER_PARTITIONS@SOURCE_DB_LINK`, so one REPLICA can consume multiple
+ARCHIVER databases without synonyms. Physical ARCHIVER targets use the same
+per-row database link. PURGE operates only on local REPLICA targets and defaults
+to preview.
+
+REPLICA supports single-column `RANGE` and `LIST` partitioning with optional
+single-column `LIST` subpartitioning. It validates methods, key names, and key
+types between the remote ARCHIVER table and local REPLICA target. Raw
+`HIGH_VALUE` expressions generate RANGE and LIST predicates for REPLICATE and
+QUALITY.
+
+`REPLICATE_EXPRESSION` is the desired-presence rule. `Y` selects pending units
+for REPLICATE. `N` selects already replicated and qualified units for PURGE.
+`ERROR: ...` selects neither path. Technical units are controlled through
+completed `TBL_REPLICA_PARTITIONS` metadata rather than hardcoded names or
+values.
 
 ## Topologies
 
@@ -107,7 +121,8 @@ ARCHIVER, and REPLICA locations.
 - Partition identity is based on high values, not only physical names.
 - ARCHIVER supports RANGE, RANGE-LIST, LIST, LIST-LIST, INTERVAL, and
   INTERVAL-LIST for single-column keys.
-- ARCHIVER and REPLICA use local staging plus partition exchange.
+- ARCHIVER and REPLICA support RANGE, RANGE-LIST, LIST, and LIST-LIST targets
+  and use local staging plus partition exchange.
 - Generated object names are validated before dynamic SQL execution.
 - Destructive operations require an explicit execute switch.
 - Component tables use `TBL_`; component views use `VW_`.

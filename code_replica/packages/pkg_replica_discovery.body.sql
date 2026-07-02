@@ -77,6 +77,113 @@ AS
       );
   END fn_target_subpartition_name;
 
+  PROCEDURE prc_validate_table_setup
+  (
+    p_source_db_link      IN VARCHAR2,
+    p_source_owner        IN VARCHAR2,
+    p_source_table_name   IN VARCHAR2,
+    p_target_owner        IN VARCHAR2,
+    p_target_table_name   IN VARCHAR2,
+    p_partition_method    IN VARCHAR2,
+    p_subpartition_method IN VARCHAR2
+  )
+  IS
+    l_sql                 VARCHAR2(32767);
+    l_link                VARCHAR2(128);
+    l_source_owner        VARCHAR2(128);
+    l_source_table        VARCHAR2(128);
+    l_source_part_method  VARCHAR2(20);
+    l_source_sub_method   VARCHAR2(20);
+    l_source_part_column  VARCHAR2(128);
+    l_source_part_type    VARCHAR2(128);
+    l_source_sub_column   VARCHAR2(128);
+    l_source_sub_type     VARCHAR2(128);
+    l_source_part_count   NUMBER;
+    l_source_sub_count    NUMBER;
+    l_target_part_method  VARCHAR2(20);
+    l_target_sub_method   VARCHAR2(20);
+    l_target_part_column  VARCHAR2(128);
+    l_target_part_type    VARCHAR2(128);
+    l_target_sub_column   VARCHAR2(128);
+    l_target_sub_type     VARCHAR2(128);
+    l_target_part_count   NUMBER;
+    l_target_sub_count    NUMBER;
+  BEGIN
+    l_link := PKG_REPLICA_SQL.fn_assert_simple_name(p_source_db_link);
+    l_source_owner := PKG_REPLICA_SQL.fn_assert_simple_name(p_source_owner);
+    l_source_table := PKG_REPLICA_SQL.fn_assert_simple_name(p_source_table_name);
+
+    l_sql :=
+      'SELECT pt.partitioning_type, NULLIF(pt.subpartitioning_type, ''NONE''), ' ||
+      'pk.column_name, pc.data_type, spk.column_name, spc.data_type, ' ||
+      '(SELECT COUNT(*) FROM all_part_key_columns@' || l_link || ' x ' ||
+      ' WHERE x.owner=pt.owner AND x.name=pt.table_name AND x.object_type=''TABLE''), ' ||
+      '(SELECT COUNT(*) FROM all_subpart_key_columns@' || l_link || ' x ' ||
+      ' WHERE x.owner=pt.owner AND x.name=pt.table_name AND x.object_type=''TABLE'') ' ||
+      'FROM all_part_tables@' || l_link || ' pt ' ||
+      'JOIN all_part_key_columns@' || l_link || ' pk ON pk.owner=pt.owner AND pk.name=pt.table_name ' ||
+      ' AND pk.object_type=''TABLE'' AND pk.column_position=1 ' ||
+      'JOIN all_tab_columns@' || l_link || ' pc ON pc.owner=pk.owner AND pc.table_name=pk.name AND pc.column_name=pk.column_name ' ||
+      'LEFT JOIN all_subpart_key_columns@' || l_link || ' spk ON spk.owner=pt.owner AND spk.name=pt.table_name ' ||
+      ' AND spk.object_type=''TABLE'' AND spk.column_position=1 ' ||
+      'LEFT JOIN all_tab_columns@' || l_link || ' spc ON spc.owner=spk.owner AND spc.table_name=spk.name AND spc.column_name=spk.column_name ' ||
+      'WHERE pt.owner=''' || REPLACE(l_source_owner, '''', '''''') || ''' ' ||
+      'AND pt.table_name=''' || REPLACE(l_source_table, '''', '''''') || '''';
+
+    EXECUTE IMMEDIATE l_sql
+      INTO l_source_part_method, l_source_sub_method, l_source_part_column,
+           l_source_part_type, l_source_sub_column, l_source_sub_type,
+           l_source_part_count, l_source_sub_count;
+
+    SELECT pt.partitioning_type,
+           NULLIF(pt.subpartitioning_type, 'NONE'),
+           pk.column_name,
+           pc.data_type,
+           spk.column_name,
+           spc.data_type,
+           (SELECT COUNT(*) FROM all_part_key_columns x
+             WHERE x.owner=pt.owner AND x.name=pt.table_name AND x.object_type='TABLE'),
+           (SELECT COUNT(*) FROM all_subpart_key_columns x
+             WHERE x.owner=pt.owner AND x.name=pt.table_name AND x.object_type='TABLE')
+      INTO l_target_part_method, l_target_sub_method, l_target_part_column,
+           l_target_part_type, l_target_sub_column, l_target_sub_type,
+           l_target_part_count, l_target_sub_count
+      FROM all_part_tables pt
+      JOIN all_part_key_columns pk
+        ON pk.owner=pt.owner AND pk.name=pt.table_name
+       AND pk.object_type='TABLE' AND pk.column_position=1
+      JOIN all_tab_columns pc
+        ON pc.owner=pk.owner AND pc.table_name=pk.name AND pc.column_name=pk.column_name
+      LEFT JOIN all_subpart_key_columns spk
+        ON spk.owner=pt.owner AND spk.name=pt.table_name
+       AND spk.object_type='TABLE' AND spk.column_position=1
+      LEFT JOIN all_tab_columns spc
+        ON spc.owner=spk.owner AND spc.table_name=spk.name AND spc.column_name=spk.column_name
+     WHERE pt.owner=UPPER(p_target_owner)
+       AND pt.table_name=UPPER(p_target_table_name);
+
+    IF l_source_part_count <> 1 OR l_target_part_count <> 1 THEN
+      RAISE_APPLICATION_ERROR(-20262, 'Exactly one partition key column is required');
+    END IF;
+    IF NVL(l_source_sub_count,0) > 1 OR NVL(l_target_sub_count,0) > 1 THEN
+      RAISE_APPLICATION_ERROR(-20263, 'At most one subpartition key column is supported');
+    END IF;
+    IF l_source_part_method <> p_partition_method OR l_target_part_method <> p_partition_method THEN
+      RAISE_APPLICATION_ERROR(-20264, 'Partition method mismatch for ' || p_source_owner || '.' || p_source_table_name);
+    END IF;
+    IF NVL(l_source_sub_method,'#') <> NVL(p_subpartition_method,'#')
+       OR NVL(l_target_sub_method,'#') <> NVL(p_subpartition_method,'#') THEN
+      RAISE_APPLICATION_ERROR(-20265, 'Subpartition method mismatch for ' || p_source_owner || '.' || p_source_table_name);
+    END IF;
+    IF l_source_part_column <> l_target_part_column OR l_source_part_type <> l_target_part_type THEN
+      RAISE_APPLICATION_ERROR(-20266, 'Partition key column or type mismatch');
+    END IF;
+    IF p_subpartition_method IS NOT NULL
+       AND (l_source_sub_column <> l_target_sub_column OR l_source_sub_type <> l_target_sub_type) THEN
+      RAISE_APPLICATION_ERROR(-20267, 'Subpartition key column or type mismatch');
+    END IF;
+  END prc_validate_table_setup;
+
   PROCEDURE prc_discover
   (
     p_execute           IN VARCHAR2 DEFAULT 'N',
@@ -118,6 +225,23 @@ AS
                    '  p_target_table_name => ' || NVL(l_target_table, '<ALL>')
     );
 
+    FOR c IN
+    (
+      SELECT source_db_link, source_owner, source_table_name,
+             target_owner, target_table_name, partition_method, subpartition_method
+        FROM TBL_REPLICA_TABLES
+       WHERE enabled_flag = 'Y'
+         AND (l_target_owner IS NULL OR target_owner = l_target_owner)
+         AND (l_target_table IS NULL OR target_table_name = l_target_table)
+    ) LOOP
+      prc_validate_table_setup
+      (
+        c.source_db_link, c.source_owner, c.source_table_name,
+        c.target_owner, c.target_table_name,
+        c.partition_method, c.subpartition_method
+      );
+    END LOOP;
+
     l_sql :=
       'SELECT COUNT(*) ' ||
       '  FROM VW_REPLICA_DISCOVERY_PARTITIONS ' ||
@@ -137,7 +261,9 @@ AS
              source_owner,
              source_table_name,
              target_owner,
-             target_table_name
+             target_table_name,
+             partition_method,
+             subpartition_method
         FROM vw_replica_discovery_partitions
        WHERE (l_target_owner IS NULL OR target_owner = l_target_owner)
          AND (l_target_table IS NULL OR target_table_name = l_target_table)
@@ -162,7 +288,10 @@ AS
         l_add_sql :=
           'ALTER TABLE ' || fn_qualified_table(t.target_owner, t.target_table_name) ||
           ' ADD PARTITION ' || PKG_REPLICA_SQL.fn_assert_simple_name(p.partition_name) ||
-          ' VALUES LESS THAN (' || p.partition_high_value || ')';
+          CASE t.partition_method
+            WHEN 'RANGE' THEN ' VALUES LESS THAN (' || p.partition_high_value || ')'
+            WHEN 'LIST' THEN ' VALUES (' || p.partition_high_value || ')'
+          END;
 
         l_rows := PKG_REPLICA_SQL.fn_run_sql(l_log_id, l_add_sql, l_execute_flag);
 

@@ -74,11 +74,21 @@ REPLICA reads qualified ARCHIVER metadata and physical archive targets through a
 real DB link, loads replica targets, performs quality checks, and identifies
 local purge candidates. REPLICA purge remains preview-first.
 
+Each `TBL_REPLICA_TABLES` row carries its own real `SOURCE_DB_LINK`.
+`VW_REPLICA_SOURCE_PARTITIONS` reads remote ARCHIVER metadata dynamically, so a
+single REPLICA can consume tables from multiple ARCHIVER databases without
+schema-level source synonyms.
+
 ARCHIVER supports single-column `RANGE` and `LIST` partition keys with optional
 single-column `LIST` subpartitioning. `INTERVAL` sources use the `RANGE`
 execution path. Eligibility is configured with `IMPORT_EXPRESSION` and
 `TRUNCATE_EXPRESSION`, using raw Oracle `HIGH_VALUE` placeholders, so DATE,
 NUMBER, and VARCHAR2 keys are supported without type-specific configuration.
+
+REPLICA supports the same partition methods and key types. Its single
+`REPLICATE_EXPRESSION` defines desired presence: `Y` loads or retains a unit,
+`N` leaves a new unit unloaded and makes an already qualified copy eligible for
+local purge, and `ERROR` never executes work.
 
 ## Code Layout
 
@@ -241,6 +251,8 @@ END;
 - `SOURCE_DB_LINK` never uses `LOCAL`, `NONE`, or `NULL`.
 - Technical partitions and boundary values are excluded through completed
   `TBL_ARCHIVER_PARTITIONS` metadata, not hardcoded names or values.
+- REPLICA uses completed `TBL_REPLICA_PARTITIONS` metadata for the same
+  technical-boundary convention.
 - Source truncate and local replica purge are preview-first.
 - `RESET_CONFIRMATION=RESET_ALL` is required before schema reset drops users.
 - Code installation, demo seeds, tests, mail metadata, and ACL setup are separate
