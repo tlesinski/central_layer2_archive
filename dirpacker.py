@@ -71,7 +71,11 @@ def pack(source_dir, output_file, include_all=False):
 
                 out.write(f"{prefix}[FILE] {rel_path}\n".encode('utf-8'))
                 out.write(f"{prefix}[SIZE] {len(content)}\n".encode('utf-8'))
+                out.write(f"{prefix}[BEGIN]\n".encode('utf-8'))
                 out.write(content)
+                if not content.endswith(b'\n'):
+                    out.write(b'\n')
+                out.write(f"{prefix}[END]\n".encode('utf-8'))
                 packed_count += 1
                 print(f"  [PACK] {rel_path} ({len(content)} bytes)")
 
@@ -83,6 +87,18 @@ def pack(source_dir, output_file, include_all=False):
                 print(f"  [DIR]  {d} (empty)")
 
     print(f"\nDone. Packed {packed_count} files into '{output_file}'.")
+
+
+def _read_until_end(f, end_marker):
+    parts = []
+    while True:
+        chunk = f.readline()
+        if not chunk:
+            break
+        if chunk.rstrip(b'\r\n') == end_marker:
+            break
+        parts.append(chunk)
+    return b''.join(parts)
 
 
 def unpack(input_file, output_dir):
@@ -97,49 +113,48 @@ def unpack(input_file, output_dir):
             print("Error: empty file.", file=sys.stderr)
             sys.exit(1)
 
-        header = first_line.decode('utf-8').rstrip('\r\n')
+        header = first_line.decode('utf-8-sig').rstrip('\r\n')
+        if not header.startswith('[DIRPCK] '):
+            print("Error: invalid format — missing [DIRPCK] header.", file=sys.stderr)
+            sys.exit(1)
 
-        if header.startswith('[DIRPCK] '):
-            prefix = header[9:]
-        else:
-            prefix = ''
-            f.seek(0)
+        prefix = header[9:]
+        file_tag = f'{prefix}[FILE] '
+        dir_tag = f'{prefix}[DIR] '
+        size_tag = f'{prefix}[SIZE] '
+        end_tag_bytes = f'{prefix}[END]'.encode('utf-8')
 
         while True:
             line = f.readline()
             if not line:
                 break
 
-            line = line.decode('utf-8').rstrip('\r\n')
-
-            if not line:
+            line_str = line.decode('utf-8').rstrip('\r\n')
+            if not line_str:
                 continue
 
-            dir_tag = f'{prefix}[DIR] '
-            file_tag = f'{prefix}[FILE] '
-            size_tag = f'{prefix}[SIZE] '
-
-            if line.startswith(dir_tag):
-                rel_path = line[len(dir_tag):]
+            if line_str.startswith(dir_tag):
+                rel_path = line_str[len(dir_tag):]
                 target = os.path.join(output_dir, rel_path)
                 os.makedirs(target, exist_ok=True)
                 print(f"  [DIR]  {rel_path}")
 
-            elif line.startswith(file_tag):
-                rel_path = line[len(file_tag):]
+            elif line_str.startswith(file_tag):
+                rel_path = line_str[len(file_tag):]
 
                 size_line = f.readline()
-                if not size_line:
-                    print(f"Error: expected [SIZE] for '{rel_path}'", file=sys.stderr)
-                    break
-                size_line = size_line.decode('utf-8').rstrip('\r\n')
+                expected_size = None
+                if size_line:
+                    sl = size_line.decode('utf-8').rstrip('\r\n')
+                    if sl.startswith(size_tag):
+                        expected_size = int(sl[len(size_tag):])
 
-                if not size_line.startswith(size_tag):
-                    print(f"Error: expected [SIZE], got '{size_line}'", file=sys.stderr)
-                    break
+                begin_line = f.readline()
 
-                size = int(size_line[len(size_tag):])
-                content = f.read(size)
+                content = _read_until_end(f, end_tag_bytes)
+
+                if content.endswith(b'\n') and expected_size is not None and len(content) > expected_size:
+                    content = content[:-1]
 
                 target = os.path.join(output_dir, rel_path)
                 os.makedirs(os.path.dirname(target), exist_ok=True)
@@ -148,10 +163,11 @@ def unpack(input_file, output_dir):
                     fh.write(content)
 
                 count += 1
-                print(f"  [UNPACK] {rel_path} ({size} bytes)")
+                extra = f" (expected {expected_size})" if expected_size is not None and len(content) != expected_size else ""
+                print(f"  [UNPACK] {rel_path} ({len(content)} bytes){extra}")
 
             else:
-                print(f"Warning: unknown marker '{line}'", file=sys.stderr)
+                print(f"Warning: unknown marker '{line_str}'", file=sys.stderr)
 
     print(f"\nDone. Unpacked {count} files into '{output_dir}'.")
 
