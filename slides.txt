@@ -371,6 +371,8 @@ Use it when archived data must be copied further downstream:
 
 REPLICA reads ARCHIVER through a real DB link.
 It does not need direct access to CLIENT schemas or AGENT.
+Each TBL_REPLICA_TABLES row can reference a different ARCHIVER DB link.
+VW_REPLICA_SOURCE_PARTITIONS reads remote metadata dynamically; no synonym is used.
 
 Base system can stop at:
   CLIENT -> AGENT -> ARCHIVER
@@ -387,7 +389,8 @@ DISCOVER:
   - create/align REPLICA metadata and targets
 
 REPLICATE:
-  - load pending units from ARCHIVER targets
+  - load pending units where REPLICATE_EXPRESSION returns Y
+  - use raw HIGH_VALUE predicates for RANGE or LIST keys
   - set REPLICA_STATUS and TARGET_ROW_COUNT
 
 QUALITY:
@@ -395,8 +398,12 @@ QUALITY:
   - set QUALITY_STATUS
 
 PURGE:
-  - select quality-passed local purge candidates
+  - select quality-passed local units where REPLICATE_EXPRESSION returns N
   - truncate local REPLICA target units in preview/execute mode
+
+Supported structures and key types:
+  RANGE / RANGE-LIST / LIST / LIST-LIST
+  DATE / NUMBER / VARCHAR2
 
 
 ---
@@ -414,6 +421,9 @@ Configuration row:
   SOURCE_TABLE_NAME  = TBL_ARCHIVER_CLIENT1_SUBPART
   TARGET_OWNER       = PARTMGR_REPLICA
   TARGET_TABLE_NAME  = TBL_REPLICA_CLIENT1_SUBPART
+  PARTITION_METHOD   = RANGE
+  SUBPARTITION_METHOD = LIST
+  REPLICATE_EXPRESSION = <partition_high_value> >= DATE '2026-01-01'
   ENABLED_FLAG       = Y
 
 REPLICA depends on ARCHIVER metadata and archived target data.

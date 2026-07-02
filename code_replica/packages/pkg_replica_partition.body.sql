@@ -65,19 +65,53 @@ AS
     RETURN PKG_REPLICA_SQL.fn_assert_simple_name(p_tablespace_name);
   END fn_normalize_tablespace_name;
 
-  FUNCTION fn_high_value_to_date(p_high_value IN VARCHAR2) RETURN DATE IS
-    l_date DATE;
+  FUNCTION fn_partition_method
+  (
+    p_owner IN VARCHAR2,
+    p_table IN VARCHAR2
+  )
+  RETURN VARCHAR2
+  IS
+    l_method VARCHAR2(20);
   BEGIN
-    IF p_high_value IS NULL OR UPPER(TRIM(p_high_value)) = 'MAXVALUE' THEN
-      RETURN NULL;
+    SELECT partitioning_type
+      INTO l_method
+      FROM all_part_tables
+     WHERE owner = UPPER(p_owner)
+       AND table_name = UPPER(p_table);
+
+    RETURN l_method;
+  END fn_partition_method;
+
+  FUNCTION fn_partition_predicate
+  (
+    p_key_column      IN VARCHAR2,
+    p_method          IN VARCHAR2,
+    p_high_value      IN VARCHAR2,
+    p_prev_high_value IN VARCHAR2 DEFAULT NULL
+  )
+  RETURN VARCHAR2
+  IS
+    l_key VARCHAR2(128) := PKG_REPLICA_SQL.fn_assert_simple_name(p_key_column);
+  BEGIN
+    IF p_high_value IS NULL OR TRIM(p_high_value) IS NULL THEN
+      RAISE_APPLICATION_ERROR(-20241, 'Partition HIGH_VALUE is required');
     END IF;
 
-    EXECUTE IMMEDIATE 'SELECT ' || p_high_value || ' FROM dual' INTO l_date;
-    RETURN l_date;
-  EXCEPTION
-    WHEN OTHERS THEN
-      RETURN NULL;
-  END fn_high_value_to_date;
+    IF p_method = 'RANGE' THEN
+      RETURN CASE
+               WHEN p_prev_high_value IS NULL THEN
+                 l_key || ' < (' || p_high_value || ')'
+               ELSE
+                 l_key || ' >= (' || p_prev_high_value || ') AND ' ||
+                 l_key || ' < (' || p_high_value || ')'
+             END;
+    ELSIF p_method = 'LIST' THEN
+      RETURN l_key || ' IN (' || p_high_value || ')';
+    END IF;
+
+    RAISE_APPLICATION_ERROR(-20244, 'Unsupported partition method: ' || p_method);
+  END fn_partition_predicate;
 
   FUNCTION fn_first_partition_key_column
   (
@@ -231,26 +265,18 @@ AS
   IS
     l_sql        CLOB;
     l_key_column VARCHAR2(128);
-    l_high_date  DATE;
-    l_low_date   DATE;
+    l_method     VARCHAR2(20);
+    l_predicate  VARCHAR2(32767);
   BEGIN
     l_key_column := fn_first_partition_key_column(p_target_owner, p_target_table);
-    l_high_date := fn_high_value_to_date(p_high_value);
-    l_low_date := fn_high_value_to_date(p_prev_high_value);
-
-    IF l_high_date IS NULL THEN
-      RAISE_APPLICATION_ERROR(-20048, 'REPLICA EXCHANGE requires a DATE high value for target partition');
-    END IF;
+    l_method := fn_partition_method(p_target_owner, p_target_table);
+    l_predicate := fn_partition_predicate(l_key_column, l_method, p_high_value, p_prev_high_value);
 
     l_sql := 'INSERT /*+ APPEND PARALLEL(' || p_parallel_degree || ') */ INTO ' ||
              fn_qualified_table(p_target_owner, p_staging_table_name) ||
              ' SELECT * FROM ' ||
              fn_qualified_source_table(p_source_owner, p_source_table, p_source_db_link) ||
-             ' WHERE ' || l_key_column || ' < DATE ''' || TO_CHAR(l_high_date, 'YYYY-MM-DD') || '''';
-
-    IF l_low_date IS NOT NULL THEN
-      l_sql := l_sql || ' AND ' || l_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
-    END IF;
+             ' WHERE ' || l_predicate;
 
     p_rows_loaded := PKG_REPLICA_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
   END prc_load_exchange_staging;
@@ -275,17 +301,15 @@ AS
     l_sql             CLOB;
     l_part_key_column VARCHAR2(128);
     l_sub_key_column  VARCHAR2(128);
-    l_high_date       DATE;
-    l_low_date        DATE;
+    l_part_method     VARCHAR2(20);
+    l_predicate       VARCHAR2(32767);
   BEGIN
     l_part_key_column := fn_first_partition_key_column(p_target_owner, p_target_table);
     l_sub_key_column := fn_first_subpartition_key_column(p_target_owner, p_target_table);
-    l_high_date := fn_high_value_to_date(p_partition_high_value);
-    l_low_date := fn_high_value_to_date(p_prev_partition_high_value);
-
-    IF l_high_date IS NULL THEN
-      RAISE_APPLICATION_ERROR(-20049, 'REPLICA EXCHANGE SUBPARTITION requires a DATE partition high value');
-    END IF;
+    l_part_method := fn_partition_method(p_target_owner, p_target_table);
+    l_predicate := fn_partition_predicate
+                   (l_part_key_column, l_part_method, p_partition_high_value,
+                    p_prev_partition_high_value);
 
     IF p_subpartition_high_value IS NULL OR TRIM(p_subpartition_high_value) = '#' THEN
       RAISE_APPLICATION_ERROR(-20050, 'REPLICA EXCHANGE SUBPARTITION requires a list subpartition high value');
@@ -295,12 +319,8 @@ AS
              fn_qualified_table(p_target_owner, p_staging_table_name) ||
              ' SELECT * FROM ' ||
              fn_qualified_source_table(p_source_owner, p_source_table, p_source_db_link) ||
-             ' WHERE ' || l_part_key_column || ' < DATE ''' || TO_CHAR(l_high_date, 'YYYY-MM-DD') || '''' ||
+             ' WHERE ' || l_predicate ||
              ' AND ' || l_sub_key_column || ' IN (' || p_subpartition_high_value || ')';
-
-    IF l_low_date IS NOT NULL THEN
-      l_sql := l_sql || ' AND ' || l_part_key_column || ' >= DATE ''' || TO_CHAR(l_low_date, 'YYYY-MM-DD') || '''';
-    END IF;
 
     p_rows_loaded := PKG_REPLICA_SQL.fn_run_sql(p_log_id, l_sql, p_execute);
   END prc_load_exchange_staging_subpartition;

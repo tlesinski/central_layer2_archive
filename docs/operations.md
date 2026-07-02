@@ -28,6 +28,20 @@ FROM TBL_REPLICA_TABLES;
 
 Every listed source link must exist in `USER_DB_LINKS`.
 
+REPLICA table setup defines the expected structure and desired-presence rule:
+
+```sql
+SELECT partition_method,
+       subpartition_method,
+       replicate_expression
+FROM TBL_REPLICA_TABLES;
+```
+
+`REPLICATE_FLAG='Y'` selects pending units for replication. The inverse
+`REPLICATE_FLAG='N'` selects already replicated and quality-passed units for
+purge preview. `ERROR: ...` is never executed. Register technical boundary
+units in `TBL_REPLICA_PARTITIONS` with completed statuses.
+
 ARCHIVER table setup also defines partition methods and expressions:
 
 ```sql

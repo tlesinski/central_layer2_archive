@@ -16,6 +16,17 @@ AS
     ------------------------------------------------------------------------------
      1.0        2026-06-01   Tomasz Lesinski    Initial version
   */
+  PROCEDURE prc_validate_table_setup
+  (
+    p_source_db_link      IN VARCHAR2,
+    p_source_owner        IN VARCHAR2,
+    p_source_table_name   IN VARCHAR2,
+    p_target_owner        IN VARCHAR2,
+    p_target_table_name   IN VARCHAR2,
+    p_partition_method    IN VARCHAR2,
+    p_subpartition_method IN VARCHAR2
+  );
+
   PROCEDURE prc_discover
   (
     p_execute           IN VARCHAR2 DEFAULT 'N',

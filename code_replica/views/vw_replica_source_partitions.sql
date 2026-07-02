@@ -1,59 +1,74 @@
 CREATE OR REPLACE VIEW VW_REPLICA_SOURCE_PARTITIONS
 AS
-WITH l2_units AS (
-  SELECT rt.source_db_link,
-         rt.source_owner,
-         rt.source_table_name,
-         rt.target_owner,
-         rt.target_table_name,
-         rt.days_online,
-         rt.enabled_flag,
-         p.archive_unit_type,
-         p.partition_name AS source_partition_name,
-         p.subpartition_name AS source_subpartition_name,
-         p.partition_name,
-         p.subpartition_name,
-         p.partition_high_value,
-         p.subpartition_high_value,
-         p.prev_partition_high_value,
-         FN_REPLICA_HIGH_VALUE_DATE(p.partition_high_value) AS partition_high_value_date
-    FROM tbl_replica_tables rt
-    JOIN REPLICA_ARCHIVER_PARTITIONS_SRC p
-      ON p.target_owner = rt.source_owner
-     AND p.target_table_name = rt.source_table_name
-     AND p.archive_status = 'Y'
-     AND p.quality_status = 'Y'
-   WHERE rt.enabled_flag = 'Y'
-     AND UPPER(TRIM(p.partition_high_value)) <> 'MAXVALUE'
-),
-base_dates AS (
+WITH cfg AS
+(
   SELECT source_db_link,
          source_owner,
          source_table_name,
-         MAX(partition_high_value_date) AS base_date
-    FROM l2_units
-   GROUP BY source_db_link, source_owner, source_table_name
+         target_owner,
+         target_table_name,
+         partition_method,
+         subpartition_method,
+         replicate_expression
+    FROM TBL_REPLICA_TABLES
+   WHERE enabled_flag = 'Y'
+),
+src AS
+(
+  SELECT c.source_db_link,
+         c.source_owner,
+         c.source_table_name,
+         c.target_owner,
+         c.target_table_name,
+         c.partition_method,
+         c.subpartition_method,
+         c.replicate_expression,
+         x.archive_unit_type,
+         x.partition_name AS source_partition_name,
+         NVL(x.subpartition_name, '#') AS source_subpartition_name,
+         x.partition_name,
+         NVL(x.subpartition_name, '#') AS subpartition_name,
+         x.partition_high_value,
+         NVL(x.subpartition_high_value, '#') AS subpartition_high_value,
+         x.prev_partition_high_value
+    FROM cfg c,
+         XMLTABLE
+         (
+           '/ROWSET/ROW'
+           PASSING DBMS_XMLGEN.GETXMLTYPE
+           (
+             'SELECT archive_unit_type, partition_name, subpartition_name, ' ||
+             'partition_high_value, subpartition_high_value, prev_partition_high_value ' ||
+             'FROM TBL_ARCHIVER_PARTITIONS@' ||
+             DBMS_ASSERT.SIMPLE_SQL_NAME(c.source_db_link) ||
+             ' WHERE target_owner = ''' || REPLACE(UPPER(c.source_owner), '''', '''''') || '''' ||
+             ' AND target_table_name = ''' || REPLACE(UPPER(c.source_table_name), '''', '''''') || '''' ||
+             ' AND archive_status = ''Y'' AND quality_status = ''Y'''
+           )
+           COLUMNS
+             archive_unit_type         VARCHAR2(20)   PATH 'ARCHIVE_UNIT_TYPE',
+             partition_name            VARCHAR2(128)  PATH 'PARTITION_NAME',
+             subpartition_name         VARCHAR2(128)  PATH 'SUBPARTITION_NAME',
+             partition_high_value      VARCHAR2(4000) PATH 'PARTITION_HIGH_VALUE',
+             subpartition_high_value   VARCHAR2(4000) PATH 'SUBPARTITION_HIGH_VALUE',
+             prev_partition_high_value VARCHAR2(4000) PATH 'PREV_PARTITION_HIGH_VALUE'
+         ) x
 )
-SELECT u.source_db_link,
-       u.source_owner,
-       u.source_table_name,
-       u.target_owner,
-       u.target_table_name,
-       u.days_online,
-       b.base_date,
-       b.base_date - u.days_online AS cutoff_date,
-       u.archive_unit_type,
-       u.source_partition_name,
-       u.source_subpartition_name,
-       u.partition_name,
-       u.subpartition_name,
-       u.partition_high_value,
-       u.subpartition_high_value,
-       u.prev_partition_high_value,
-       u.partition_high_value_date
-  FROM l2_units u
-  JOIN base_dates b
-    ON b.source_db_link = u.source_db_link
-   AND b.source_owner = u.source_owner
-   AND b.source_table_name = u.source_table_name;
+SELECT source_db_link,
+       source_owner,
+       source_table_name,
+       target_owner,
+       target_table_name,
+       partition_method,
+       subpartition_method,
+       replicate_expression,
+       archive_unit_type,
+       source_partition_name,
+       source_subpartition_name,
+       partition_name,
+       subpartition_name,
+       partition_high_value,
+       subpartition_high_value,
+       prev_partition_high_value
+  FROM src;
 /

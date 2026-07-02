@@ -606,7 +606,7 @@ def add_replica_flow_diagram(slide, left, top, width, height):
     _add_rounded_box(slide, x2, mid_y - box_h//2, box_w, box_h,
                      REPL_C, "REPLICA\nMetadata + Staging", font_size=12)
     _add_textbox(slide, x2, mid_y + box_h//2 + Inches(0.05), box_w, Inches(0.25),
-                 "REPLICA_ARCHIVER_PARTITIONS_SRC", font_size=8, color=GREY,
+                 "dynamic metadata per SOURCE_DB_LINK", font_size=8, color=GREY,
                  alignment=PP_ALIGN.CENTER)
 
     _add_arrow_right(slide, x2 + box_w + Inches(0.1), mid_y - Inches(0.15),
@@ -1184,7 +1184,7 @@ add_pipeline_flow(slide, Inches(1.0), Inches(5.5), Inches(11), [
     ("DISCOVER", AGENT_C), ("REPLICATE", REPL_C), ("QUALITY", ORANGE), ("PURGE", RED)
 ], arrow_color=NAVY)
 add_bullets(slide, Inches(0.6), Inches(3.8), Inches(12), Inches(1.5), [
-    "REPLICA reads qualified ARCHIVER metadata via REPLICA_ARCHIVER_PARTITIONS_SRC (synonym through DB link)",
+    "REPLICA reads ARCHIVER metadata dynamically per TBL_REPLICA_TABLES.SOURCE_DB_LINK",
     "Uses staging + EXCHANGE PARTITION (same pattern as ARCHIVER)",
     "PURGE operates only on local REPLICA targets -- does not affect ARCHIVER or CLIENT",
 ], font_size=14)
@@ -1224,8 +1224,8 @@ slide_with_code(
         "  \u2022 ARCHIVER metadata (TBL_ARCHIVER_PARTITIONS)",
         "  \u2022 Physical data in ARCHIVER target tables",
         "",
-        "DAYS_ONLINE = 365",
-        "  \u2192 replicated data is retained for one year"
+        "REPLICATE_EXPRESSION defines desired presence",
+        "  Y = replicate/keep, N = purge candidate, ERROR = no execution"
     ],
     "-- TBL_REPLICA_TABLES row\n"
     "INSERT INTO TBL_REPLICA_TABLES (\n"
@@ -1235,7 +1235,9 @@ slide_with_code(
     "  TARGET_OWNER,\n"
     "  TARGET_TABLE_NAME,\n"
     "  PARALLEL_DEGREE,\n"
-    "  DAYS_ONLINE\n"
+    "  PARTITION_METHOD,\n"
+    "  SUBPARTITION_METHOD,\n"
+    "  REPLICATE_EXPRESSION\n"
     ") VALUES (\n"
     "  'ARCHIVER_LINK',\n"
     "  'PARTMGR_ARCHIVER',\n"
@@ -1243,9 +1245,11 @@ slide_with_code(
     "  'PARTMGR_REPLICA',\n"
     "  'TBL_REPLICA_CLIENT1_SUBPART',\n"
     "  4,\n"
-    "  365\n"
+    "  'RANGE',\n"
+    "  'LIST',\n"
+    "  '<partition_high_value> >= DATE ''2026-01-01'''\n"
     ");",
-    note="REPLICA_ARCHIVER_PARTITIONS_SRC is a synonym pointing to TBL_ARCHIVER_PARTITIONS@ARCHIVER_LINK"
+    note="VW_REPLICA_SOURCE_PARTITIONS queries TBL_ARCHIVER_PARTITIONS through each configured DB link"
 )
 
 # ── SLIDE 28: REPLICA Execution ──
