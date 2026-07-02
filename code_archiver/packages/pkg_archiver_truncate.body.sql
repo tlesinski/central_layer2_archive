@@ -104,6 +104,11 @@ AS
        ORDER BY source_db_link, source_owner, source_table_name
     ) LOOP
       l_tables := l_tables + 1;
+      PKG_ARCHIVER_LOG.prc_log_table_context
+      (
+        l_run_id, 'TRUNCATE', t.source_db_link, t.source_owner, t.source_table_name,
+        t.target_owner, t.target_table_name
+      );
       l_table_summary := NULL;
       l_agent_procedure := fn_qualified_agent_procedure(t.source_db_link);
       l_sql := 'BEGIN ' || l_agent_procedure || '(:1, :2, :3, :4, :5, :6); END;';

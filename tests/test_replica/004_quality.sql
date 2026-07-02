@@ -34,6 +34,13 @@ BEGIN
     RAISE_APPLICATION_ERROR(-20611, 'REPLICA inverse expression did not produce purge candidates');
   END IF;
 
+  PKG_REPLICA_PURGE.prc_purge
+  (
+    p_execute           => 'N',
+    p_target_owner      => NULL,
+    p_target_table_name => NULL
+  );
+
   UPDATE TBL_REPLICA_TABLES
      SET REPLICATE_EXPRESSION = 'INVALID SQL'
    WHERE SOURCE_TABLE_NAME = 'TBL_ARCHIVER_CLIENT1_LIST_NUMBER';
@@ -53,6 +60,44 @@ BEGIN
      SET REPLICATE_EXPRESSION = '10 IN (<partition_high_value>) OR 20 IN (<partition_high_value>)'
    WHERE SOURCE_TABLE_NAME = 'TBL_ARCHIVER_CLIENT1_LIST_NUMBER';
   COMMIT;
+
+  SELECT COUNT(DISTINCT r.run_type)
+    INTO l_count
+    FROM TBL_REPLICA_RUNS r
+    JOIN TBL_REPLICA_PROCESS_LOG l
+      ON l.mstr_log_id = r.mstr_log_id
+   WHERE (r.run_type, r.run_id) IN
+         (
+           SELECT run_type, MAX(run_id)
+             FROM TBL_REPLICA_RUNS
+            WHERE run_type IN ('DISCOVER', 'REPLICATE', 'QUALITY', 'PURGE')
+            GROUP BY run_type
+         )
+     AND DBMS_LOB.INSTR(l.log_json, '"type":"TABLE_CONTEXT"') > 0;
+
+  IF l_count != 4 THEN
+    RAISE_APPLICATION_ERROR(-20614, 'REPLICA expected TABLE_CONTEXT logs for 4 processes, got ' || l_count);
+  END IF;
+
+  SELECT COUNT(*)
+    INTO l_count
+    FROM TBL_REPLICA_PROCESS_LOG
+   WHERE DBMS_LOB.INSTR(log_msg, 'RANGE / ORDER_DATE / DATE') > 0
+     AND DBMS_LOB.INSTR(log_msg, '| SUBPARTITION | NONE') > 0;
+
+  IF l_count = 0 THEN
+    RAISE_APPLICATION_ERROR(-20615, 'REPLICA RANGE table context was not logged');
+  END IF;
+
+  SELECT COUNT(*)
+    INTO l_count
+    FROM TBL_REPLICA_PROCESS_LOG
+   WHERE DBMS_LOB.INSTR(log_msg, 'LIST / REGION_CODE / VARCHAR2') > 0
+     AND DBMS_LOB.INSTR(log_msg, 'LIST / STATUS_CODE / VARCHAR2') > 0;
+
+  IF l_count = 0 THEN
+    RAISE_APPLICATION_ERROR(-20616, 'REPLICA LIST-LIST table context was not logged');
+  END IF;
 
   SELECT COUNT(*)
     INTO l_count

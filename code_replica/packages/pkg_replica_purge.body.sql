@@ -66,6 +66,11 @@ AS
          AND (l_target_table IS NULL OR target_table_name = l_target_table)
        ORDER BY source_db_link, source_owner, source_table_name
     ) LOOP
+      PKG_REPLICA_LOG.prc_log_table_context
+      (
+        l_run_id, 'PURGE', t.source_db_link, t.source_owner, t.source_table_name,
+        t.target_owner, t.target_table_name
+      );
       l_table_summary := NULL;
 
       FOR r IN (

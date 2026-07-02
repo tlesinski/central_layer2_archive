@@ -39,6 +39,17 @@ AS
     p_log_sttus IN VARCHAR2 DEFAULT PKG_REPLICA_LOGGING.g_sttus_running_const
   );
 
+  PROCEDURE prc_log_table_context
+  (
+    p_run_id            IN NUMBER,
+    p_process_name      IN VARCHAR2,
+    p_source_db_link    IN VARCHAR2,
+    p_source_owner      IN VARCHAR2,
+    p_source_table_name IN VARCHAR2,
+    p_target_owner      IN VARCHAR2,
+    p_target_table_name IN VARCHAR2
+  );
+
   PROCEDURE prc_log_error_stack
   (
     p_run_id IN NUMBER

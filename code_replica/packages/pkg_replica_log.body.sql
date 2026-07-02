@@ -116,6 +116,103 @@ AS
     );
   END prc_log_message;
 
+  PROCEDURE prc_log_table_context
+  (
+    p_run_id            IN NUMBER,
+    p_process_name      IN VARCHAR2,
+    p_source_db_link    IN VARCHAR2,
+    p_source_owner      IN VARCHAR2,
+    p_source_table_name IN VARCHAR2,
+    p_target_owner      IN VARCHAR2,
+    p_target_table_name IN VARCHAR2
+  )
+  IS
+    l_partition_method    VARCHAR2(20);
+    l_partition_key       VARCHAR2(128);
+    l_partition_type      VARCHAR2(128);
+    l_subpartition_method VARCHAR2(20);
+    l_subpartition_key    VARCHAR2(128);
+    l_subpartition_type   VARCHAR2(128);
+    l_message             CLOB;
+
+    FUNCTION fn_context_box(p_rows IN CLOB) RETURN CLOB IS
+      l_formatted CLOB;
+      l_box_start PLS_INTEGER;
+    BEGIN
+      l_formatted := PKG_REPLICA_SQL.fn_format_table
+                     (
+                       p_columns       => 'ATTRIBUTE|VALUE',
+                       p_rows          => p_rows,
+                       p_max_col_width => 120,
+                       p_box_style     => 'SIMPLE'
+                     );
+      l_box_start := DBMS_LOB.INSTR(l_formatted, '+');
+      RETURN DBMS_LOB.SUBSTR(l_formatted, 32767, l_box_start);
+    END fn_context_box;
+  BEGIN
+    SELECT pt.partitioning_type,
+           pk.column_name,
+           pc.data_type,
+           NULLIF(pt.subpartitioning_type, 'NONE'),
+           spk.column_name,
+           spc.data_type
+      INTO l_partition_method,
+           l_partition_key,
+           l_partition_type,
+           l_subpartition_method,
+           l_subpartition_key,
+           l_subpartition_type
+      FROM all_part_tables pt
+      JOIN all_part_key_columns pk
+        ON pk.owner = pt.owner
+       AND pk.name = pt.table_name
+       AND pk.object_type = 'TABLE'
+       AND pk.column_position = 1
+      JOIN all_tab_columns pc
+        ON pc.owner = pk.owner
+       AND pc.table_name = pk.name
+       AND pc.column_name = pk.column_name
+      LEFT JOIN all_subpart_key_columns spk
+        ON spk.owner = pt.owner
+       AND spk.name = pt.table_name
+       AND spk.object_type = 'TABLE'
+       AND spk.column_position = 1
+      LEFT JOIN all_tab_columns spc
+        ON spc.owner = spk.owner
+       AND spc.table_name = spk.name
+       AND spc.column_name = spk.column_name
+     WHERE pt.owner = UPPER(p_target_owner)
+       AND pt.table_name = UPPER(p_target_table_name);
+
+    l_message := TO_CLOB('TABLE CONTEXT:') || CHR(10) ||
+                 fn_context_box
+                 (
+                     'PROCESS|' || UPPER(p_process_name) || CHR(10) ||
+                     'SOURCE|' || UPPER(p_source_db_link) || '.' || UPPER(p_source_owner) || '.' || UPPER(p_source_table_name) || CHR(10) ||
+                     'TARGET|' || UPPER(p_target_owner) || '.' || UPPER(p_target_table_name) || CHR(10) ||
+                     'PARTITION|' || l_partition_method || ' / ' || l_partition_key || ' / ' || l_partition_type || CHR(10) ||
+                     'SUBPARTITION|' ||
+                       CASE
+                         WHEN l_subpartition_method IS NULL THEN 'NONE'
+                         ELSE l_subpartition_method || ' / ' || l_subpartition_key || ' / ' || l_subpartition_type
+                       END || CHR(10)
+                 );
+
+    prc_log_message(p_run_id, l_message, 'TABLE_CONTEXT');
+  EXCEPTION
+    WHEN OTHERS THEN
+      l_message := TO_CLOB('TABLE CONTEXT:') || CHR(10) ||
+                   fn_context_box
+                   (
+                       'PROCESS|' || UPPER(p_process_name) || CHR(10) ||
+                       'SOURCE|' || UPPER(p_source_db_link) || '.' || UPPER(p_source_owner) || '.' || UPPER(p_source_table_name) || CHR(10) ||
+                       'TARGET|' || UPPER(p_target_owner) || '.' || UPPER(p_target_table_name) || CHR(10) ||
+                       'PARTITION|UNAVAILABLE: ' || REPLACE(SQLERRM, '|', '/') || CHR(10) ||
+                       'SUBPARTITION|UNAVAILABLE' || CHR(10)
+                   );
+      prc_log_message(p_run_id, l_message, 'TABLE_CONTEXT');
+  END prc_log_table_context;
+
   PROCEDURE prc_log_error_stack
   (
     p_run_id IN NUMBER

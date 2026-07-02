@@ -67,6 +67,44 @@ BEGIN
     RAISE_APPLICATION_ERROR(-20575, 'ARCHIVER has invalid import expressions: ' || l_count);
   END IF;
 
+  SELECT COUNT(DISTINCT r.run_type)
+    INTO l_count
+    FROM TBL_ARCHIVER_RUNS r
+    JOIN TBL_ARCHIVER_PROCESS_LOG l
+      ON l.mstr_log_id = r.mstr_log_id
+   WHERE (r.run_type, r.run_id) IN
+         (
+           SELECT run_type, MAX(run_id)
+             FROM TBL_ARCHIVER_RUNS
+            WHERE run_type IN ('DISCOVER', 'ARCHIVE', 'QUALITY', 'TRUNCATE')
+            GROUP BY run_type
+         )
+     AND DBMS_LOB.INSTR(l.log_json, '"type":"TABLE_CONTEXT"') > 0;
+
+  IF l_count != 4 THEN
+    RAISE_APPLICATION_ERROR(-20576, 'ARCHIVER expected TABLE_CONTEXT logs for 4 processes, got ' || l_count);
+  END IF;
+
+  SELECT COUNT(*)
+    INTO l_count
+    FROM TBL_ARCHIVER_PROCESS_LOG
+   WHERE DBMS_LOB.INSTR(log_msg, 'RANGE / ORDER_DATE / DATE') > 0
+     AND DBMS_LOB.INSTR(log_msg, '| SUBPARTITION | NONE') > 0;
+
+  IF l_count = 0 THEN
+    RAISE_APPLICATION_ERROR(-20577, 'ARCHIVER RANGE table context was not logged');
+  END IF;
+
+  SELECT COUNT(*)
+    INTO l_count
+    FROM TBL_ARCHIVER_PROCESS_LOG
+   WHERE DBMS_LOB.INSTR(log_msg, 'LIST / REGION_CODE / VARCHAR2') > 0
+     AND DBMS_LOB.INSTR(log_msg, 'LIST / STATUS_CODE / VARCHAR2') > 0;
+
+  IF l_count = 0 THEN
+    RAISE_APPLICATION_ERROR(-20578, 'ARCHIVER LIST-LIST table context was not logged');
+  END IF;
+
   SELECT COUNT(*)
     INTO l_count
     FROM USER_OBJECTS

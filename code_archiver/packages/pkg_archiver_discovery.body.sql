@@ -307,6 +307,11 @@ AS
        ORDER BY source_db_link, source_owner, source_table_name
     ) LOOP
       l_tables := l_tables + 1;
+      PKG_ARCHIVER_LOG.prc_log_table_context
+      (
+        l_run_id, 'DISCOVER', t.source_db_link, t.source_owner, t.source_table_name,
+        t.target_owner, t.target_table_name
+      );
       l_table_summary := NULL;
 
       FOR p IN (
