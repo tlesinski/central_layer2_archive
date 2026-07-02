@@ -1,14 +1,14 @@
-CREATE OR REPLACE EDITIONABLE PACKAGE PKG_ARCHIVER_TL_LOGGING --AUTHID CURRENT_USER
+CREATE OR REPLACE EDITIONABLE PACKAGE PKG_REPLICA_LOGGING --AUTHID CURRENT_USER
 authid current_user
 AS
 
   /*
-    Package      : PKG_ARCHIVER_TL_LOGGING
+    Package      : PKG_REPLICA_LOGGING
     Developer    : Tomasz Lesinski
     Date         : 2020-02-24
     Purpose      : Logging package
 
-    Prerequisite : TBL_ARCHIVER_PROCESS_LOG, SEQ_ARCHIVER_PROCESS_LOG
+    Prerequisite : TBL_REPLICA_PROCESS_LOG, SEQ_REPLICA_PROCESS_LOG
 
     Change History:
     ------------------------------------------------------------------------------
@@ -48,10 +48,10 @@ g_log_lvl VARCHAR2(10) := 'N';
 g_log_retention_days NUMBER := 90;
 
 --The name of log table.
-g_log_table_name VARCHAR2(128) := 'TBL_ARCHIVER_PROCESS_LOG';
+g_log_table_name VARCHAR2(128) := 'TBL_REPLICA_PROCESS_LOG';
 
 --The name of sequence used for PK.
-g_log_sequence_name VARCHAR2(128) := 'SEQ_ARCHIVER_PROCESS_LOG';
+g_log_sequence_name VARCHAR2(128) := 'SEQ_REPLICA_PROCESS_LOG';
 
 g_curr_schema_name VARCHAR2(128);
 
@@ -72,18 +72,18 @@ g_curr_schema_name VARCHAR2(128);
   -- p_last_err_desc error description
 
   -- Example use #1:
-  -- PKG_ARCHIVER_TL_LOGGING.prc_log( p_log_msg => 'log message');
+  -- PKG_REPLICA_LOGGING.prc_log( p_log_msg => 'log message');
   --
   -- Example use #2:
   -- DECLARE
-  -- l_log_id NUMBER := SEQ_ARCHIVER_PROCESS_LOG.nextval;
+  -- l_log_id NUMBER := SEQ_REPLICA_PROCESS_LOG.nextval;
   -- BEGIN
-  -- PKG_ARCHIVER_TL_LOGGING.prc_log
+  -- PKG_REPLICA_LOGGING.prc_log
   -- (
   -- p_log_id => l_log_id,
   -- p_log_categ => 'load dimensions',
   -- p_mstr_fun => 'prc_load_time_dim',
-  -- p_log_sttus => PKG_ARCHIVER_TL_LOGGING.g_sttus_init_const,
+  -- p_log_sttus => PKG_REPLICA_LOGGING.g_sttus_init_const,
   -- p_start_date => SYSDATE,
   -- p_log_msg => 'init message'
   -- );
@@ -120,5 +120,5 @@ PROCEDURE prc_error_stack
 p_log_id IN NUMBER,
 p_mstr_log_id IN NUMBER DEFAULT NULL
 );
-END PKG_ARCHIVER_TL_LOGGING;
+END PKG_REPLICA_LOGGING;
 /

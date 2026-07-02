@@ -7,7 +7,7 @@ AS
     Purpose      : SQL helper package - name validation, dynamic SQL execution,
                    bind variable handling, SQL logging
 
-    Prerequisite : PKG_ARCHIVER_TL_LOGGING, TBL_ARCHIVER_PROCESS_LOG
+    Prerequisite : PKG_ARCHIVER_LOGGING, TBL_ARCHIVER_PROCESS_LOG
 
     Change History:
     ------------------------------------------------------------------------------
@@ -76,14 +76,14 @@ AS
     IF p_log_id IS NOT NULL THEN
       l_log_sql := fn_format_sql_for_log(p_sql);
 
-      PKG_ARCHIVER_TL_LOGGING.prc_log
+      PKG_ARCHIVER_LOGGING.prc_log
       (
         p_log_id    => p_log_id,
         p_log_msg   => CASE fn_normalize_execute(p_execute)
                          WHEN 'Y' THEN TO_CLOB('Executing SQL:') || CHR(10)
                          ELSE TO_CLOB('Preview SQL:') || CHR(10)
                        END || l_log_sql,
-        p_log_sttus => PKG_ARCHIVER_TL_LOGGING.g_sttus_running_const,
+        p_log_sttus => PKG_ARCHIVER_LOGGING.g_sttus_running_const,
         p_log_type  => 'SQL'
       );
     END IF;
@@ -182,20 +182,20 @@ AS
     prc_log_sql(p_log_id => p_log_id, p_sql => p_sql, p_execute => p_execute);
 
     IF p_log_id IS NOT NULL AND p_array_bind IS NOT NULL THEN
-      PKG_ARCHIVER_TL_LOGGING.prc_log
+      PKG_ARCHIVER_LOGGING.prc_log
       (
         p_log_id    => p_log_id,
         p_log_msg   => 'Bind count: ' || p_array_bind.COUNT,
-        p_log_sttus => PKG_ARCHIVER_TL_LOGGING.g_sttus_running_const,
+        p_log_sttus => PKG_ARCHIVER_LOGGING.g_sttus_running_const,
         p_log_type  => 'SQL_BIND'
       );
 
       FOR i IN 1 .. p_array_bind.COUNT LOOP
-        PKG_ARCHIVER_TL_LOGGING.prc_log
+        PKG_ARCHIVER_LOGGING.prc_log
         (
           p_log_id    => p_log_id,
           p_log_msg   => 'Bind ' || i || ': ' || NVL(p_array_bind(i), '<NULL>'),
-          p_log_sttus => PKG_ARCHIVER_TL_LOGGING.g_sttus_running_const,
+          p_log_sttus => PKG_ARCHIVER_LOGGING.g_sttus_running_const,
           p_log_type  => 'SQL_BIND'
         );
       END LOOP;
@@ -230,11 +230,11 @@ AS
 
           IF SQLCODE IN (-4061, -4062, -4068) AND l_attempt = 1 THEN
             IF p_log_id IS NOT NULL THEN
-              PKG_ARCHIVER_TL_LOGGING.prc_log
+              PKG_ARCHIVER_LOGGING.prc_log
               (
                 p_log_id    => p_log_id,
                 p_log_msg   => 'Retrying SQL after remote package state changed: ' || SQLERRM,
-                p_log_sttus => PKG_ARCHIVER_TL_LOGGING.g_sttus_running_const,
+                p_log_sttus => PKG_ARCHIVER_LOGGING.g_sttus_running_const,
                 p_log_type  => 'SQL_RETRY'
               );
             END IF;
@@ -266,20 +266,20 @@ AS
     prc_log_sql(p_log_id => p_log_id, p_sql => p_sql, p_execute => p_execute);
 
     IF p_log_id IS NOT NULL AND p_array_bind IS NOT NULL THEN
-      PKG_ARCHIVER_TL_LOGGING.prc_log
+      PKG_ARCHIVER_LOGGING.prc_log
       (
         p_log_id    => p_log_id,
         p_log_msg   => 'Bind count: ' || p_array_bind.COUNT,
-        p_log_sttus => PKG_ARCHIVER_TL_LOGGING.g_sttus_running_const,
+        p_log_sttus => PKG_ARCHIVER_LOGGING.g_sttus_running_const,
         p_log_type  => 'SQL_BIND'
       );
 
       FOR i IN 1 .. p_array_bind.COUNT LOOP
-        PKG_ARCHIVER_TL_LOGGING.prc_log
+        PKG_ARCHIVER_LOGGING.prc_log
         (
           p_log_id    => p_log_id,
           p_log_msg   => 'Bind ' || i || ': ' || NVL(p_array_bind(i), '<NULL>'),
-          p_log_sttus => PKG_ARCHIVER_TL_LOGGING.g_sttus_running_const,
+          p_log_sttus => PKG_ARCHIVER_LOGGING.g_sttus_running_const,
           p_log_type  => 'SQL_BIND'
         );
       END LOOP;
@@ -320,11 +320,11 @@ AS
 
           IF SQLCODE IN (-4061, -4062, -4068) AND l_attempt = 1 THEN
             IF p_log_id IS NOT NULL THEN
-              PKG_ARCHIVER_TL_LOGGING.prc_log
+              PKG_ARCHIVER_LOGGING.prc_log
               (
                 p_log_id    => p_log_id,
                 p_log_msg   => 'Retrying SQL after remote package state changed: ' || SQLERRM,
-                p_log_sttus => PKG_ARCHIVER_TL_LOGGING.g_sttus_running_const,
+                p_log_sttus => PKG_ARCHIVER_LOGGING.g_sttus_running_const,
                 p_log_type  => 'SQL_RETRY'
               );
             END IF;

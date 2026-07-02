@@ -13,8 +13,8 @@ PROMPT Installing standalone REPLICA core objects
 @@code_replica/tables/tbl_util_reports.sql
 @@code_replica/tables/tbl_util_report_sql.sql
 @@code_replica/functions/fn_replica_expr_calc.sql
-@@code_replica/packages/pkg_replica_tl_logging.spec.sql
-@@code_replica/packages/pkg_replica_tl_logging.body.sql
+@@code_replica/packages/pkg_replica_logging.spec.sql
+@@code_replica/packages/pkg_replica_logging.body.sql
 @@code_replica/packages/pkg_replica_sql.spec.sql
 @@code_replica/packages/pkg_replica_sql.body.sql
 @@code_replica/packages/pkg_util_report.spec.sql
@@ -44,8 +44,8 @@ PROMPT Installing standalone REPLICA core objects
 @@code_replica/packages/pkg_replica_runner.spec.sql
 @@code_replica/packages/pkg_replica_runner.body.sql
 
-SHOW ERRORS PACKAGE PKG_REPLICA_TL_LOGGING
-SHOW ERRORS PACKAGE BODY PKG_REPLICA_TL_LOGGING
+SHOW ERRORS PACKAGE PKG_REPLICA_LOGGING
+SHOW ERRORS PACKAGE BODY PKG_REPLICA_LOGGING
 SHOW ERRORS PACKAGE PKG_REPLICA_SQL
 SHOW ERRORS PACKAGE BODY PKG_REPLICA_SQL
 SHOW ERRORS PACKAGE PKG_UTIL_REPORT

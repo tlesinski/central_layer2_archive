@@ -1,12 +1,12 @@
-CREATE OR REPLACE EDITIONABLE PACKAGE BODY PKG_ARCHIVER_TL_LOGGING AS
+CREATE OR REPLACE EDITIONABLE PACKAGE BODY PKG_REPLICA_LOGGING AS
 
   /*
-    Package      : PKG_ARCHIVER_TL_LOGGING
+    Package      : PKG_REPLICA_LOGGING
     Developer    : Tomasz Lesinski
     Date         : 2020-02-24
     Purpose      : Logging package
 
-    Prerequisite : TBL_ARCHIVER_PROCESS_LOG, SEQ_ARCHIVER_PROCESS_LOG
+    Prerequisite : TBL_REPLICA_PROCESS_LOG, SEQ_REPLICA_PROCESS_LOG
 
     Change History:
     ------------------------------------------------------------------------------
@@ -196,7 +196,7 @@ BEGIN
 	  ,l_msg_json
 	  ,p_last_err_code
 	  ,p_last_err_desc
-	  ,PKG_ARCHIVER_TL_LOGGING.g_sttus_undefined_const;
+	  ,PKG_REPLICA_LOGGING.g_sttus_undefined_const;
 
 	COMMIT;
       EXCEPTION
@@ -217,7 +217,7 @@ BEGIN
 	    ,l_msg_json
 	    ,p_last_err_code
 	    ,p_last_err_desc
-	    ,PKG_ARCHIVER_TL_LOGGING.g_sttus_undefined_const;
+	    ,PKG_REPLICA_LOGGING.g_sttus_undefined_const;
 
 	  COMMIT;
       END;
@@ -259,7 +259,7 @@ END prc_log;
     (
       p_mstr_log_id    => p_mstr_log_id,
       p_log_id	       => p_log_id,
-      p_log_sttus      => PKG_ARCHIVER_TL_LOGGING.g_sttus_error_const,
+      p_log_sttus      => PKG_REPLICA_LOGGING.g_sttus_error_const,
       p_end_date       => SYSDATE,
       p_log_msg        => l_message,
       p_last_err_code  => l_sqlcode,
@@ -268,8 +268,8 @@ END prc_log;
     );
   END prc_error_stack;
 
--- creates local log table TBL_ARCHIVER_PROCESS_LOG
--- and local log sequence SEQ_ARCHIVER_PROCESS_LOG
+-- creates local log table TBL_REPLICA_PROCESS_LOG
+-- and local log sequence SEQ_REPLICA_PROCESS_LOG
 
 PROCEDURE prc_log_create_table
 IS
@@ -300,7 +300,7 @@ FROM (
 IF l_check = 0 THEN
   dbms_output.put_line('Try to create log table ' || g_log_table_name);
 
-  l_sql := q'!CREATE TABLE "TBL_ARCHIVER_PROCESS_LOG"
+  l_sql := q'!CREATE TABLE "TBL_REPLICA_PROCESS_LOG"
 
 ( "MSTR_LOG_ID" NUMBER NOT NULL ENABLE,
 "LOG_ID" NUMBER NOT NULL ENABLE,
@@ -329,7 +329,7 @@ PARTITION BY RANGE ("START_DATE") INTERVAL (NUMTOYMINTERVAL(1, 'MONTH'))
 
 EXECUTE IMMEDIATE l_sql;
 
-l_sql := 'CREATE INDEX "TBL_ARCHIVER_PROCESS_LOG_IDX1" ON "TBL_ARCHIVER_PROCESS_LOG" ("MSTR_LOG_ID", "LOG_ID") LOCAL';
+l_sql := 'CREATE INDEX "TBL_REPLICA_PROCESS_LOG_IDX1" ON "TBL_REPLICA_PROCESS_LOG" ("MSTR_LOG_ID", "LOG_ID") LOCAL';
 
   EXECUTE IMMEDIATE l_sql;
 ELSE
@@ -354,7 +354,7 @@ FROM (
 IF l_check = 0 THEN
   dbms_output.put_line('Try to create log sequence ' || g_log_sequence_name);
 
-  l_sql := 'CREATE SEQUENCE SEQ_ARCHIVER_PROCESS_LOG START WITH 1 INCREMENT BY 1';
+  l_sql := 'CREATE SEQUENCE SEQ_REPLICA_PROCESS_LOG START WITH 1 INCREMENT BY 1';
 
   EXECUTE IMMEDIATE l_sql;
 ELSE
@@ -374,7 +374,7 @@ prc_error_stack(p_log_id=>null);
 END prc_log_create_table;
 
 --Procedure prc_init_log
--- initializes log in physical file and in TBL_ARCHIVER_PROCESS_LOG table
+-- initializes log in physical file and in TBL_REPLICA_PROCESS_LOG table
 
 PROCEDURE prc_init_log
 (
@@ -393,7 +393,7 @@ END IF;
 
 END prc_init_log;
 
--- cleanup old partitions in table TBL_ARCHIVER_PROCESS_LOG
+-- cleanup old partitions in table TBL_REPLICA_PROCESS_LOG
 
 PROCEDURE prc_log_cleanup_table
 IS
@@ -453,8 +453,8 @@ dbms_output.put_line('Error cleaning log table ' || SQLCODE || substr(SQLERRM, 1
 END prc_log_cleanup_table;
 BEGIN
 
---calling base procedure to intialize entries in TBL_ARCHIVER_PROCESS_LOG table and file with directories
+--calling base procedure to intialize entries in TBL_REPLICA_PROCESS_LOG table and file with directories
 
 prc_init_log;
-END PKG_ARCHIVER_TL_LOGGING;
+END PKG_REPLICA_LOGGING;
 /

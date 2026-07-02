@@ -61,8 +61,8 @@ BEGIN
     RAISE_APPLICATION_ERROR(-20545, 'ARCHIVER expected 9 expression configs, got ' || l_count);
   END IF;
 
-  IF FN_EXPR_CALC('10, 11', NULL, '#', '10 IN (<partition_high_value>)', 'FLAG') != 'Y'
-     OR FN_EXPR_CALC('''N'', ''S''', NULL, '''SHIPPED'', ''CLOSED''',
+  IF FN_ARCHIVER_EXPR_CALC('10, 11', NULL, '#', '10 IN (<partition_high_value>)', 'FLAG') != 'Y'
+     OR FN_ARCHIVER_EXPR_CALC('''N'', ''S''', NULL, '''SHIPPED'', ''CLOSED''',
                      '''N'' IN (<partition_high_value>) AND ''CLOSED'' IN (<subpartition_high_value>)',
                      'FLAG') != 'Y' THEN
     RAISE_APPLICATION_ERROR(-20546, 'ARCHIVER expression evaluation failed');

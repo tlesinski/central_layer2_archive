@@ -7,7 +7,7 @@ AS
     Purpose      : Replica process logging - creates runs, logs messages,
                    handles errors, finishes runs
 
-    Prerequisite : PKG_REPLICA_TL_LOGGING, TBL_REPLICA_RUNS, SEQ_REPLICA_PROCESS_LOG
+    Prerequisite : PKG_REPLICA_LOGGING, TBL_REPLICA_RUNS, SEQ_REPLICA_PROCESS_LOG
 
     Change History:
     ------------------------------------------------------------------------------
@@ -88,7 +88,7 @@ AS
     p_run_id    IN NUMBER,
     p_log_msg   IN CLOB,
     p_log_type  IN VARCHAR2 DEFAULT 'TEXT',
-    p_log_sttus IN VARCHAR2 DEFAULT PKG_REPLICA_TL_LOGGING.g_sttus_running_const
+    p_log_sttus IN VARCHAR2 DEFAULT PKG_REPLICA_LOGGING.g_sttus_running_const
   )
   IS
     l_log_id NUMBER;
@@ -106,7 +106,7 @@ AS
                    TO_CLOB('<<<PARTMGR_SUMMARY_END>>>');
     END IF;
 
-    PKG_REPLICA_TL_LOGGING.prc_log
+    PKG_REPLICA_LOGGING.prc_log
     (
       p_log_id      => l_log_id,
       p_mstr_log_id => l_log_id,
@@ -128,7 +128,7 @@ AS
     END IF;
 
     l_log_id := fn_get_log_id(p_run_id);
-    PKG_REPLICA_TL_LOGGING.prc_error_stack
+    PKG_REPLICA_LOGGING.prc_error_stack
     (
       p_log_id      => l_log_id,
       p_mstr_log_id => l_log_id
@@ -171,7 +171,7 @@ AS
            UPDATED_AT = SYSTIMESTAMP
      WHERE RUN_ID = p_run_id;
 
-    PKG_REPLICA_TL_LOGGING.prc_log
+    PKG_REPLICA_LOGGING.prc_log
     (
       p_log_id          => l_log_id,
       p_mstr_log_id     => l_log_id,

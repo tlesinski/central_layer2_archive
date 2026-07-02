@@ -7,7 +7,7 @@ AS
     Purpose      : Archive process logging - creates runs, logs messages,
                    handles errors, finishes runs
 
-    Prerequisite : PKG_ARCHIVER_TL_LOGGING, TBL_ARCHIVER_RUNS, SEQ_ARCHIVER_PROCESS_LOG
+    Prerequisite : PKG_ARCHIVER_LOGGING, TBL_ARCHIVER_RUNS, SEQ_ARCHIVER_PROCESS_LOG
 
     Change History:
     ------------------------------------------------------------------------------
@@ -37,7 +37,7 @@ AS
     p_run_id    IN NUMBER,
     p_log_msg   IN CLOB,
     p_log_type  IN VARCHAR2 DEFAULT 'TEXT',
-    p_log_sttus IN VARCHAR2 DEFAULT PKG_ARCHIVER_TL_LOGGING.g_sttus_running_const
+    p_log_sttus IN VARCHAR2 DEFAULT PKG_ARCHIVER_LOGGING.g_sttus_running_const
   );
 
   PROCEDURE prc_log_error_stack

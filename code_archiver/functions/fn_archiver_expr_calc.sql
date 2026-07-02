@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION FN_EXPR_CALC
+CREATE OR REPLACE FUNCTION FN_ARCHIVER_EXPR_CALC
 (
   p_partition_high_value      IN VARCHAR2,
   p_prev_partition_high_value IN VARCHAR2,
@@ -29,7 +29,7 @@ BEGIN
   END IF;
 
   IF l_mode NOT IN ('FLAG', 'VALUE') THEN
-    RETURN 'ERROR: unsupported FN_EXPR_CALC mode ' || l_mode;
+    RETURN 'ERROR: unsupported FN_ARCHIVER_EXPR_CALC mode ' || l_mode;
   END IF;
 
   l_expression := p_cutoff_expression;
@@ -53,5 +53,5 @@ BEGIN
 EXCEPTION
   WHEN OTHERS THEN
     RETURN 'ERROR: ' || SQLERRM;
-END FN_EXPR_CALC;
+END FN_ARCHIVER_EXPR_CALC;
 /

@@ -15,14 +15,14 @@ PROMPT Installing standalone ARCHIVER core objects
 @@code_archiver/tables/tbl_archiver_tables.sql
 @@code_archiver/tables/tbl_archiver_runs.sql
 @@code_archiver/tables/tbl_archiver_partitions.sql
-@@code_archiver/functions/fn_expr_calc.sql
+@@code_archiver/functions/fn_archiver_expr_calc.sql
 @@code_archiver/views/vw_archiver_source_partitions.sql
 @@code_archiver/views/vw_archiver_discovery_partitions.sql
 @@code_archiver/views/vw_archiver_import_partitions.sql
 @@code_archiver/views/vw_archiver_quality_partitions.sql
 @@code_archiver/views/vw_archiver_truncate_partitions.sql
-@@code_archiver/packages/pkg_archiver_tl_logging.spec.sql
-@@code_archiver/packages/pkg_archiver_tl_logging.body.sql
+@@code_archiver/packages/pkg_archiver_logging.spec.sql
+@@code_archiver/packages/pkg_archiver_logging.body.sql
 @@code_archiver/packages/pkg_archiver_sql.spec.sql
 @@code_archiver/packages/pkg_archiver_sql.body.sql
 @@code_archiver/packages/pkg_util_report.spec.sql
@@ -44,9 +44,9 @@ PROMPT Installing standalone ARCHIVER core objects
 @@code_archiver/packages/pkg_archiver_runner.spec.sql
 @@code_archiver/packages/pkg_archiver_runner.body.sql
 
-SHOW ERRORS PACKAGE PKG_ARCHIVER_TL_LOGGING
-SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_TL_LOGGING
-SHOW ERRORS FUNCTION FN_EXPR_CALC
+SHOW ERRORS PACKAGE PKG_ARCHIVER_LOGGING
+SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_LOGGING
+SHOW ERRORS FUNCTION FN_ARCHIVER_EXPR_CALC
 SHOW ERRORS PACKAGE PKG_ARCHIVER_SQL
 SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_SQL
 SHOW ERRORS PACKAGE PKG_UTIL_REPORT

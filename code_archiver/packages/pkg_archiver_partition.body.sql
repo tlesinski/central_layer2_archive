@@ -7,7 +7,7 @@ AS
     Purpose      : Partition operations - exchange staging, load staging data,
                    build staging indexes, exchange, drop staging
 
-    Prerequisite : PKG_ARCHIVER_SQL, PKG_ARCHIVER_TL_LOGGING
+    Prerequisite : PKG_ARCHIVER_SQL, PKG_ARCHIVER_LOGGING
 
     Change History:
     ------------------------------------------------------------------------------

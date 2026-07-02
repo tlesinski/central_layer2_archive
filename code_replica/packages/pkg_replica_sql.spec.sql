@@ -7,7 +7,7 @@ AS
     Purpose      : SQL helper package - name validation, dynamic SQL execution,
                    bind variable handling, SQL logging
 
-    Prerequisite : PKG_REPLICA_TL_LOGGING, TBL_REPLICA_PROCESS_LOG
+    Prerequisite : PKG_REPLICA_LOGGING, TBL_REPLICA_PROCESS_LOG
 
     Change History:
     ------------------------------------------------------------------------------

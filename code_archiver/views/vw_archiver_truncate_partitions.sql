@@ -19,8 +19,8 @@ SELECT p.source_db_link,
        p.source_row_count,
        p.target_row_count,
        truncate_EXPRESSION,
-       FN_EXPR_CALC(p.partition_high_value, p.prev_partition_high_value, p.subpartition_high_value, truncate_expression, 'FLAG') truncate_flag,
-       FN_EXPR_CALC(p.partition_high_value, p.prev_partition_high_value, p.subpartition_high_value, truncate_expression, 'VALUE') truncate_value
+       FN_ARCHIVER_EXPR_CALC(p.partition_high_value, p.prev_partition_high_value, p.subpartition_high_value, truncate_expression, 'FLAG') truncate_flag,
+       FN_ARCHIVER_EXPR_CALC(p.partition_high_value, p.prev_partition_high_value, p.subpartition_high_value, truncate_expression, 'VALUE') truncate_value
   FROM TBL_ARCHIVER_PARTITIONS p
   JOIN TBL_ARCHIVER_TABLES t
     ON t.source_db_link = p.source_db_link
