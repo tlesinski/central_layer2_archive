@@ -98,11 +98,12 @@ def unpack(input_file, output_dir):
             sys.exit(1)
 
         header = first_line.decode('utf-8').rstrip('\r\n')
-        if not header.startswith('[DIRPCK] '):
-            print("Error: missing [DIRPCK] header.", file=sys.stderr)
-            sys.exit(1)
 
-        prefix = header[9:]
+        if header.startswith('[DIRPCK] '):
+            prefix = header[9:]
+        else:
+            prefix = ''
+            f.seek(0)
 
         while True:
             line = f.readline()
@@ -114,14 +115,18 @@ def unpack(input_file, output_dir):
             if not line:
                 continue
 
-            if line.startswith(f'{prefix}[DIR] '):
-                rel_path = line[len(prefix) + 6:]
+            dir_tag = f'{prefix}[DIR] '
+            file_tag = f'{prefix}[FILE] '
+            size_tag = f'{prefix}[SIZE] '
+
+            if line.startswith(dir_tag):
+                rel_path = line[len(dir_tag):]
                 target = os.path.join(output_dir, rel_path)
                 os.makedirs(target, exist_ok=True)
                 print(f"  [DIR]  {rel_path}")
 
-            elif line.startswith(f'{prefix}[FILE] '):
-                rel_path = line[len(prefix) + 7:]
+            elif line.startswith(file_tag):
+                rel_path = line[len(file_tag):]
 
                 size_line = f.readline()
                 if not size_line:
@@ -129,12 +134,11 @@ def unpack(input_file, output_dir):
                     break
                 size_line = size_line.decode('utf-8').rstrip('\r\n')
 
-                expected_size_tag = f'{prefix}[SIZE] '
-                if not size_line.startswith(expected_size_tag):
+                if not size_line.startswith(size_tag):
                     print(f"Error: expected [SIZE], got '{size_line}'", file=sys.stderr)
                     break
 
-                size = int(size_line[len(expected_size_tag):])
+                size = int(size_line[len(size_tag):])
                 content = f.read(size)
 
                 target = os.path.join(output_dir, rel_path)
@@ -147,7 +151,7 @@ def unpack(input_file, output_dir):
                 print(f"  [UNPACK] {rel_path} ({size} bytes)")
 
             else:
-                print(f"Warning: unknown marker '{line.split()[0] if ' ' in line else line}'", file=sys.stderr)
+                print(f"Warning: unknown marker '{line}'", file=sys.stderr)
 
     print(f"\nDone. Unpacked {count} files into '{output_dir}'.")
 
