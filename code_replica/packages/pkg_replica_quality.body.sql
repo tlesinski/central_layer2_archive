@@ -1,5 +1,17 @@
 CREATE OR REPLACE PACKAGE BODY PKG_REPLICA_QUALITY
 AS
+  /*
+    Package      : PKG_REPLICA_QUALITY
+    Purpose      : Compare ARCHIVER source counts with REPLICA target counts.
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-06-01   Tomasz Lesinski    Initial version
+    1.1        2026-10-11   Tomasz Lesinski    Count target units using
+                                                HIGH_VALUE-based FOR selectors
+  */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
     RETURN CASE WHEN UPPER(NVL(TRIM(p_execute), 'N')) = 'Y' THEN 'Y' ELSE 'N' END;
@@ -216,13 +228,16 @@ AS
 
         l_source_rows := PKG_REPLICA_SQL.fn_run_into_sql(l_log_id, l_sql, 'Y');
 
-        IF r.archive_unit_type = 'SUBPARTITION' THEN
-          l_sql := 'SELECT COUNT(*) FROM ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
-                   ' SUBPARTITION (' || PKG_REPLICA_SQL.fn_assert_simple_name(r.subpartition_name) || ')';
-        ELSE
-          l_sql := 'SELECT COUNT(*) FROM ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
-                   ' PARTITION (' || PKG_REPLICA_SQL.fn_assert_simple_name(r.partition_name) || ')';
-        END IF;
+        l_sql := 'SELECT COUNT(*) FROM ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
+                 ' ' || PKG_REPLICA_PARTITION.fn_partition_for_clause
+                         (
+                           r.target_owner,
+                           r.target_table_name,
+                           r.partition_high_value,
+                           r.prev_partition_high_value,
+                           CASE WHEN r.subpartition_high_value = '#' THEN NULL ELSE r.subpartition_high_value END,
+                           r.archive_unit_type
+                         );
 
         l_target_rows := PKG_REPLICA_SQL.fn_run_into_sql(l_log_id, l_sql, 'Y');
         l_quality_status := CASE WHEN l_source_rows = l_target_rows THEN 'Y' ELSE 'N' END;

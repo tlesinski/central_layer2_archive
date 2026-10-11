@@ -13,6 +13,8 @@ AS
     Version    Date         Programmer         Description
     ------------------------------------------------------------------------------
      1.0        2026-06-01   Tomasz Lesinski    Initial version
+     1.1        2026-10-11   Tomasz Lesinski    Exchange replica units by
+                                                HIGH_VALUE, not physical names
   */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
@@ -163,7 +165,6 @@ AS
         (
           p_target_owner       => r.target_owner,
           p_target_table       => r.target_table_name,
-          p_partition_name     => r.partition_name,
           p_staging_table_name => l_staging_table,
           p_execute            => l_execute_flag,
           p_log_id             => l_log_id,
@@ -219,22 +220,25 @@ AS
         IF r.archive_unit_type = 'SUBPARTITION' THEN
           PKG_REPLICA_PARTITION.prc_exchange_subpartition
           (
-            p_target_owner       => r.target_owner,
-            p_target_table       => r.target_table_name,
-            p_subpartition_name  => r.subpartition_name,
-            p_staging_table_name => l_staging_table,
-            p_execute            => l_execute_flag,
-            p_log_id             => l_log_id
+            p_target_owner              => r.target_owner,
+            p_target_table              => r.target_table_name,
+            p_partition_high_value      => r.partition_high_value,
+            p_prev_partition_high_value => r.prev_partition_high_value,
+            p_subpartition_high_value   => r.subpartition_high_value,
+            p_staging_table_name        => l_staging_table,
+            p_execute                   => l_execute_flag,
+            p_log_id                    => l_log_id
           );
         ELSE
           PKG_REPLICA_PARTITION.prc_exchange_partition
           (
-            p_target_owner       => r.target_owner,
-            p_target_table       => r.target_table_name,
-            p_partition_name     => r.partition_name,
-            p_staging_table_name => l_staging_table,
-            p_execute            => l_execute_flag,
-            p_log_id             => l_log_id
+            p_target_owner              => r.target_owner,
+            p_target_table              => r.target_table_name,
+            p_partition_high_value      => r.partition_high_value,
+            p_prev_partition_high_value => r.prev_partition_high_value,
+            p_staging_table_name        => l_staging_table,
+            p_execute                   => l_execute_flag,
+            p_log_id                    => l_log_id
           );
         END IF;
 

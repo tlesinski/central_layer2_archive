@@ -1,5 +1,15 @@
 CREATE OR REPLACE PACKAGE BODY PKG_REPLICA_RUNNER
 AS
+  /*
+    Package      : PKG_REPLICA_RUNNER
+    Purpose      : Orchestrate REPLICA discovery, replication, quality, and purge.
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-10-11   Tomasz Lesinski    Add package change history
+  */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
     RETURN CASE WHEN UPPER(NVL(TRIM(p_execute), 'N')) = 'Y' THEN 'Y' ELSE 'N' END;

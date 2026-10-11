@@ -15,8 +15,16 @@ AS
     Version    Date         Programmer         Description
     ------------------------------------------------------------------------------
      1.0        2026-05-28   Tomasz Lesinski    Initial version
-     1.1        2026-05-31   Tomasz Lesinski    Compact per-table summary, ORA-40478 fix
+     1.1        2026-05-28   Tomasz Lesinski    Add process summary logging
+     1.2        2026-06-30   Tomasz Lesinski    Use TRUNCATE_EXPRESSION eligibility
+     1.3        2026-10-11   Tomasz Lesinski    Pass HIGH_VALUE selectors to
+                                                AGENT source cleanup
   */
+  -- Identifies source units eligible for cleanup and optionally requests cleanup from AGENT.
+  -- Parameters:
+  -- p_execute           Y executes eligible source cleanup; N previews it
+  -- p_target_owner      optionally limits cleanup to this target schema
+  -- p_target_table_name optionally limits cleanup to this target table
   PROCEDURE prc_truncate
   (
     p_execute           IN VARCHAR2 DEFAULT 'N',

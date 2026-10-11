@@ -1,5 +1,15 @@
 CREATE OR REPLACE PACKAGE BODY PKG_UTIL_REPORT
 AS
+  /*
+    Package      : PKG_UTIL_REPORT
+    Purpose      : Render configured operational reports as HTML.
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-10-11   Tomasz Lesinski    Add package change history
+  */
   FUNCTION fn_get_config
   (
     p_config_key IN VARCHAR2,

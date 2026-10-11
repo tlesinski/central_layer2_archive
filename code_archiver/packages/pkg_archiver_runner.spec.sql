@@ -16,6 +16,14 @@ AS
     ------------------------------------------------------------------------------
     1.0        2026-05-28   Tomasz Lesinski    Initial version
   */
+  -- Runs configured archive steps for one source table in pipeline order.
+  -- Parameters:
+  -- p_source_db_link   database link identifying the source database
+  -- p_owner            schema owning the source table
+  -- p_table_name       source table name
+  -- p_execute          Y executes DISCOVER/ARCHIVE/QUALITY; N previews them
+  -- p_stop_after_step  last non-destructive step to run (default QUALITY)
+  -- p_truncate_execute Y executes eligible source cleanup after quality succeeds
   PROCEDURE prc_run_table
   (
     p_source_db_link  IN VARCHAR2,
@@ -26,6 +34,11 @@ AS
     p_truncate_execute IN VARCHAR2 DEFAULT 'N'
   );
 
+  -- Runs the archive pipeline for all configured source tables.
+  -- Parameters:
+  -- p_execute          Y executes DISCOVER/ARCHIVE/QUALITY; N previews them
+  -- p_stop_after_step  last non-destructive step to run (default QUALITY)
+  -- p_truncate_execute Y executes eligible source cleanup after quality succeeds
   PROCEDURE prc_run_all
   (
     p_execute         IN VARCHAR2 DEFAULT 'N',

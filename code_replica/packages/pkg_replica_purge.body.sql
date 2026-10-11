@@ -1,5 +1,17 @@
 CREATE OR REPLACE PACKAGE BODY PKG_REPLICA_PURGE
 AS
+  /*
+    Package      : PKG_REPLICA_PURGE
+    Purpose      : Purge local REPLICA units no longer selected for replication.
+
+    Change History:
+    ------------------------------------------------------------------------------
+    Version    Date         Programmer         Description
+    ------------------------------------------------------------------------------
+    1.0        2026-06-01   Tomasz Lesinski    Initial version
+    1.1        2026-10-11   Tomasz Lesinski    Truncate target units using
+                                                HIGH_VALUE-based FOR selectors
+  */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
     RETURN CASE WHEN UPPER(NVL(TRIM(p_execute), 'N')) = 'Y' THEN 'Y' ELSE 'N' END;
@@ -85,13 +97,16 @@ AS
       ) LOOP
         l_units := l_units + 1;
 
-        IF r.archive_unit_type = 'SUBPARTITION' THEN
-          l_sql := 'ALTER TABLE ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
-                   ' TRUNCATE SUBPARTITION ' || PKG_REPLICA_SQL.fn_assert_simple_name(r.subpartition_name);
-        ELSE
-          l_sql := 'ALTER TABLE ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
-                   ' TRUNCATE PARTITION ' || PKG_REPLICA_SQL.fn_assert_simple_name(r.partition_name);
-        END IF;
+        l_sql := 'ALTER TABLE ' || fn_qualified_table(r.target_owner, r.target_table_name) ||
+                 ' TRUNCATE ' || PKG_REPLICA_PARTITION.fn_partition_for_clause
+                               (
+                                 r.target_owner,
+                                 r.target_table_name,
+                                 r.partition_high_value,
+                                 r.prev_partition_high_value,
+                                 CASE WHEN r.subpartition_high_value = '#' THEN NULL ELSE r.subpartition_high_value END,
+                                 r.archive_unit_type
+                               );
 
         DBMS_OUTPUT.PUT_LINE('REPLICA_PURGE target=' || r.target_owner || '.' || r.target_table_name ||
                              ' ' || r.partition_name ||

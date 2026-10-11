@@ -51,6 +51,21 @@ RANGE -> key >= previous HIGH_VALUE and key < HIGH_VALUE
 LIST  -> key IN (HIGH_VALUE)
 ```
 
+Operational row counts, exchanges, source cleanup, replica target counts, and
+replica purge use Oracle `PARTITION FOR (...)` or `SUBPARTITION FOR (...)`
+selectors rather than physical unit names. A RANGE selector uses the previous
+partition `HIGH_VALUE` as the inclusive lower-bound value; the current
+partition's upper `HIGH_VALUE` is exclusive and would select the next unit.
+For LIST partitions, the selector uses one explicit member of the `HIGH_VALUE`
+list, so multi-value partitions are addressable without parsing physical names.
+Subpartition selectors include both the partition and subpartition key values.
+
+There is no safe value-based selector for a LIST `DEFAULT` partition, and a
+first RANGE partition without a finite previous boundary has no known
+representative key. Those operations fail explicitly rather than falling back
+to a potentially mismatched physical name; technical boundary units should be
+registered as already complete in ARCHIVER/REPLICA metadata.
+
 `IMPORT_EXPRESSION` and `TRUNCATE_EXPRESSION` determine eligibility.
 Multi-column partition keys are outside the supported operational set.
 Technical or boundary units such as `P_ERROR`, `MAXVALUE`, `DEFAULT`, and LIST

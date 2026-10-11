@@ -13,7 +13,14 @@ AS
     Version    Date         Programmer         Description
     ------------------------------------------------------------------------------
      1.0        2026-06-01   Tomasz Lesinski    Initial version
+     1.1        2026-10-11   Tomasz Lesinski    Exchange replica units by
+                                                HIGH_VALUE, not physical names
   */
+  -- Loads eligible ARCHIVER units into REPLICA targets through staging and exchange.
+  -- Parameters:
+  -- p_execute           Y executes replication; N previews it
+  -- p_target_owner      optionally limits replication to this target schema
+  -- p_target_table_name optionally limits replication to this target table
   PROCEDURE prc_replicate
   (
     p_execute           IN VARCHAR2 DEFAULT 'N',

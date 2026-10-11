@@ -55,21 +55,21 @@ g_log_sequence_name VARCHAR2(128) := 'SEQ_REPLICA_PROCESS_LOG';
 
 g_curr_schema_name VARCHAR2(128);
 
-  --Procedure prc_log
-  -- base logging message
+  -- Inserts or updates a process log entry with its message and execution context.
 
   -- Parameters:
-  -- p_log_id log_id of entry to be inserted or updated
-  -- p_log_msg message to save (the only required parameter)
-  -- p_log_lvl logging level 'N' - normal default | 'D' - debug level
-  -- p_mstr_log_id mstr_log_id (group id) of entry to be inserted or updated
-  -- p_log_categ log category description
-  -- p_mstr_fun log function name
-  -- p_log_sttus status of process execution
-  -- p_start_date process start date
-  -- p_end_date process end date
-  -- p_last_err_code ORA error number
-  -- p_last_err_desc error description
+  -- p_log_id       identifier of the log entry to insert or update
+  -- p_log_msg      message to save
+  -- p_log_lvl      logging level: N for normal, D for debug
+  -- p_mstr_log_id  optional parent/group log identifier
+  -- p_log_categ    optional log category
+  -- p_mstr_fun     optional procedure or function name
+  -- p_log_sttus    optional process status
+  -- p_start_date   optional process start timestamp
+  -- p_end_date     optional process end timestamp
+  -- p_last_err_code optional Oracle error code
+  -- p_last_err_desc optional Oracle error description
+  -- p_log_type     message type, such as TEXT or JSON
 
   -- Example use #1:
   -- PKG_REPLICA_LOGGING.prc_log( p_log_msg => 'log message');
@@ -105,15 +105,11 @@ g_curr_schema_name VARCHAR2(128);
     p_log_type IN VARCHAR2 DEFAULT 'TEXT'
   );
 
---Procedure prc_error_stack
--- Dumps oracle stack into table MD_PRCSS_LOG if error occurs.
--- All parameters are optional. If log_id is used stack will be
--- printed in auto log and passed log_id entry.
+-- Writes the current Oracle error stack and backtrace to the process log.
 
 -- Parameters:
--- p_log_id log_id
--- p_proc_name procedure name
--- p_mstr_log_id used for custom logging entries (not auto)
+-- p_log_id      log identifier to associate with the error stack
+-- p_mstr_log_id optional parent/group log identifier
 
 PROCEDURE prc_error_stack
 (
