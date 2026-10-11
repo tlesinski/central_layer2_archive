@@ -12,10 +12,29 @@ DECLARE
     p_partition_name    IN VARCHAR2,
     p_subpartition_name IN VARCHAR2 DEFAULT NULL
   ) IS
-    l_sql VARCHAR2(4000);
-    l_direct_count NUMBER;
-    l_agent_count NUMBER;
+    l_sql                       VARCHAR2(4000);
+    l_direct_count              NUMBER;
+    l_agent_count               NUMBER;
+    l_partition_high_value      VARCHAR2(4000);
+    l_prev_partition_high_value VARCHAR2(4000);
+    l_subpartition_high_value   VARCHAR2(4000);
+    l_archive_unit_type         VARCHAR2(20);
   BEGIN
+    SELECT partition_high_value,
+           prev_partition_high_value,
+           subpartition_high_value,
+           CASE WHEN p_subpartition_name IS NULL THEN 'PARTITION' ELSE 'SUBPARTITION' END
+      INTO l_partition_high_value,
+           l_prev_partition_high_value,
+           l_subpartition_high_value,
+           l_archive_unit_type
+      FROM VW_AGENT_PARTITION_INFO
+     WHERE schema_name = UPPER(p_owner)
+       AND table_name = UPPER(p_table_name)
+       AND partition_name = UPPER(p_partition_name)
+       AND (p_subpartition_name IS NULL OR subpartition_name = UPPER(p_subpartition_name))
+       AND ROWNUM = 1;
+
     l_sql := 'SELECT COUNT(*) FROM ' ||
              DBMS_ASSERT.SIMPLE_SQL_NAME(p_owner) || '.' ||
              DBMS_ASSERT.SIMPLE_SQL_NAME(p_table_name);
@@ -31,8 +50,10 @@ DECLARE
                      (
                        p_owner,
                        p_table_name,
-                       p_partition_name,
-                       p_subpartition_name
+                       l_partition_high_value,
+                       l_prev_partition_high_value,
+                       l_subpartition_high_value,
+                       l_archive_unit_type
                      );
 
     IF l_direct_count != l_agent_count THEN
@@ -101,7 +122,7 @@ BEGIN
                       (
                         UPPER('&&ACTIVE_AGENT_SCHEMA'),
                         'TBL_AGENT_CLIENT_TABLES',
-                        'P_NOT_USED'
+                        '1'
                       );
     RAISE_APPLICATION_ERROR(-20531, 'AGENT row count accepted a table outside the allowlist');
   EXCEPTION
@@ -116,7 +137,7 @@ BEGIN
     (
       p_owner          => UPPER('&&ACTIVE_AGENT_SCHEMA'),
       p_table_name     => 'TBL_AGENT_CLIENT_TABLES',
-      p_partition_name => 'P_NOT_USED',
+      p_partition_high_value => '1',
       p_execute        => 'N'
     );
     RAISE_APPLICATION_ERROR(-20532, 'AGENT cleanup accepted a table outside the allowlist');

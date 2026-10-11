@@ -15,6 +15,8 @@ AS
     ------------------------------------------------------------------------------
     1.0        2026-05-28   Tomasz Lesinski    Initial version
     1.1        2026-05-28   Tomasz Lesinski    Add PARALLEL_DEGREE support
+    1.2        2026-10-11   Tomasz Lesinski    Resolve exchange units with
+                                                PARTITION FOR selectors
   */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
@@ -84,6 +86,102 @@ AS
 
     RETURN l_method;
   END fn_subpartition_method;
+
+  FUNCTION fn_first_list_value
+  (
+    p_high_value IN VARCHAR2
+  )
+  RETURN VARCHAR2
+  IS
+    l_position PLS_INTEGER := 1;
+    l_length   PLS_INTEGER := LENGTH(p_high_value);
+    l_depth    PLS_INTEGER := 0;
+    l_quoted   BOOLEAN := FALSE;
+    l_char     VARCHAR2(1);
+  BEGIN
+    IF p_high_value IS NULL OR UPPER(TRIM(p_high_value)) = 'DEFAULT' THEN
+      RAISE_APPLICATION_ERROR(-20047, 'A LIST HIGH_VALUE with an explicit value is required for FOR operations');
+    END IF;
+
+    WHILE l_position <= l_length LOOP
+      l_char := SUBSTR(p_high_value, l_position, 1);
+
+      IF l_quoted THEN
+        IF l_char = '''' THEN
+          IF SUBSTR(p_high_value, l_position + 1, 1) = '''' THEN
+            l_position := l_position + 1;
+          ELSE
+            l_quoted := FALSE;
+          END IF;
+        END IF;
+      ELSIF l_char = '''' THEN
+        l_quoted := TRUE;
+      ELSIF l_char = '(' THEN
+        l_depth := l_depth + 1;
+      ELSIF l_char = ')' THEN
+        l_depth := l_depth - 1;
+      ELSIF l_char = ',' AND l_depth = 0 THEN
+        RETURN TRIM(SUBSTR(p_high_value, 1, l_position - 1));
+      END IF;
+
+      l_position := l_position + 1;
+    END LOOP;
+
+    RETURN TRIM(p_high_value);
+  END fn_first_list_value;
+
+  FUNCTION fn_partition_for_clause
+  (
+    p_target_owner              IN VARCHAR2,
+    p_target_table              IN VARCHAR2,
+    p_partition_high_value      IN VARCHAR2,
+    p_prev_partition_high_value IN VARCHAR2,
+    p_subpartition_high_value   IN VARCHAR2,
+    p_archive_unit_type         IN VARCHAR2
+  )
+  RETURN VARCHAR2
+  IS
+    l_partition_method    VARCHAR2(20);
+    l_subpartition_method VARCHAR2(20);
+    l_partition_value     VARCHAR2(4000);
+    l_subpartition_value  VARCHAR2(4000);
+    l_unit_type           VARCHAR2(20) := UPPER(TRIM(p_archive_unit_type));
+  BEGIN
+    IF p_partition_high_value IS NULL THEN
+      RAISE_APPLICATION_ERROR(-20047, 'Partition HIGH_VALUE is required for FOR operations');
+    END IF;
+
+    l_partition_method := fn_partition_method(p_target_owner, p_target_table);
+
+    IF l_partition_method = 'RANGE' THEN
+      IF p_prev_partition_high_value IS NULL
+         OR UPPER(TRIM(p_prev_partition_high_value)) = 'MINVALUE'
+      THEN
+        RAISE_APPLICATION_ERROR(-20047, 'RANGE FOR operation requires a finite previous HIGH_VALUE');
+      END IF;
+      l_partition_value := p_prev_partition_high_value;
+    ELSIF l_partition_method = 'LIST' THEN
+      l_partition_value := fn_first_list_value(p_partition_high_value);
+    ELSE
+      RAISE_APPLICATION_ERROR(-20047, 'Unsupported partition method for FOR operation: ' || l_partition_method);
+    END IF;
+
+    IF l_unit_type = 'PARTITION' THEN
+      RETURN 'PARTITION FOR (' || l_partition_value || ')';
+    ELSIF l_unit_type = 'SUBPARTITION' THEN
+      IF NVL(fn_subpartition_method(p_target_owner, p_target_table), 'NONE') <> 'LIST'
+         OR p_subpartition_high_value IS NULL
+         OR TRIM(p_subpartition_high_value) = '#'
+      THEN
+        RAISE_APPLICATION_ERROR(-20047, 'SUBPARTITION FOR operation requires an explicit LIST subpartition value');
+      END IF;
+
+      l_subpartition_value := fn_first_list_value(p_subpartition_high_value);
+      RETURN 'SUBPARTITION FOR (' || l_partition_value || ', ' || l_subpartition_value || ')';
+    END IF;
+
+    RAISE_APPLICATION_ERROR(-20047, 'Unsupported archive unit type for FOR operation: ' || p_archive_unit_type);
+  END fn_partition_for_clause;
 
   PROCEDURE prc_assert_high_value_present
   (
@@ -231,7 +329,6 @@ AS
   (
     p_target_owner       IN VARCHAR2,
     p_target_table       IN VARCHAR2,
-    p_partition_name     IN VARCHAR2,
     p_staging_table_name OUT VARCHAR2,
     p_execute            IN VARCHAR2 DEFAULT 'Y',
     p_log_id             IN NUMBER DEFAULT NULL,
@@ -358,21 +455,31 @@ AS
 
   PROCEDURE prc_exchange_partition
   (
-    p_target_owner       IN VARCHAR2,
-    p_target_table       IN VARCHAR2,
-    p_partition_name     IN VARCHAR2,
-    p_staging_table_name IN VARCHAR2,
-    p_execute            IN VARCHAR2 DEFAULT 'Y',
-    p_log_id             IN NUMBER DEFAULT NULL
+    p_target_owner              IN VARCHAR2,
+    p_target_table              IN VARCHAR2,
+    p_partition_high_value      IN VARCHAR2,
+    p_prev_partition_high_value IN VARCHAR2,
+    p_staging_table_name        IN VARCHAR2,
+    p_execute                   IN VARCHAR2 DEFAULT 'Y',
+    p_log_id                    IN NUMBER DEFAULT NULL
   )
   IS
     l_sql          CLOB;
     l_sql_rowcount NUMBER;
+    l_partition_clause VARCHAR2(10000);
   BEGIN
+    l_partition_clause := fn_partition_for_clause
+                          (
+                            p_target_owner,
+                            p_target_table,
+                            p_partition_high_value,
+                            p_prev_partition_high_value,
+                            NULL,
+                            'PARTITION'
+                          );
     l_sql := 'ALTER TABLE ' ||
              fn_qualified_table(p_target_owner, p_target_table) ||
-             ' EXCHANGE PARTITION ' ||
-             PKG_ARCHIVER_SQL.fn_assert_simple_name(p_partition_name) ||
+             ' EXCHANGE ' || l_partition_clause ||
              ' WITH TABLE ' ||
              fn_qualified_table(p_target_owner, p_staging_table_name) ||
              ' INCLUDING INDEXES WITHOUT VALIDATION';
@@ -382,21 +489,32 @@ AS
 
   PROCEDURE prc_exchange_subpartition
   (
-    p_target_owner       IN VARCHAR2,
-    p_target_table       IN VARCHAR2,
-    p_subpartition_name  IN VARCHAR2,
-    p_staging_table_name IN VARCHAR2,
-    p_execute            IN VARCHAR2 DEFAULT 'Y',
-    p_log_id             IN NUMBER DEFAULT NULL
+    p_target_owner              IN VARCHAR2,
+    p_target_table              IN VARCHAR2,
+    p_partition_high_value      IN VARCHAR2,
+    p_prev_partition_high_value IN VARCHAR2,
+    p_subpartition_high_value   IN VARCHAR2,
+    p_staging_table_name        IN VARCHAR2,
+    p_execute                   IN VARCHAR2 DEFAULT 'Y',
+    p_log_id                    IN NUMBER DEFAULT NULL
   )
   IS
     l_sql          CLOB;
     l_sql_rowcount NUMBER;
+    l_subpartition_clause VARCHAR2(10000);
   BEGIN
+    l_subpartition_clause := fn_partition_for_clause
+                             (
+                               p_target_owner,
+                               p_target_table,
+                               p_partition_high_value,
+                               p_prev_partition_high_value,
+                               p_subpartition_high_value,
+                               'SUBPARTITION'
+                             );
     l_sql := 'ALTER TABLE ' ||
              fn_qualified_table(p_target_owner, p_target_table) ||
-             ' EXCHANGE SUBPARTITION ' ||
-             PKG_ARCHIVER_SQL.fn_assert_simple_name(p_subpartition_name) ||
+             ' EXCHANGE ' || l_subpartition_clause ||
              ' WITH TABLE ' ||
              fn_qualified_table(p_target_owner, p_staging_table_name) ||
              ' INCLUDING INDEXES WITHOUT VALIDATION';

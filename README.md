@@ -84,6 +84,16 @@ single-column `LIST` subpartitioning. `INTERVAL` sources use the `RANGE`
 execution path. Eligibility is configured with `IMPORT_EXPRESSION` and
 `TRUNCATE_EXPRESSION`, using raw Oracle `HIGH_VALUE` placeholders, so DATE,
 NUMBER, and VARCHAR2 keys are supported without type-specific configuration.
+Row counts, partition exchange, source cleanup, replica quality counts, and
+replica purge address units with Oracle `PARTITION FOR (...)` and
+`SUBPARTITION FOR (...)` selectors. RANGE selectors use the previous
+`HIGH_VALUE` as the inclusive lower bound; LIST selectors use one value from
+the unit's `HIGH_VALUE`, including a single member of a multi-value LIST
+partition. Physical partition names remain available for metadata and logs,
+but are not used to identify business-data units during these operations.
+Units without a safe selector (such as LIST `DEFAULT` or a RANGE unit without
+a finite previous boundary) fail explicitly and should be marked complete in
+the relevant metadata when they are technical boundaries.
 
 REPLICA supports the same partition methods and key types. Its single
 `REPLICATE_EXPRESSION` defines desired presence: `Y` loads or retains a unit,

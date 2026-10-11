@@ -18,6 +18,8 @@ AS
                                                 ALTER SESSION ENABLE PARALLEL DML,
                                                 process summary logging
      1.2        2026-05-31   Tomasz Lesinski    Compact per-table summary, ORA-40478 fix
+     1.3        2026-10-11   Tomasz Lesinski    Exchange archive units by
+                                                HIGH_VALUE, not physical names
   */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
@@ -181,7 +183,6 @@ AS
         (
           p_target_owner       => r.TARGET_OWNER,
           p_target_table       => r.TARGET_TABLE_NAME,
-          p_partition_name     => r.PARTITION_NAME,
           p_staging_table_name => l_staging_table,
           p_execute            => l_execute_flag,
           p_log_id             => l_log_id,
@@ -259,22 +260,25 @@ AS
         IF r.ARCHIVE_UNIT_TYPE = 'SUBPARTITION' THEN
           PKG_ARCHIVER_PARTITION.prc_exchange_subpartition
           (
-            p_target_owner       => r.TARGET_OWNER,
-            p_target_table       => r.TARGET_TABLE_NAME,
-            p_subpartition_name  => r.SUBPARTITION_NAME,
-            p_staging_table_name => l_staging_table,
-            p_execute            => l_execute_flag,
-            p_log_id             => l_log_id
+            p_target_owner              => r.TARGET_OWNER,
+            p_target_table              => r.TARGET_TABLE_NAME,
+            p_partition_high_value      => r.PARTITION_HIGH_VALUE,
+            p_prev_partition_high_value => r.PREV_PARTITION_HIGH_VALUE,
+            p_subpartition_high_value   => r.SUBPARTITION_HIGH_VALUE,
+            p_staging_table_name        => l_staging_table,
+            p_execute                   => l_execute_flag,
+            p_log_id                    => l_log_id
           );
         ELSE
           PKG_ARCHIVER_PARTITION.prc_exchange_partition
           (
-            p_target_owner       => r.TARGET_OWNER,
-            p_target_table       => r.TARGET_TABLE_NAME,
-            p_partition_name     => r.PARTITION_NAME,
-            p_staging_table_name => l_staging_table,
-            p_execute            => l_execute_flag,
-            p_log_id             => l_log_id
+            p_target_owner              => r.TARGET_OWNER,
+            p_target_table              => r.TARGET_TABLE_NAME,
+            p_partition_high_value      => r.PARTITION_HIGH_VALUE,
+            p_prev_partition_high_value => r.PREV_PARTITION_HIGH_VALUE,
+            p_staging_table_name        => l_staging_table,
+            p_execute                   => l_execute_flag,
+            p_log_id                    => l_log_id
           );
         END IF;
 

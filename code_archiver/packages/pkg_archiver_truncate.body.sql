@@ -17,6 +17,8 @@ AS
     1.0        2026-05-28   Tomasz Lesinski    Initial version
     1.1        2026-05-28   Tomasz Lesinski    Add process summary logging
     1.2        2026-06-30   Tomasz Lesinski    Use TRUNCATE_EXPRESSION eligibility
+    1.3        2026-10-11   Tomasz Lesinski    Pass HIGH_VALUE selectors to
+                                                AGENT source cleanup
   */
   FUNCTION fn_normalize_execute(p_execute IN VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
@@ -111,7 +113,7 @@ AS
       );
       l_table_summary := NULL;
       l_agent_procedure := fn_qualified_agent_procedure(t.source_db_link);
-      l_sql := 'BEGIN ' || l_agent_procedure || '(:1, :2, :3, :4, :5, :6); END;';
+      l_sql := 'BEGIN ' || l_agent_procedure || '(:1, :2, :3, :4, :5, :6, :7, :8); END;';
 
       FOR r IN (
         SELECT p.*
@@ -142,8 +144,10 @@ AS
                           (
                             r.SOURCE_OWNER,
                             r.SOURCE_TABLE_NAME,
-                            r.SOURCE_PARTITION_NAME,
-                            CASE WHEN r.SOURCE_SUBPARTITION_NAME = '#' THEN NULL ELSE r.SOURCE_SUBPARTITION_NAME END,
+                            r.PARTITION_HIGH_VALUE,
+                            r.PREV_PARTITION_HIGH_VALUE,
+                            CASE WHEN r.SUBPARTITION_HIGH_VALUE = '#' THEN NULL ELSE r.SUBPARTITION_HIGH_VALUE END,
+                            r.ARCHIVE_UNIT_TYPE,
                             'TRUNCATE',
                             l_execute_flag
                           ),
