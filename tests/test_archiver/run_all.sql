@@ -5,4 +5,5 @@ PROMPT Running ARCHIVER tests
 @@004_quality.sql
 @@005_util_objects.sql
 @@006_list_validation.sql
+@@007_soft_validation.sql
 PROMPT ARCHIVER tests completed

@@ -137,12 +137,32 @@ VW_ARCHIVER_DISCOVERY_PARTITIONS
 VW_ARCHIVER_IMPORT_PARTITIONS
 VW_ARCHIVER_QUALITY_PARTITIONS
 VW_ARCHIVER_TRUNCATE_PARTITIONS
+VW_ARCHIVER_TARGET_PARTITIONS
+VW_ARCHIVER_SOFT_VALIDATION
 
 VW_REPLICA_DISCOVERY_PARTITIONS
 VW_REPLICA_REPLICATE_PARTITIONS
 VW_REPLICA_QUALITY_PARTITIONS
 VW_REPLICA_PURGE_PARTITIONS
 ```
+
+`VW_ARCHIVER_SOFT_VALIDATION` compares live source, live target, and stored
+metadata by `PARTITION_HIGH_VALUE` plus `SUBPARTITION_HIGH_VALUE`. Physical
+names are diagnostic attributes; `MISMATCH` reports name drift and `MISSING`
+reports a unit absent from source or target.
+
+Run a non-blocking historical count audit after quality and before truncate:
+
+```sql
+BEGIN
+  PKG_ARCHIVER_AUDIT.prc_soft_count;
+END;
+/
+```
+
+Results are appended to `TBL_ARCHIVER_AUDIT_RESULTS` under a `SOFT_COUNT` run.
+The audit does not update archive, quality, truncate, or stored row-count state;
+an error for one unit is recorded and remaining units are still checked.
 
 ## Deployment Boundary
 

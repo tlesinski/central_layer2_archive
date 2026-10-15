@@ -15,8 +15,11 @@ PROMPT Installing standalone ARCHIVER core objects
 @@code_archiver/tables/tbl_archiver_tables.sql
 @@code_archiver/tables/tbl_archiver_runs.sql
 @@code_archiver/tables/tbl_archiver_partitions.sql
+@@code_archiver/tables/tbl_archiver_audit_results.sql
 @@code_archiver/functions/fn_archiver_expr_calc.sql
 @@code_archiver/views/vw_archiver_source_partitions.sql
+@@code_archiver/views/vw_archiver_target_partitions.sql
+@@code_archiver/views/vw_archiver_soft_validation.sql
 @@code_archiver/views/vw_archiver_discovery_partitions.sql
 @@code_archiver/views/vw_archiver_import_partitions.sql
 @@code_archiver/views/vw_archiver_quality_partitions.sql
@@ -39,6 +42,8 @@ PROMPT Installing standalone ARCHIVER core objects
 @@code_archiver/packages/pkg_archiver_import.body.sql
 @@code_archiver/packages/pkg_archiver_quality.spec.sql
 @@code_archiver/packages/pkg_archiver_quality.body.sql
+@@code_archiver/packages/pkg_archiver_audit.spec.sql
+@@code_archiver/packages/pkg_archiver_audit.body.sql
 @@code_archiver/packages/pkg_archiver_truncate.spec.sql
 @@code_archiver/packages/pkg_archiver_truncate.body.sql
 @@code_archiver/packages/pkg_archiver_runner.spec.sql
@@ -63,6 +68,8 @@ SHOW ERRORS PACKAGE PKG_ARCHIVER_IMPORT
 SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_IMPORT
 SHOW ERRORS PACKAGE PKG_ARCHIVER_QUALITY
 SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_QUALITY
+SHOW ERRORS PACKAGE PKG_ARCHIVER_AUDIT
+SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_AUDIT
 SHOW ERRORS PACKAGE PKG_ARCHIVER_TRUNCATE
 SHOW ERRORS PACKAGE BODY PKG_ARCHIVER_TRUNCATE
 SHOW ERRORS PACKAGE PKG_ARCHIVER_RUNNER

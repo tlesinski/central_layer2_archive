@@ -91,6 +91,11 @@ replica purge address units with Oracle `PARTITION FOR (...)` and
 the unit's `HIGH_VALUE`, including a single member of a multi-value LIST
 partition. Physical partition names remain available for metadata and logs,
 but are not used to identify business-data units during these operations.
+`VW_ARCHIVER_SOFT_VALIDATION` exposes live source and target names beside stored
+metadata while joining units only by their source setup key and both
+`HIGH_VALUE` values. `PKG_ARCHIVER_AUDIT.prc_soft_count` appends fresh,
+non-blocking source/target comparisons to `TBL_ARCHIVER_AUDIT_RESULTS` without
+changing operational statuses or counts.
 Units without a safe selector (such as LIST `DEFAULT` or a RANGE unit without
 a finite previous boundary) fail explicitly and should be marked complete in
 the relevant metadata when they are technical boundaries.
